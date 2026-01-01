@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mr. Snowman - Outreach Automation</title>
+    
+    <!-- 1. External Styles & Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    
+    <!-- 2. Tailwind CSS (No Build) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              jaguar: {
+                900: '#0B2B26', // Deep Racing Green
+                800: '#16423C',
+                700: '#1F5750',
+                100: '#E8F5F3',
+              },
+              cream: {
+                50: '#FDFBF7',
+                100: '#F7F4EB',
+                200: '#EBE6D9',
+              },
+              gold: {
+                500: '#C5A065',
+                600: '#B08D55',
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              serif: ['Playfair Display', 'serif'],
+            },
+            animation: {
+                'fade-in': 'fadeIn 0.5s ease-out forwards',
+            },
+            keyframes: {
+                fadeIn: {
+                    '0%': { opacity: '0' },
+                    '100%': { opacity: '1' },
+                }
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- 3. React Dependencies (UMD Globals) -->
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    
+    <!-- 4. Prop Types (Required for some React UMD builds) -->
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+
+    <!-- 5. Recharts (Charting Library - Versioned UMD) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+
+    <!-- 6. Babel Standalone (Compiles JSX in browser) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 7. Custom Styles -->
+    <style>
+      body {
+        background-color: #FDFBF7;
+        color: #1F2937;
+      }
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #F7F4EB;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #C5A065;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #B08D55;
+      }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- MAIN APPLICATION SCRIPT -->
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        // Use window.Recharts to ensure we grab the global variable
+        const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip: RechartsTooltip, ResponsiveContainer, BarChart, Bar, Cell } = window.Recharts;
+
+        // --- ICONS (SVG Wrappers) ---
+        // implemented manually to avoid complex ESM imports in no-build env
+        const Icon = ({ path, size = 24, className = "" }) => (
+            <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width={size} 
+                height={size} 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className={className}
+            >
+                {path}
+            </svg>
+        );
+
+        const Icons = {
+            LayoutDashboard: (p) => <Icon {...p} path={<><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></>} />,
+            Send: (p) => <Icon {...p} path={<><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></>} />,
+            Users: (p) => <Icon {...p} path={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>} />,
+            Settings: (p) => <Icon {...p} path={<><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></>} />,
+            LogOut: (p) => <Icon {...p} path={<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></>} />,
+            Layers: (p) => <Icon {...p} path={<><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>} />,
+            Inbox: (p) => <Icon {...p} path={<><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></>} />,
+            ArrowUpRight: (p) => <Icon {...p} path={<><path d="M7 7h10v10"/><path d="M7 17 17 7"/></>} />,
+            Mail: (p) => <Icon {...p} path={<><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></>} />,
+            MousePointer2: (p) => <Icon {...p} path={<><path d="m12 22-4-9-9-4 23-7-7 23Z"/></>} />,
+            MessageSquare: (p) => <Icon {...p} path={<><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></>} />,
+            AlertCircle: (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></>} />,
+            ShieldCheck: (p) => <Icon {...p} path={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></>} />,
+            Flame: (p) => <Icon {...p} path={<><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.5-3.3a9 9 0 0 0 3 3.3z"/></>} />,
+            Server: (p) => <Icon {...p} path={<><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></>} />,
+            Plus: (p) => <Icon {...p} path={<><path d="M5 12h14"/><path d="M12 5v14"/></>} />,
+            RefreshCw: (p) => <Icon {...p} path={<><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></>} />,
+            BarChart3: (p) => <Icon {...p} path={<><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></>} />,
+            Trash2: (p) => <Icon {...p} path={<><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></>} />,
+            Edit3: (p) => <Icon {...p} path={<><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></>} />,
+            Save: (p) => <Icon {...p} path={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>} />,
+            Play: (p) => <Icon {...p} path={<><polygon points="5 3 19 12 5 21 5 3"/></>} />,
+            Split: (p) => <Icon {...p} path={<><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></>} />,
+            ArrowRight: (p) => <Icon {...p} path={<><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></>} />,
+            Check: (p) => <Icon {...p} path={<><polyline points="20 6 9 17 4 12"/></>} />,
+            ChevronRight: (p) => <Icon {...p} path={<><path d="m9 18 6-6-6-6"/></>} />,
+            Shield: (p) => <Icon {...p} path={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>} />,
+            Zap: (p) => <Icon {...p} path={<><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></>} />,
+            BarChart: (p) => <Icon {...p} path={<><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></>} />,
+            Loader2: (p) => <Icon {...p} className={`animate-spin ${p.className || ''}`} path={<><path d="M21 12a9 9 0 1 1-6.219-8.56"/></>} />,
+            ArrowLeft: (p) => <Icon {...p} path={<><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></>} />,
+            Clock: (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>} />
+        };
+
+        // --- COMPONENTS ---
+
+        const Card = ({ children, className = '', title, subtitle, action }) => {
+            return (
+                <div className={`bg-white border border-stone-200 shadow-sm rounded-lg overflow-hidden transition-all duration-300 hover:shadow-md ${className}`}>
+                {(title || action) && (
+                    <div className="px-6 py-5 border-b border-stone-100 flex justify-between items-center bg-cream-50">
+                    <div>
+                        {title && <h3 className="font-serif text-xl font-medium text-jaguar-900">{title}</h3>}
+                        {subtitle && <p className="text-sm text-stone-500 mt-1">{subtitle}</p>}
+                    </div>
+                    {action && <div>{action}</div>}
+                    </div>
+                )}
+                <div className="p-6">
+                    {children}
+                </div>
+                </div>
+            );
+        };
+
+        const Dashboard = () => {
+            const data = [
+                { name: 'Mon', sent: 400, opened: 240, replied: 80 },
+                { name: 'Tue', sent: 300, opened: 139, replied: 50 },
+                { name: 'Wed', sent: 200, opened: 980, replied: 200 },
+                { name: 'Thu', sent: 278, opened: 390, replied: 110 },
+                { name: 'Fri', sent: 189, opened: 480, replied: 140 },
+                { name: 'Sat', sent: 239, opened: 380, replied: 130 },
+                { name: 'Sun', sent: 349, opened: 430, replied: 120 },
+            ];
+
+            const metrics = [
+                { label: 'Total Sent', value: '12,450', change: '+12.5%', icon: Icons.Mail, color: 'text-blue-600' },
+                { label: 'Open Rate', value: '68.2%', change: '+4.1%', icon: Icons.ArrowUpRight, color: 'text-emerald-600' },
+                { label: 'Click Rate', value: '12.5%', change: '-0.4%', icon: Icons.MousePointer2, color: 'text-amber-600' },
+                { label: 'Reply Rate', value: '8.4%', change: '+2.1%', icon: Icons.MessageSquare, color: 'text-jaguar-900' },
+            ];
+
+            return (
+                <div className="space-y-8 animate-fade-in">
+                    <div className="flex justify-between items-end">
+                        <div>
+                        <h2 className="font-serif text-3xl text-jaguar-900">Overview</h2>
+                        <p className="text-stone-500 mt-2 font-light">Your campaign performance at a glance.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <span className="bg-cream-200 text-jaguar-900 px-3 py-1 text-sm rounded-full flex items-center gap-2">
+                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                System Operational
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {metrics.map((metric, index) => (
+                        <div key={index} className="bg-white p-6 rounded-lg border border-stone-200 shadow-sm hover:border-jaguar-900/20 transition-colors">
+                            <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-sm font-medium text-stone-500 uppercase tracking-wide">{metric.label}</p>
+                                <h3 className="text-3xl font-serif text-jaguar-900 mt-2">{metric.value}</h3>
+                            </div>
+                            <div className={`p-2 bg-cream-100 rounded-lg ${metric.color}`}>
+                                <metric.icon size={20} />
+                            </div>
+                            </div>
+                            <div className="mt-4 flex items-center text-sm">
+                            <span className={metric.change.startsWith('+') ? 'text-green-600' : 'text-red-500'}>
+                                {metric.change}
+                            </span>
+                            <span className="text-stone-400 ml-2">vs last week</span>
+                            </div>
+                        </div>
+                        ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <Card title="Activity Volume" className="lg:col-span-2">
+                        <div className="h-[300px] w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                <defs>
+                                <linearGradient id="colorSent" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#0B2B26" stopOpacity={0.1}/>
+                                    <stop offset="95%" stopColor="#0B2B26" stopOpacity={0}/>
+                                </linearGradient>
+                                <linearGradient id="colorOpened" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#C5A065" stopOpacity={0.1}/>
+                                    <stop offset="95%" stopColor="#C5A065" stopOpacity={0}/>
+                                </linearGradient>
+                                </defs>
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF'}} />
+                                <YAxis axisLine={false} tickLine={false} tick={{fill: '#9CA3AF'}} />
+                                <CartesianGrid vertical={false} stroke="#E5E7EB" strokeDasharray="3 3" />
+                                <RechartsTooltip 
+                                contentStyle={{ backgroundColor: '#FFF', border: '1px solid #E5E7EB', borderRadius: '8px', fontFamily: 'Inter' }}
+                                />
+                                <Area type="monotone" dataKey="sent" stroke="#0B2B26" strokeWidth={2} fillOpacity={1} fill="url(#colorSent)" />
+                                <Area type="monotone" dataKey="opened" stroke="#C5A065" strokeWidth={2} fillOpacity={1} fill="url(#colorOpened)" />
+                            </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                        </Card>
+
+                        <Card title="Infrastructure Health">
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between p-4 border border-stone-100 rounded-lg bg-cream-50">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-jaguar-100 flex items-center justify-center text-jaguar-900">
+                                        <span className="font-bold text-sm">AWS</span>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-medium text-jaguar-900">WorkMail IMAP</h4>
+                                            <p className="text-xs text-stone-500">Listening • 45ms latency</p>
+                                        </div>
+                                    </div>
+                                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                </div>
+
+                                <div className="flex items-center justify-between p-4 border border-stone-100 rounded-lg bg-cream-50">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-jaguar-100 flex items-center justify-center text-jaguar-900">
+                                        <span className="font-bold text-sm">ST</span>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-medium text-jaguar-900">Stalwart SMTP</h4>
+                                            <p className="text-xs text-stone-500">Relaying • 99.9% Uptime</p>
+                                        </div>
+                                    </div>
+                                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                </div>
+
+                                <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-100 flex gap-3">
+                                    <Icons.AlertCircle className="text-amber-600 shrink-0" size={20} />
+                                    <div>
+                                        <h5 className="text-sm font-medium text-amber-800">Warm-up Recommendation</h5>
+                                        <p className="text-xs text-amber-700 mt-1">Account <em>marketing@domain.com</em> is ready to increase daily volume to 250.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+                </div>
+            );
+        };
+
+        const EmailAccounts = () => {
+            const [activeTab, setActiveTab] = useState('accounts');
+
+            const mockAccounts = [
+                {
+                    id: '1',
+                    email_address: 'outreach@mrsnowman.io',
+                    account_type: 'stalwart',
+                    daily_send_limit: 10000,
+                    is_warming_up: true,
+                    warmup_stage: 4,
+                    current_daily_volume: 150,
+                    target_daily_volume: 5000,
+                    health_score: 98,
+                },
+                {
+                    id: '2',
+                    email_address: 'hello@mrsnowman.io',
+                    account_type: 'workmail',
+                    daily_send_limit: 500,
+                    is_warming_up: true,
+                    warmup_stage: 2,
+                    current_daily_volume: 45,
+                    target_daily_volume: 1000,
+                    health_score: 92,
+                },
+            ];
+
+            const warmupData = [
+                { name: 'Inbox', value: 85, color: '#10B981' },
+                { name: 'Spam', value: 5, color: '#EF4444' },
+                { name: 'Promo', value: 10, color: '#F59E0B' },
+            ];
+
+            return (
+                <div className="space-y-8 animate-fade-in">
+                    <div className="flex flex-col md:flex-row justify-between items-end gap-4">
+                        <div>
+                        <h2 className="font-serif text-3xl text-jaguar-900">Infrastructure</h2>
+                        <p className="text-stone-500 mt-2 font-light">Manage your sending nodes and warm-up protocols.</p>
+                        </div>
+                        <div className="flex bg-cream-200 p-1 rounded-lg">
+                            <button 
+                                onClick={() => setActiveTab('accounts')}
+                                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'accounts' ? 'bg-white text-jaguar-900 shadow-sm' : 'text-stone-600 hover:text-jaguar-900'}`}
+                            >
+                                Connected Accounts
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('warmup')}
+                                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'warmup' ? 'bg-white text-jaguar-900 shadow-sm' : 'text-stone-600 hover:text-jaguar-900'}`}
+                            >
+                                Warm-up Engine
+                            </button>
+                        </div>
+                    </div>
+
+                    {activeTab === 'accounts' ? (
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                <button className="border-2 border-dashed border-stone-300 rounded-lg p-6 flex flex-col items-center justify-center text-stone-400 hover:border-jaguar-900 hover:text-jaguar-900 transition-all group h-full min-h-[200px]">
+                                    <div className="w-12 h-12 rounded-full bg-stone-100 group-hover:bg-jaguar-100 flex items-center justify-center mb-3 transition-colors">
+                                        <Icons.Plus size={24} />
+                                    </div>
+                                    <span className="font-medium">Connect New Account</span>
+                                    <span className="text-xs mt-1 opacity-70">AWS WorkMail or Custom SMTP</span>
+                                </button>
+
+                                {mockAccounts.map((account) => (
+                                    <Card key={account.id} className="relative group">
+                                        <div className="absolute top-4 right-4 flex gap-2">
+                                            <span className={`px-2 py-1 rounded text-xs font-medium uppercase tracking-wider ${account.account_type === 'stalwart' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                {account.account_type}
+                                            </span>
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-4 mb-6">
+                                            <div className="w-12 h-12 rounded-full bg-jaguar-900 text-cream-50 flex items-center justify-center font-serif text-xl">
+                                                {account.email_address[0].toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <h3 className="font-medium text-jaguar-900 truncate max-w-[180px]">{account.email_address}</h3>
+                                                <div className="flex items-center gap-1 text-xs text-green-600">
+                                                    <Icons.ShieldCheck size={12} />
+                                                    <span>Verified & Active</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-stone-500">Daily Limit</span>
+                                                <span className="font-medium text-jaguar-900">{account.daily_send_limit.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-stone-500">Warm-up Status</span>
+                                                <span className="flex items-center gap-1 font-medium text-amber-600">
+                                                    <Icons.Flame size={14} />
+                                                    Active (Stage {account.warmup_stage})
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-6 pt-4 border-t border-stone-100 flex gap-2">
+                                            <button className="flex-1 text-sm py-2 border border-stone-200 rounded text-stone-600 hover:border-jaguar-900 hover:text-jaguar-900 transition-colors">Configure</button>
+                                            <button className="p-2 border border-stone-200 rounded text-stone-600 hover:bg-stone-50"><Icons.RefreshCw size={16} /></button>
+                                        </div>
+                                    </Card>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            <Card title="Global Warm-up Stats" className="lg:col-span-2">
+                                <div className="h-64 mt-4">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={warmupData} layout="vertical" margin={{ left: 40 }}>
+                                            <XAxis type="number" hide />
+                                            <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} />
+                                            <RechartsTooltip cursor={{fill: '#F7F4EB'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}/>
+                                            <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={32}>
+                                                {warmupData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="mt-6 grid grid-cols-3 gap-4 border-t border-stone-100 pt-6">
+                                    <div className="text-center">
+                                        <p className="text-stone-500 text-xs uppercase tracking-wide">Placement Rate</p>
+                                        <p className="text-2xl font-serif text-jaguar-900 mt-1">98.2%</p>
+                                    </div>
+                                    <div className="text-center border-l border-stone-100">
+                                        <p className="text-stone-500 text-xs uppercase tracking-wide">Total Conversations</p>
+                                        <p className="text-2xl font-serif text-jaguar-900 mt-1">1,240</p>
+                                    </div>
+                                    <div className="text-center border-l border-stone-100">
+                                        <p className="text-stone-500 text-xs uppercase tracking-wide">Seed Network</p>
+                                        <p className="text-2xl font-serif text-jaguar-900 mt-1">542 <span className="text-xs text-stone-400 font-sans">Active</span></p>
+                                    </div>
+                                </div>
+                            </Card>
+
+                            <Card title="Active Configurations">
+                                <div className="space-y-4">
+                                    <div className="p-4 bg-cream-50 rounded-lg border border-stone-100">
+                                        <div className="flex items-start gap-3">
+                                            <Icons.Server className="text-jaguar-900 mt-1" size={18} />
+                                            <div>
+                                                <h4 className="font-medium text-sm text-jaguar-900">Ramp-up Strategy</h4>
+                                                <p className="text-xs text-stone-500 mt-1">Conservative (+5 emails/day)</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="p-4 bg-cream-50 rounded-lg border border-stone-100">
+                                        <div className="flex items-start gap-3">
+                                            <Icons.MessageSquare className="text-jaguar-900 mt-1" size={18} />
+                                            <div>
+                                                <h4 className="font-medium text-sm text-jaguar-900">Reply Logic</h4>
+                                                <p className="text-xs text-stone-500 mt-1">Wait 15-45 mins before reply. 30% reply rate.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button className="w-full py-2 text-sm text-center text-gold-600 hover:text-gold-500 font-medium">
+                                        Advanced Settings →
+                                    </button>
+                                </div>
+                            </Card>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const CampaignBuilder = () => {
+            const initialSteps = [
+                { id: '1', step_order: 1, step_type: 'email', subject: 'Collaboration Opportunity', body: 'Hi {{first_name}}, I saw your work at...' },
+                { id: '2', step_order: 2, step_type: 'wait', wait_days: 2 },
+                { id: '3', step_order: 3, step_type: 'condition', condition_type: 'if_opened' },
+            ];
+            const [steps, setSteps] = useState(initialSteps);
+            const [activeStep, setActiveStep] = useState(null);
+
+            return (
+                <div className="h-[calc(100vh-100px)] flex flex-col animate-fade-in">
+                    {/* Header */}
+                    <div className="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 className="font-serif text-3xl text-jaguar-900">Q4 Outreach - CEOs</h2>
+                            <div className="flex items-center gap-2 mt-2">
+                                <span className="w-2 h-2 rounded-full bg-stone-300"></span>
+                                <p className="text-stone-500 text-sm">Draft • Last saved 2 mins ago</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-3">
+                            <button className="px-4 py-2 bg-white border border-stone-200 text-stone-700 rounded-md hover:bg-stone-50 font-medium transition-colors flex items-center gap-2">
+                                <Icons.Save size={18} /> Save Draft
+                            </button>
+                            <button className="px-6 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 font-medium transition-colors flex items-center gap-2 shadow-lg shadow-jaguar-900/20">
+                                <Icons.Play size={18} /> Launch
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-6 flex-1 overflow-hidden">
+                        {/* Steps Timeline (Left) */}
+                        <div className="w-1/3 overflow-y-auto pr-2 pb-10">
+                            <div className="relative">
+                                {/* Vertical Line */}
+                                <div className="absolute left-6 top-4 bottom-0 w-0.5 bg-stone-200"></div>
+
+                                <div className="space-y-6">
+                                    {steps.map((step, index) => (
+                                        <div 
+                                            key={step.id} 
+                                            onClick={() => setActiveStep(step.id)}
+                                            className={`relative pl-16 group cursor-pointer transition-all ${activeStep === step.id ? 'opacity-100 scale-[1.02]' : 'opacity-80 hover:opacity-100'}`}
+                                        >
+                                            {/* Icon Bubble */}
+                                            <div className={`absolute left-0 top-0 w-12 h-12 rounded-full border-4 border-[#FDFBF7] flex items-center justify-center z-10 shadow-sm transition-colors ${activeStep === step.id ? 'bg-jaguar-900 text-cream-50' : 'bg-white text-stone-400 group-hover:text-jaguar-900'}`}>
+                                                {step.step_type === 'email' && <Icons.Mail size={18} />}
+                                                {step.step_type === 'wait' && <Icons.Clock size={18} />}
+                                                {step.step_type === 'condition' && <Icons.Split size={18} />}
+                                            </div>
+
+                                            {/* Card Content */}
+                                            <div className={`p-4 rounded-lg border transition-all ${activeStep === step.id ? 'bg-white border-jaguar-900 shadow-md' : 'bg-white border-stone-200 hover:border-stone-300'}`}>
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-stone-400">Step {index + 1}</span>
+                                                    <div className="flex gap-2">
+                                                        <button className="text-stone-300 hover:text-stone-600"><Icons.Edit3 size={14}/></button>
+                                                        <button className="text-stone-300 hover:text-red-500"><Icons.Trash2 size={14}/></button>
+                                                    </div>
+                                                </div>
+                                                
+                                                {step.step_type === 'email' && (
+                                                    <div>
+                                                        <h4 className="font-serif font-medium text-jaguar-900">{step.subject || 'No Subject'}</h4>
+                                                        <p className="text-xs text-stone-500 mt-1 line-clamp-2">{step.body}</p>
+                                                    </div>
+                                                )}
+                                                {step.step_type === 'wait' && (
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-medium text-stone-700">Wait {step.wait_days} Days</span>
+                                                    </div>
+                                                )}
+                                                {step.step_type === 'condition' && (
+                                                    <div className="bg-cream-50 p-2 rounded border border-stone-100">
+                                                        <span className="text-sm font-medium text-jaguar-900">Condition:</span>
+                                                        <span className="text-sm text-stone-600 ml-1">If {step.condition_type?.replace('if_', '')}...</span>
+                                                        
+                                                        <div className="mt-2 flex gap-2">
+                                                            <div className="flex-1 bg-green-50 p-1 text-center text-[10px] text-green-800 rounded">Yes → Step 4</div>
+                                                            <div className="flex-1 bg-red-50 p-1 text-center text-[10px] text-red-800 rounded">No → Step 5</div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {/* Add Step Button */}
+                                    <div className="relative pl-16">
+                                        <div className="absolute left-0 top-0 w-12 h-12 rounded-full border-4 border-[#FDFBF7] bg-stone-100 text-stone-400 flex items-center justify-center z-10">
+                                            <Icons.Plus size={20} />
+                                        </div>
+                                        <button className="w-full p-4 border-2 border-dashed border-stone-200 rounded-lg text-stone-400 font-medium hover:border-jaguar-900 hover:text-jaguar-900 transition-colors text-left">
+                                            Add Next Step
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Editor (Right) */}
+                        <div className="w-2/3 bg-white border border-stone-200 rounded-lg shadow-sm p-8 overflow-y-auto">
+                            {activeStep ? (
+                                <div className="animate-fade-in">
+                                    {steps.find(s => s.id === activeStep)?.step_type === 'email' && (
+                                        <div className="space-y-6">
+                                            <div>
+                                                <label className="block text-sm font-medium text-stone-700 mb-2">Subject Line</label>
+                                                <input 
+                                                    type="text" 
+                                                    defaultValue={steps.find(s => s.id === activeStep)?.subject}
+                                                    className="w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all font-serif"
+                                                />
+                                                <p className="text-xs text-stone-400 mt-1 text-right">0 / 60 characters</p>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-stone-700 mb-2">Email Body</label>
+                                                <div className="border border-stone-200 rounded-md overflow-hidden">
+                                                    <div className="bg-stone-50 px-3 py-2 border-b border-stone-200 flex gap-2">
+                                                        <button className="p-1 hover:bg-stone-200 rounded text-xs font-bold text-stone-600">B</button>
+                                                        <button className="p-1 hover:bg-stone-200 rounded text-xs italic text-stone-600">I</button>
+                                                        <div className="w-px h-4 bg-stone-300 mx-1"></div>
+                                                        <button className="px-2 py-1 bg-white border border-stone-200 rounded text-xs text-gold-600 hover:text-gold-500">{'{{variable}}'}</button>
+                                                    </div>
+                                                    <textarea 
+                                                        defaultValue={steps.find(s => s.id === activeStep)?.body}
+                                                        rows={12}
+                                                        className="w-full p-4 focus:outline-none resize-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="p-4 bg-cream-50 border border-stone-100 rounded-lg">
+                                                <h4 className="text-sm font-medium text-jaguar-900 mb-2">Sending Configuration</h4>
+                                                <div className="flex gap-4">
+                                                    <label className="flex items-center gap-2 text-sm text-stone-600">
+                                                        <input type="checkbox" className="text-jaguar-900 focus:ring-jaguar-900" defaultChecked />
+                                                        Track Opens
+                                                    </label>
+                                                    <label className="flex items-center gap-2 text-sm text-stone-600">
+                                                        <input type="checkbox" className="text-jaguar-900 focus:ring-jaguar-900" defaultChecked />
+                                                        Track Clicks
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {steps.find(s => s.id === activeStep)?.step_type === 'wait' && (
+                                        <div className="flex flex-col items-center justify-center h-full text-center">
+                                            <Icons.Clock size={48} className="text-gold-500 mb-4" />
+                                            <h3 className="text-xl font-serif text-jaguar-900 mb-6">Delay Duration</h3>
+                                            <div className="flex items-center gap-4">
+                                                <button className="w-10 h-10 rounded-full border border-stone-200 flex items-center justify-center hover:bg-stone-50">-</button>
+                                                <div className="text-4xl font-serif text-jaguar-900 w-24">2</div>
+                                                <button className="w-10 h-10 rounded-full border border-stone-200 flex items-center justify-center hover:bg-stone-50">+</button>
+                                            </div>
+                                            <p className="mt-4 text-stone-500 uppercase tracking-widest text-sm">Days</p>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="h-full flex flex-col items-center justify-center text-stone-400">
+                                    <Icons.Edit3 size={48} className="mb-4 opacity-20" />
+                                    <p>Select a step from the timeline to edit</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const LandingPage = ({ onNavigate }) => {
+            return (
+                <div className="min-h-screen bg-[#FDFBF7] text-jaguar-900 font-sans selection:bg-gold-500 selection:text-white">
+                <nav className="px-6 py-6 border-b border-stone-100/50 backdrop-blur-sm sticky top-0 z-50 bg-[#FDFBF7]/90">
+                    <div className="max-w-7xl mx-auto flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-gold-600 rounded-sm rotate-45 flex items-center justify-center shadow-lg shadow-gold-600/20">
+                            <div className="w-4 h-4 bg-jaguar-900 -rotate-45"></div>
+                        </div>
+                        <h1 className="font-serif text-2xl tracking-tight font-medium">Mr. <span className="text-gold-600 font-normal">Snowman</span></h1>
+                    </div>
+                    
+                    <div className="flex items-center gap-6">
+                        <button 
+                        onClick={() => onNavigate('login')}
+                        className="text-stone-600 hover:text-jaguar-900 font-medium transition-colors hidden sm:block"
+                        >
+                        Sign In
+                        </button>
+                        <button 
+                        onClick={() => onNavigate('signup')}
+                        className="px-5 py-2.5 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 transition-all shadow-xl shadow-jaguar-900/10 hover:shadow-jaguar-900/20 flex items-center gap-2"
+                        >
+                        Start Free Trial <Icons.ArrowRight size={16} />
+                        </button>
+                    </div>
+                    </div>
+                </nav>
+
+                <section className="pt-24 pb-32 px-6">
+                    <div className="max-w-4xl mx-auto text-center space-y-8 animate-fade-in">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cream-200 text-jaguar-900 text-sm font-medium mb-4">
+                        <span className="w-2 h-2 rounded-full bg-gold-500 animate-pulse"></span>
+                        v2.0 is now live
+                    </div>
+                    <h1 className="font-serif text-5xl md:text-7xl leading-[1.1] text-jaguar-900">
+                        The art of <span className="italic text-gold-600">outreach</span>,<br />
+                        refined for closers.
+                    </h1>
+                    <p className="text-xl text-stone-500 max-w-2xl mx-auto font-light leading-relaxed">
+                        Mr. Snowman combines minimalist design with brutal efficiency. 
+                        Automate your campaigns, warm up your infrastructure, and scale your revenue without the noise.
+                    </p>
+                    
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
+                        <button 
+                        onClick={() => onNavigate('signup')}
+                        className="w-full sm:w-auto px-8 py-4 bg-jaguar-900 text-cream-50 text-lg rounded-lg hover:bg-jaguar-800 transition-all shadow-xl shadow-jaguar-900/20 hover:-translate-y-1"
+                        >
+                        Get Started for Free
+                        </button>
+                        <button className="w-full sm:w-auto px-8 py-4 bg-white border border-stone-200 text-jaguar-900 text-lg rounded-lg hover:bg-stone-50 transition-all flex items-center justify-center gap-2 group">
+                        View Demo <div className="bg-stone-100 rounded-full p-1 group-hover:bg-stone-200"><Icons.ChevronRight size={16}/></div>
+                        </button>
+                    </div>
+
+                    <div className="pt-12 flex items-center justify-center gap-8 text-stone-400 grayscale opacity-60">
+                        <div className="font-serif font-bold text-xl">ACME Corp</div>
+                        <div className="font-sans font-bold text-xl tracking-tighter">StarkIndustries</div>
+                        <div className="font-serif italic text-xl">Globex</div>
+                        <div className="font-mono text-xl">Massive Dynamic</div>
+                    </div>
+                    </div>
+                </section>
+
+                <section className="py-24 bg-white border-t border-stone-100">
+                    <div className="max-w-7xl mx-auto px-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+                        
+                        <div className="space-y-4 p-6 rounded-2xl bg-cream-50 border border-stone-100 hover:border-gold-500/30 transition-colors group">
+                        <div className="w-12 h-12 bg-white rounded-xl border border-stone-200 flex items-center justify-center text-gold-600 group-hover:scale-110 transition-transform duration-300">
+                            <Icons.Shield size={24} />
+                        </div>
+                        <h3 className="font-serif text-2xl text-jaguar-900">Bulletproof Infrastructure</h3>
+                        <p className="text-stone-500 leading-relaxed">
+                            Hybrid sending via AWS WorkMail and custom Stalwart SMTP relays ensures your domain reputation remains pristine.
+                        </p>
+                        </div>
+
+                        <div className="space-y-4 p-6 rounded-2xl bg-cream-50 border border-stone-100 hover:border-gold-500/30 transition-colors group">
+                        <div className="w-12 h-12 bg-white rounded-xl border border-stone-200 flex items-center justify-center text-gold-600 group-hover:scale-110 transition-transform duration-300">
+                            <Icons.Zap size={24} />
+                        </div>
+                        <h3 className="font-serif text-2xl text-jaguar-900">Intelligent Warm-up</h3>
+                        <p className="text-stone-500 leading-relaxed">
+                            Our AI-driven warm-up engine generates natural conversations to gradually ramp up your sending limits.
+                        </p>
+                        </div>
+
+                        <div className="space-y-4 p-6 rounded-2xl bg-cream-50 border border-stone-100 hover:border-gold-500/30 transition-colors group">
+                        <div className="w-12 h-12 bg-white rounded-xl border border-stone-200 flex items-center justify-center text-gold-600 group-hover:scale-110 transition-transform duration-300">
+                            <Icons.BarChart size={24} />
+                        </div>
+                        <h3 className="font-serif text-2xl text-jaguar-900">Precision Analytics</h3>
+                        <p className="text-stone-500 leading-relaxed">
+                            Track opens, clicks, and replies in real-time. Visualize your funnel and optimize for conversion.
+                        </p>
+                        </div>
+
+                    </div>
+                    </div>
+                </section>
+
+                <footer className="bg-jaguar-900 text-cream-200 py-12 px-6">
+                    <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div className="text-sm opacity-60">
+                        © 2024 Mr. Snowman Inc. All rights reserved.
+                    </div>
+                    <div className="flex gap-8 text-sm font-medium">
+                        <a href="#" className="hover:text-gold-500 transition-colors">Privacy</a>
+                        <a href="#" className="hover:text-gold-500 transition-colors">Terms</a>
+                        <a href="#" className="hover:text-gold-500 transition-colors">Contact</a>
+                    </div>
+                    </div>
+                </footer>
+                </div>
+            );
+        };
+
+        const Auth = ({ view, onAuthenticate, onNavigate }) => {
+            const [loading, setLoading] = useState(false);
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                setLoading(true);
+                // Simulate API call
+                setTimeout(() => {
+                setLoading(false);
+                onAuthenticate();
+                }, 1500);
+            };
+
+            return (
+                <div className="min-h-screen flex bg-[#FDFBF7]">
+                {/* Left Side - Visual */}
+                <div className="hidden lg:flex w-1/2 bg-jaguar-900 relative overflow-hidden flex-col justify-between p-12 text-cream-50">
+                    <div className="absolute inset-0 opacity-10" style={{
+                        backgroundImage: 'radial-gradient(circle at 2px 2px, #C5A065 1px, transparent 0)',
+                        backgroundSize: '40px 40px'
+                    }}></div>
+                    
+                    <div 
+                        onClick={() => onNavigate('landing')}
+                        className="relative z-10 flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+                    >
+                        <div className="w-8 h-8 bg-gold-600 rounded-sm rotate-45 flex items-center justify-center shadow-lg shadow-gold-600/30">
+                            <div className="w-4 h-4 bg-jaguar-900 -rotate-45"></div>
+                        </div>
+                        <h1 className="font-serif text-2xl tracking-tight font-medium">Mr. <span className="text-gold-600 font-normal">Snowman</span></h1>
+                    </div>
+
+                    <div className="relative z-10 max-w-lg">
+                        <h2 className="font-serif text-4xl leading-tight mb-6">"Simplicity is the ultimate sophistication."</h2>
+                        <p className="text-jaguar-100/60 font-light text-lg">— Leonardo da Vinci</p>
+                        <div className="mt-12 flex gap-2">
+                            <div className="w-12 h-1 bg-gold-500 rounded-full"></div>
+                            <div className="w-2 h-1 bg-jaguar-700 rounded-full"></div>
+                            <div className="w-2 h-1 bg-jaguar-700 rounded-full"></div>
+                        </div>
+                    </div>
+                    
+                    <div className="text-xs text-jaguar-100/40">
+                        Secure Encryption • SOC2 Compliant • 99.9% Uptime
+                    </div>
+                </div>
+
+                {/* Right Side - Form */}
+                <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-8 sm:p-16 relative">
+                    <button 
+                        onClick={() => onNavigate('landing')}
+                        className="absolute top-8 left-8 flex items-center gap-2 text-stone-400 hover:text-jaguar-900 transition-colors lg:hidden"
+                    >
+                        <Icons.ArrowLeft size={18} /> Back
+                    </button>
+
+                    <div className="w-full max-w-md space-y-8 animate-fade-in">
+                        <div className="text-center lg:text-left">
+                            <h2 className="font-serif text-3xl text-jaguar-900">{view === 'login' ? 'Welcome back' : 'Create your account'}</h2>
+                            <p className="text-stone-500 mt-2">
+                                {view === 'login' 
+                                    ? 'Enter your credentials to access your dashboard.' 
+                                    : 'Start your 14-day free trial. No credit card required.'}
+                            </p>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            {view === 'signup' && (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-jaguar-900">Full Name</label>
+                                    <input 
+                                        type="text" 
+                                        required 
+                                        className="w-full px-4 py-3 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all placeholder:text-stone-300"
+                                        placeholder="John Doe"
+                                    />
+                                </div>
+                            )}
+                            
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-jaguar-900">Email Address</label>
+                                <input 
+                                    type="email" 
+                                    required 
+                                    className="w-full px-4 py-3 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all placeholder:text-stone-300"
+                                    placeholder="john@company.com"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <label className="text-sm font-medium text-jaguar-900">Password</label>
+                                    {view === 'login' && (
+                                        <a href="#" className="text-xs text-stone-500 hover:text-gold-600">Forgot password?</a>
+                                    )}
+                                </div>
+                                <input 
+                                    type="password" 
+                                    required 
+                                    className="w-full px-4 py-3 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all placeholder:text-stone-300"
+                                    placeholder="••••••••"
+                                />
+                            </div>
+
+                            <button 
+                                type="submit" 
+                                disabled={loading}
+                                className="w-full py-3 bg-jaguar-900 text-cream-50 rounded-lg font-medium hover:bg-jaguar-800 transition-all shadow-lg shadow-jaguar-900/10 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                {loading ? (
+                                    <Icons.Loader2 size={20} />
+                                ) : (
+                                    view === 'login' ? 'Sign In' : 'Create Account'
+                                )}
+                            </button>
+                        </form>
+
+                        <div className="text-center text-sm text-stone-500">
+                            {view === 'login' ? "Don't have an account? " : "Already have an account? "}
+                            <button 
+                                onClick={() => onNavigate(view === 'login' ? 'signup' : 'login')}
+                                className="font-medium text-gold-600 hover:text-gold-700 underline underline-offset-2"
+                            >
+                                {view === 'login' ? 'Sign up' : 'Log in'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [authState, setAuthState] = useState('unauthenticated');
+            const [publicView, setPublicView] = useState('landing');
+            const [privateView, setPrivateView] = useState('dashboard');
+
+            const handleLogin = () => {
+                setAuthState('authenticated');
+                setPrivateView('dashboard');
+            };
+
+            const handleLogout = () => {
+                setAuthState('unauthenticated');
+                setPublicView('landing');
+            };
+
+            const handlePublicNavigate = (view) => {
+                setPublicView(view);
+            };
+
+            const NavItem = ({ view, icon: IconComponent, label }) => (
+                <button
+                onClick={() => setPrivateView(view)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group ${
+                    privateView === view
+                    ? 'bg-jaguar-800 text-cream-50 shadow-lg shadow-black/20'
+                    : 'text-jaguar-100/60 hover:text-cream-50 hover:bg-jaguar-800/50'
+                }`}
+                >
+                <div className={`${privateView === view ? 'text-gold-500' : 'group-hover:text-gold-500 transition-colors'}`}>
+                    <IconComponent size={20} />
+                </div>
+                <span className="font-medium tracking-wide">{label}</span>
+                </button>
+            );
+
+            if (authState === 'unauthenticated') {
+                if (publicView === 'landing') {
+                    return <LandingPage onNavigate={handlePublicNavigate} />;
+                }
+                return <Auth view={publicView} onAuthenticate={handleLogin} onNavigate={handlePublicNavigate} />;
+            }
+
+            return (
+                <div className="flex h-screen bg-[#FDFBF7] font-sans text-stone-800 overflow-hidden animate-fade-in">
+                    <aside className="w-72 bg-jaguar-900 text-white flex flex-col shadow-2xl z-20">
+                        <div className="p-8 pb-10">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-gold-600 rounded-sm rotate-45 flex items-center justify-center shadow-lg shadow-gold-600/30">
+                                    <div className="w-4 h-4 bg-jaguar-900 -rotate-45"></div>
+                                </div>
+                                <h1 className="font-serif text-2xl tracking-tight text-cream-50">Mr. <span className="text-gold-500 font-normal">Snowman</span></h1>
+                            </div>
+                        </div>
+
+                        <nav className="flex-1 px-4 space-y-2">
+                            <p className="px-4 text-xs font-bold text-jaguar-700 uppercase tracking-widest mb-4">Main Menu</p>
+                            <NavItem view="dashboard" icon={Icons.LayoutDashboard} label="Overview" />
+                            <NavItem view="campaigns" icon={Icons.Send} label="Campaigns" />
+                            <NavItem view="contacts" icon={Icons.Users} label="Contacts" />
+                            
+                            <div className="py-6"></div>
+                            
+                            <p className="px-4 text-xs font-bold text-jaguar-700 uppercase tracking-widest mb-4">System</p>
+                            <NavItem view="infrastructure" icon={Icons.Layers} label="Infrastructure" />
+                            <NavItem view="settings" icon={Icons.Settings} label="Settings" />
+                        </nav>
+
+                        <div className="p-4 border-t border-jaguar-800">
+                            <div className="flex items-center gap-3 px-4 py-3 group">
+                                <div className="w-10 h-10 rounded-full bg-cream-100 text-jaguar-900 flex items-center justify-center font-serif font-bold">
+                                    JD
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-sm font-medium text-cream-50">John Doe</p>
+                                    <p className="text-xs text-jaguar-100/50">Admin Workspace</p>
+                                </div>
+                                <button 
+                                    onClick={handleLogout}
+                                    className="text-jaguar-100/40 hover:text-cream-50 transition-colors p-1" 
+                                    title="Logout"
+                                >
+                                    <Icons.LogOut size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <main className="flex-1 flex flex-col h-screen overflow-hidden">
+                        <header className="h-20 border-b border-stone-200 bg-white/50 backdrop-blur-sm flex items-center justify-between px-8 z-10 sticky top-0">
+                            <h2 className="text-stone-400 font-light text-sm uppercase tracking-widest">
+                                {privateView === 'dashboard' && 'Dashboard'}
+                                {privateView === 'campaigns' && 'Campaign Management'}
+                                {privateView === 'infrastructure' && 'Infrastructure & Warm-up'}
+                                {privateView === 'contacts' && 'Contact Management'}
+                                {privateView === 'settings' && 'System Settings'}
+                            </h2>
+                            
+                            <div className="flex items-center gap-4">
+                                <button className="relative p-2 text-stone-400 hover:text-jaguar-900 transition-colors">
+                                    <Icons.Inbox size={20} />
+                                    <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+                                </button>
+                            </div>
+                        </header>
+
+                        <div className="flex-1 overflow-y-auto p-8 scroll-smooth">
+                            <div className="max-w-7xl mx-auto">
+                                {privateView === 'dashboard' && <Dashboard />}
+                                {privateView === 'campaigns' && <CampaignBuilder />}
+                                {privateView === 'infrastructure' && <EmailAccounts />}
+                                {(privateView === 'contacts' || privateView === 'settings') && (
+                                    <div className="flex flex-col items-center justify-center h-96 text-stone-400 animate-fade-in">
+                                        <Icons.Settings size={48} className="mb-4 opacity-20" />
+                                        <p className="font-serif text-xl text-jaguar-900 mb-2">Coming Soon</p>
+                                        <p className="text-sm">This module is under construction.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
