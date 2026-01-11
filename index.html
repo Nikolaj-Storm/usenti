@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mr. Snowman - Outreach Automation</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              jaguar: {
+                900: '#0B2B26',
+                800: '#16423C',
+                700: '#1F5750',
+                100: '#E8F5F3',
+              },
+              cream: {
+                50: '#FDFBF7',
+                100: '#F7F4EB',
+                200: '#EBE6D9',
+              },
+              gold: {
+                500: '#C5A065',
+                600: '#B08D55',
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              serif: ['Playfair Display', 'serif'],
+            },
+            animation: {
+                'fade-in': 'fadeIn 0.5s ease-out forwards',
+            },
+            keyframes: {
+                fadeIn: {
+                    '0%': { opacity: '0' },
+                    '100%': { opacity: '1' },
+                }
+            }
+          }
+        }
+      }
+    </script>
+
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+      body {
+        background-color: #FDFBF7;
+        color: #1F2937;
+      }
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #F7F4EB;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #C5A065;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #B08D55;
+      }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip: RechartsTooltip, ResponsiveContainer, BarChart, Bar, Cell } = window.Recharts;
+
+        // 🔥 PRODUCTION API URL - UPDATE THIS TO YOUR RENDER URL
+        const API_URL = 'https://snowman-2-0.onrender.com/api';
+
+        // API Helper Functions
+        const api = {
+            async call(endpoint, options = {}) {
+                const token = localStorage.getItem('token');
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...(token && { 'Authorization': `Bearer ${token}` }),
+                    ...options.headers
+                };
+
+                try {
+                    const response = await fetch(`${API_URL}${endpoint}`, {
+                        ...options,
+                        headers
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json().catch(() => ({ error: 'Request failed' }));
+                        throw new Error(error.error || error.message || 'Request failed');
+                    }
+
+                    return await response.json();
+                } catch (error) {
+                    console.error('API Error:', error);
+                    throw error;
+                }
+            },
+
+            // Auth
+            async signup(email, password, name) {
+                const data = await this.call('/auth/signup', {
+                    method: 'POST',
+                    body: JSON.stringify({ email, password, name })
+                });
+                if (data.session?.access_token) {
+                    localStorage.setItem('token', data.session.access_token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                }
+                return data;
+            },
+
+            async login(email, password) {
+                const data = await this.call('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ email, password })
+                });
+                if (data.session?.access_token) {
+                    localStorage.setItem('token', data.session.access_token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                }
+                return data;
+            },
+
+            async logout() {
+                await this.call('/auth/logout', { method: 'POST' });
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+            },
+
+            // Email Accounts
+            async getEmailAccounts() {
+                return await this.call('/email-accounts');
+            },
+
+            async addEmailAccount(accountData) {
+                return await this.call('/email-accounts', {
+                    method: 'POST',
+                    body: JSON.stringify(accountData)
+                });
+            },
+
+            // Campaigns
+            async getCampaigns() {
+                return await this.call('/campaigns');
+            },
+
+            async createCampaign(campaignData) {
+                return await this.call('/campaigns', {
+                    method: 'POST',
+                    body: JSON.stringify(campaignData)
+                });
+            },
+
+            async getCampaignSteps(campaignId) {
+                return await this.call(`/campaigns/${campaignId}/steps`);
+            },
+
+            async addCampaignStep(campaignId, stepData) {
+                return await this.call(`/campaigns/${campaignId}/steps`, {
+                    method: 'POST',
+                    body: JSON.stringify(stepData)
+                });
+            },
+
+            async startCampaign(campaignId) {
+                return await this.call(`/campaigns/${campaignId}/start`, {
+                    method: 'POST'
+                });
+            },
+
+            async pauseCampaign(campaignId) {
+                return await this.call(`/campaigns/${campaignId}/pause`, {
+                    method: 'POST'
+                });
+            },
+
+            async getCampaignStats(id) {
+                return await this.call(`/campaigns/${id}/stats`);
+            },
+
+            // Contact Lists
+            async getContactLists() {
+                return await this.call('/contact-lists');
+            },
+
+            async createContactList(name, description) {
+                return await this.call('/contact-lists', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, description })
+                });
+            },
+
+            async importContacts(listId, contacts) {
+                return await this.call(`/contact-lists/${listId}/import`, {
+                    method: 'POST',
+                    body: JSON.stringify({ contacts })
+                });
+            }
+        };
+
+        // Icons (keeping your existing ones)
+        const Icon = ({ path, size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {path}
+            </svg>
+        );
+
+        const Icons = {
+            LayoutDashboard: (p) => <Icon {...p} path={<><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></>} />,
+            Send: (p) => <Icon {...p} path={<><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></>} />,
+            Users: (p) => <Icon {...p} path={<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>} />,
+            Settings: (p) => <Icon {...p} path={<><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></>} />,
+            LogOut: (p) => <Icon {...p} path={<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></>} />,
+            Layers: (p) => <Icon {...p} path={<><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>} />,
+            Inbox: (p) => <Icon {...p} path={<><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></>} />,
+            ArrowUpRight: (p) => <Icon {...p} path={<><path d="M7 7h10v10"/><path d="M7 17 17 7"/></>} />,
+            Mail: (p) => <Icon {...p} path={<><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></>} />,
+            MousePointer2: (p) => <Icon {...p} path={<><path d="m12 22-4-9-9-4 23-7-7 23Z"/></>} />,
+            MessageSquare: (p) => <Icon {...p} path={<><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></>} />,
+            AlertCircle: (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></>} />,
+            ShieldCheck: (p) => <Icon {...p} path={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></>} />,
+            Flame: (p) => <Icon {...p} path={<><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.5-3.3a9 9 0 0 0 3 3.3z"/></>} />,
+            Server: (p) => <Icon {...p} path={<><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></>} />,
+            Plus: (p) => <Icon {...p} path={<><path d="M5 12h14"/><path d="M12 5v14"/></>} />,
+            RefreshCw: (p) => <Icon {...p} path={<><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></>} />,
+            BarChart3: (p) => <Icon {...p} path={<><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></>} />,
+            Loader2: (p) => <Icon {...p} className={`animate-spin ${p.className || ''}`} path={<><path d="M21 12a9 9 0 1 1-6.219-8.56"/></>} />,
+            ArrowLeft: (p) => <Icon {...p} path={<><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></>} />,
+            Clock: (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>} />,
+            Shield: (p) => <Icon {...p} path={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>} />,
+            Zap: (p) => <Icon {...p} path={<><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></>} />,
+            BarChart: (p) => <Icon {...p} path={<><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></>} />,
+            ArrowRight: (p) => <Icon {...p} path={<><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></>} />,
+            ChevronRight: (p) => <Icon {...p} path={<><path d="m9 18 6-6-6-6"/></>} />,
+            Edit3: (p) => <Icon {...p} path={<><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></>} />,
+            Trash2: (p) => <Icon {...p} path={<><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></>} />,
+            Save: (p) => <Icon {...p} path={<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>} />,
+            Play: (p) => <Icon {...p} path={<><polygon points="5 3 19 12 5 21 5 3"/></>} />,
+            Split: (p) => <Icon {...p} path={<><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></>} />
+        };
+
+        const Card = ({ children, className = '', title, subtitle, action }) => (
+            <div className={`bg-white border border-stone-200 shadow-sm rounded-lg overflow-hidden transition-all duration-300 hover:shadow-md ${className}`}>
+                {(title || action) && (
+                    <div className="px-6 py-5 border-b border-stone-100 flex justify-between items-center bg-cream-50">
+                        <div>
+                            {title && <h3 className="font-serif text-xl font-medium text-jaguar-900">{title}</h3>}
+                            {subtitle && <p className="text-sm text-stone-500 mt-1">{subtitle}</p>}
+                        </div>
+                        {action && <div>{action}</div>}
+                    </div>
+                )}
+                <div className="p-6">{children}</div>
+            </div>
+        );
+
+        const Dashboard = () => {
+            const [stats, setStats] = useState({
+                totalSent: 0,
+                openRate: 0,
+                clickRate: 0,
+                replyRate: 0
+            });
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                loadDashboardData();
+            }, []);
+
+            const loadDashboardData = async () => {
+                try {
+                    const campaigns = await api.getCampaigns();
+                    // Calculate aggregate stats from campaigns
+                    setLoading(false);
+                } catch (error) {
+                    console.error('Failed to load dashboard:', error);
+                    setLoading(false);
+                }
+            };
+
+            const data = [
+                { name: 'Mon', sent: 400, opened: 240, replied: 80 },
+                { name: 'Tue', sent: 300, opened: 139, replied: 50 },
+                { name: 'Wed', sent: 200, opened: 980, replied: 200 },
+                { name: 'Thu', sent: 278, opened: 390, replied: 110 },
+                { name: 'Fri', sent: 189, opened: 480, replied: 140 },
+                { name: 'Sat', sent: 239, opened: 380, replied: 130 },
+                { name: 'Sun', sent: 349, opened: 430, replied: 120 },
+            ];
+
+            const metrics = [
+                { label: 'Total Sent', value: stats.totalSent.toLocaleString(), change: '+12.5%', icon: Icons.Mail, color: 'text-blue-600' },
+                { label: 'Open Rate', value: `${stats.openRate}%`, change: '+4.1%', icon: Icons.ArrowUpRight, color: 'text-emerald-600' },
+                { label: 'Click Rate', value: `${stats.clickRate}%`, change: '-0.4%', icon: Icons.MousePointer2, color: 'text-amber-600' },
+                { label: 'Reply Rate', value: `${stats.replyRate}%`, change: '+2.1%', icon: Icons.MessageSquare, color: 'text-jaguar-900' },
+            ];
+
+            if (loading) {
+                return (
+                    <div className="flex items-center justify-center h-96">
+                        <Icons.Loader2 size={48} className="text-jaguar-900" />
+                    </div>
+                );
+            }
+
+            return (
+                <div className="space-y-8 animate-fade-in">
+                    <div className="flex justify-between items-end">
+                        <div>
+                            <h2 className="font-serif text-3xl text-jaguar-900">Overview</h2>
+                            <p className="text-stone-500 mt-2 font-light">Your campaign performance at a glance.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <span className="bg-cream-200 text-jaguar-900 px-3 py-1 text-sm rounded-full flex items-center gap-2">
+                                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                System Operational
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {metrics.map((metric, index) => (
+                            <div key={index} className="bg-white p-6 rounded-lg border border-stone-200 shadow-sm hover:border-jaguar-900/20 transition-colors">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="text-sm font-medium text-stone-500 uppercase tracking-wide">{metric.label}</p>
+                                        <h3 className="text-3xl font-serif text-jaguar-900 mt-2">{metric.value}</h3>
+                                    </div>
+                                    <div className={`p-2 bg-cream-100 rounded-lg ${metric.color}`}>
+                                        <metric.icon size={20} />
+                                    </div>
+                                </div>
+                                <div className="mt-4 flex items-center text-sm">
+                                    <span className={metric.change.startsWith('+') ? 'text-green-600' : 'text-red-500'}>{metric.change}</span>
+                                    <span className="text-stone-400 ml-2">vs last week</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <Card title="Activity Volume" className="lg:col-span-2">
+                            <div className="h-[300px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="colorSent" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#0B2B26" stopOpacity={0.1}/>
+                                                <stop offset="95%" stopColor="#0B2B26" stopOpacity={0}/>
+                                            </linearGradient>
+                                            <linearGradient id="colorOpened" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#C5A065" stopOpacity={0.1}/>
+                                                <stop offset="95%" stopColor="#C5A065" stopOpacity={0}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9CA3AF'}} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#9CA3AF'}} />
+                                        <CartesianGrid vertical={false} stroke="#E5E7EB" strokeDasharray="3 3" />
+                                        <RechartsTooltip contentStyle={{ backgroundColor: '#FFF', border: '1px solid #E5E7EB', borderRadius: '8px', fontFamily: 'Inter' }} />
+                                        <Area type="monotone" dataKey="sent" stroke="#0B2B26" strokeWidth={2} fillOpacity={1} fill="url(#colorSent)" />
+                                        <Area type="monotone" dataKey="opened" stroke="#C5A065" strokeWidth={2} fillOpacity={1} fill="url(#colorOpened)" />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </Card>
+
+                        <Card title="Infrastructure Health">
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between p-4 border border-stone-100 rounded-lg bg-cream-50">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-jaguar-100 flex items-center justify-center text-jaguar-900">
+                                            <span className="font-bold text-sm">AWS</span>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-medium text-jaguar-900">WorkMail IMAP</h4>
+                                            <p className="text-xs text-stone-500">Ready to connect</p>
+                                        </div>
+                                    </div>
+                                    <div className="w-2 h-2 rounded-full bg-stone-300"></div>
+                                </div>
+
+                                <div className="flex items-center justify-between p-4 border border-stone-100 rounded-lg bg-cream-50">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-jaguar-100 flex items-center justify-center text-jaguar-900">
+                                            <span className="font-bold text-sm">ST</span>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-medium text-jaguar-900">Stalwart SMTP</h4>
+                                            <p className="text-xs text-stone-500">Ready to connect</p>
+                                        </div>
+                                    </div>
+                                    <div className="w-2 h-2 rounded-full bg-stone-300"></div>
+                                </div>
+
+                                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-100 flex gap-3">
+                                    <Icons.AlertCircle className="text-blue-600 shrink-0" size={20} />
+                                    <div>
+                                        <h5 className="text-sm font-medium text-blue-800">Get Started</h5>
+                                        <p className="text-xs text-blue-700 mt-1">Add your first email account in Infrastructure → Connected Accounts</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+                </div>
+            );
+        };
+
+        const CampaignBuilder = () => {
+            const [campaigns, setCampaigns] = useState([]);
+            const [selectedCampaign, setSelectedCampaign] = useState(null);
+            const [steps, setSteps] = useState([]);
+            const [activeStep, setActiveStep] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [showNewCampaignModal, setShowNewCampaignModal] = useState(false);
+
+            useEffect(() => {
+                loadCampaigns();
+            }, []);
+
+            const loadCampaigns = async () => {
+                try {
+                    const data = await api.getCampaigns();
+                    setCampaigns(data);
+                    if (data.length > 0 && !selectedCampaign) {
+                        setSelectedCampaign(data[0]);
+                        loadCampaignSteps(data[0].id);
+                    }
+                } catch (error) {
+                    console.error('Failed to load campaigns:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const loadCampaignSteps = async (campaignId) => {
+                try {
+                    const data = await api.getCampaignSteps(campaignId);
+                    setSteps(data);
+                } catch (error) {
+                    console.error('Failed to load steps:', error);
+                }
+            };
+
+            const handleCreateCampaign = async (campaignData) => {
+                try {
+                    const newCampaign = await api.createCampaign(campaignData);
+                    setCampaigns([...campaigns, newCampaign]);
+                    setSelectedCampaign(newCampaign);
+                    setShowNewCampaignModal(false);
+                } catch (error) {
+                    console.error('Failed to create campaign:', error);
+                }
+            };
+
+            const handleAddStep = async (stepType) => {
+                if (!selectedCampaign) return;
+                
+                const stepData = {
+                    step_order: steps.length + 1,
+                    step_type: stepType,
+                    subject: stepType === 'email' ? 'New Email' : null,
+                    body: stepType === 'email' ? 'Email content...' : null,
+                    wait_days: stepType === 'wait' ? 3 : null
+                };
+
+                try {
+                    const newStep = await api.addCampaignStep(selectedCampaign.id, stepData);
+                    setSteps([...steps, newStep]);
+                } catch (error) {
+                    console.error('Failed to add step:', error);
+                }
+            };
+
+            const handleStartCampaign = async () => {
+                if (!selectedCampaign) return;
+                
+                try {
+                    await api.startCampaign(selectedCampaign.id);
+                    await loadCampaigns();
+                    alert('Campaign started successfully!');
+                } catch (error) {
+                    console.error('Failed to start campaign:', error);
+                    alert('Failed to start campaign: ' + error.message);
+                }
+            };
+
+            if (loading) {
+                return (
+                    <div className="flex items-center justify-center h-96">
+                        <Icons.Loader2 size={48} className="text-jaguar-900" />
+                    </div>
+                );
+            }
+
+            if (campaigns.length === 0) {
+                return (
+                    <div className="flex flex-col items-center justify-center h-96 text-center animate-fade-in">
+                        <Icons.Send size={64} className="text-stone-300 mb-4" />
+                        <h3 className="font-serif text-2xl text-jaguar-900 mb-2">No Campaigns Yet</h3>
+                        <p className="text-stone-500 mb-6 max-w-md">Create your first email campaign to start reaching out to prospects.</p>
+                        <button 
+                            onClick={() => setShowNewCampaignModal(true)}
+                            className="px-6 py-3 bg-jaguar-900 text-cream-50 rounded-lg hover:bg-jaguar-800 flex items-center gap-2"
+                        >
+                            <Icons.Plus size={20} /> Create Your First Campaign
+                        </button>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="h-[calc(100vh-100px)] flex flex-col animate-fade-in">
+                    <div className="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 className="font-serif text-3xl text-jaguar-900">{selectedCampaign?.name || 'Campaign Builder'}</h2>
+                            <div className="flex items-center gap-2 mt-2">
+                                <span className={`w-2 h-2 rounded-full ${selectedCampaign?.status === 'running' ? 'bg-green-500' : 'bg-stone-300'}`}></span>
+                                <p className="text-stone-500 text-sm capitalize">{selectedCampaign?.status || 'draft'}</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => setShowNewCampaignModal(true)}
+                                className="px-4 py-2 bg-white border border-stone-200 text-stone-700 rounded-md hover:bg-stone-50 font-medium flex items-center gap-2"
+                            >
+                                <Icons.Plus size={18} /> New Campaign
+                            </button>
+                            {selectedCampaign?.status === 'draft' && (
+                                <button 
+                                    onClick={handleStartCampaign}
+                                    className="px-6 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 font-medium flex items-center gap-2 shadow-lg"
+                                >
+                                    <Icons.Play size={18} /> Launch
+                                </button>
+                            )}
+                            {selectedCampaign?.status === 'running' && (
+                                <button 
+                                    onClick={() => api.pauseCampaign(selectedCampaign.id).then(loadCampaigns)}
+                                    className="px-6 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 font-medium"
+                                >
+                                    Pause
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="flex gap-6 flex-1 overflow-hidden">
+                        <div className="w-1/3 overflow-y-auto pr-2 pb-10">
+                            <div className="relative">
+                                <div className="absolute left-6 top-4 bottom-0 w-0.5 bg-stone-200"></div>
+
+                                <div className="space-y-6">
+                                    {steps.map((step, index) => (
+                                        <div 
+                                            key={step.id} 
+                                            onClick={() => setActiveStep(step.id)}
+                                            className={`relative pl-16 group cursor-pointer transition-all ${activeStep === step.id ? 'opacity-100 scale-[1.02]' : 'opacity-80 hover:opacity-100'}`}
+                                        >
+                                            <div className={`absolute left-0 top-0 w-12 h-12 rounded-full border-4 border-[#FDFBF7] flex items-center justify-center z-10 shadow-sm transition-colors ${activeStep === step.id ? 'bg-jaguar-900 text-cream-50' : 'bg-white text-stone-400 group-hover:text-jaguar-900'}`}>
+                                                {step.step_type === 'email' && <Icons.Mail size={18} />}
+                                                {step.step_type === 'wait' && <Icons.Clock size={18} />}
+                                                {step.step_type === 'condition' && <Icons.Split size={18} />}
+                                            </div>
+
+                                            <div className={`p-4 rounded-lg border transition-all ${activeStep === step.id ? 'bg-white border-jaguar-900 shadow-md' : 'bg-white border-stone-200 hover:border-stone-300'}`}>
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-stone-400">Step {index + 1}</span>
+                                                    <div className="flex gap-2">
+                                                        <button className="text-stone-300 hover:text-stone-600"><Icons.Edit3 size={14}/></button>
+                                                        <button className="text-stone-300 hover:text-red-500"><Icons.Trash2 size={14}/></button>
+                                                    </div>
+                                                </div>
+                                                
+                                                {step.step_type === 'email' && (
+                                                    <div>
+                                                        <h4 className="font-serif font-medium text-jaguar-900">{step.subject || 'No Subject'}</h4>
+                                                        <p className="text-xs text-stone-500 mt-1 line-clamp-2">{step.body}</p>
+                                                    </div>
+                                                )}
+                                                {step.step_type === 'wait' && (
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-medium text-stone-700">Wait {step.wait_days} Days</span>
+                                                    </div>
+                                                )}
+                                                {step.step_type === 'condition' && (
+                                                    <div className="bg-cream-50 p-2 rounded border border-stone-100">
+                                                        <span className="text-sm font-medium text-jaguar-900">Condition:</span>
+                                                        <span className="text-sm text-stone-600 ml-1">If {step.condition_type?.replace('if_', '')}...</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <div className="relative pl-16">
+                                        <div className="absolute left-0 top-0 w-12 h-12 rounded-full border-4 border-[#FDFBF7] bg-stone-100 text-stone-400 flex items-center justify-center z-10">
+                                            <Icons.Plus size={20} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <button 
+                                                onClick={() => handleAddStep('email')}
+                                                className="w-full p-3 border-2 border-dashed border-stone-200 rounded-lg text-stone-400 font-medium hover:border-jaguar-900 hover:text-jaguar-900 transition-colors text-left flex items-center gap-2"
+                                            >
+                                                <Icons.Mail size={16} /> Add Email
+                                            </button>
+                                            <button 
+                                                onClick={() => handleAddStep('wait')}
+                                                className="w-full p-3 border-2 border-dashed border-stone-200 rounded-lg text-stone-400 font-medium hover:border-jaguar-900 hover:text-jaguar-900 transition-colors text-left flex items-center gap-2"
+                                            >
+                                                <Icons.Clock size={16} /> Add Wait
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="w-2/3 bg-white border border-stone-200 rounded-lg shadow-sm p-8 overflow-y-auto">
+                            {activeStep ? (
+                                <div className="animate-fade-in">
+                                    {steps.find(s => s.id === activeStep)?.step_type === 'email' && (
+                                        <div className="space-y-6">
+                                            <div>
+                                                <label className="block text-sm font-medium text-stone-700 mb-2">Subject Line</label>
+                                                <input 
+                                                    type="text" 
+                                                    defaultValue={steps.find(s => s.id === activeStep)?.subject}
+                                                    className="w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all font-serif"
+                                                    placeholder="Enter email subject..."
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-stone-700 mb-2">Email Body</label>
+                                                <div className="border border-stone-200 rounded-md overflow-hidden">
+                                                    <div className="bg-stone-50 px-3 py-2 border-b border-stone-200 flex gap-2">
+                                                        <button className="px-2 py-1 bg-white border border-stone-200 rounded text-xs text-gold-600 hover:text-gold-500">{'{{first_name}}'}</button>
+                                                        <button className="px-2 py-1 bg-white border border-stone-200 rounded text-xs text-gold-600 hover:text-gold-500">{'{{company}}'}</button>
+                                                    </div>
+                                                    <textarea 
+                                                        defaultValue={steps.find(s => s.id === activeStep)?.body}
+                                                        rows={12}
+                                                        className="w-full p-4 focus:outline-none resize-none"
+                                                        placeholder="Hi {{first_name}},&#10;&#10;I noticed..."
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="p-4 bg-cream-50 border border-stone-100 rounded-lg">
+                                                <h4 className="text-sm font-medium text-jaguar-900 mb-2">Tracking</h4>
+                                                <div className="flex gap-4">
+                                                    <label className="flex items-center gap-2 text-sm text-stone-600">
+                                                        <input type="checkbox" defaultChecked />
+                                                        Track Opens
+                                                    </label>
+                                                    <label className="flex items-center gap-2 text-sm text-stone-600">
+                                                        <input type="checkbox" defaultChecked />
+                                                        Track Clicks
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {steps.find(s => s.id === activeStep)?.step_type === 'wait' && (
+                                        <div className="flex flex-col items-center justify-center h-full text-center">
+                                            <Icons.Clock size={48} className="text-gold-500 mb-4" />
+                                            <h3 className="text-xl font-serif text-jaguar-900 mb-6">Delay Duration</h3>
+                                            <div className="flex items-center gap-4">
+                                                <button className="w-10 h-10 rounded-full border border-stone-200 flex items-center justify-center hover:bg-stone-50">-</button>
+                                                <div className="text-4xl font-serif text-jaguar-900 w-24">{steps.find(s => s.id === activeStep)?.wait_days || 3}</div>
+                                                <button className="w-10 h-10 rounded-full border border-stone-200 flex items-center justify-center hover:bg-stone-50">+</button>
+                                            </div>
+                                            <p className="mt-4 text-stone-500 uppercase tracking-widest text-sm">Days</p>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="h-full flex flex-col items-center justify-center text-stone-400">
+                                    <Icons.Edit3 size={48} className="mb-4 opacity-20" />
+                                    <p>Select a step from the timeline to edit</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {showNewCampaignModal && <NewCampaignModal onClose={() => setShowNewCampaignModal(false)} onCreate={handleCreateCampaign} />}
+                </div>
+            );
+        };
+
+        const NewCampaignModal = ({ onClose, onCreate }) => {
+            const [formData, setFormData] = useState({ name: '', email_account_id: '', contact_list_id: '' });
+            const [emailAccounts, setEmailAccounts] = useState([]);
+            const [contactLists, setContactLists] = useState([]);
+
+            useEffect(() => {
+                loadData();
+            }, []);
+
+            const loadData = async () => {
+                try {
+                    const [accounts, lists] = await Promise.all([
+                        api.getEmailAccounts(),
+                        api.getContactLists()
+                    ]);
+                    setEmailAccounts(accounts);
+                    setContactLists(lists);
+                } catch (error) {
+                    console.error('Failed to load data:', error);
+                }
+            };
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onCreate(formData);
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+                    <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="font-serif text-2xl text-jaguar-900 mb-6">Create New Campaign</h3>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-stone-700 mb-2">Campaign Name</label>
+                                <input 
+                                    type="text" 
+                                    required
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                    className="w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+                                    placeholder="Q1 Outreach"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-stone-700 mb-2">Email Account</label>
+                                <select 
+                                    required
+                                    value={formData.email_account_id}
+                                    onChange={(e) => setFormData({...formData, email_account_id: e.target.value})}
+                                    className="w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+                                >
+                                    <option value="">Select account...</option>
+                                    {emailAccounts.map(acc => (
+                                        <option key={acc.id} value={acc.id}>{acc.email_address}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-stone-700 mb-2">Contact List</label>
+                                <select 
+                                    required
+                                    value={formData.contact_list_id}
+                                    onChange={(e) => setFormData({...formData, contact_list_id: e.target.value})}
+                                    className="w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+                                >
+                                    <option value="">Select list...</option>
+                                    {contactLists.map(list => (
+                                        <option key={list.id} value={list.id}>{list.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex gap-3 pt-4">
+                                <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-stone-200 rounded-md hover:bg-stone-50">Cancel</button>
+                                <button type="submit" className="flex-1 px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800">Create</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+            const [accounts, setAccounts] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                loadAccounts();
+            }, []);
+
+            const loadAccounts = async () => {
+                try {
+                    const data = await api.getEmailAccounts();
+                    setAccounts(data);
+                } catch (error) {
+                    console.error('Failed to load accounts:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="space-y-8 animate-fade-in">
+                    <div className="flex justify-between items-end">
+                        <div>
+                            <h2 className="font-serif text-3xl text-jaguar-900">Infrastructure</h2>
+                            <p className="text-stone-500 mt-2 font-light">Connect your email accounts to start sending.</p>
+                        </div>
+                    </div>
+
+                    {loading ? (
+                        <div className="flex justify-center py-12">
+                            <Icons.Loader2 size={48} className="text-jaguar-900" />
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <button className="border-2 border-dashed border-stone-300 rounded-lg p-6 flex flex-col items-center justify-center text-stone-400 hover:border-jaguar-900 hover:text-jaguar-900 transition-all group h-full min-h-[200px]">
+                                <div className="w-12 h-12 rounded-full bg-stone-100 group-hover:bg-jaguar-100 flex items-center justify-center mb-3 transition-colors">
+                                    <Icons.Plus size={24} />
+                                </div>
+                                <span className="font-medium">Connect New Account</span>
+                                <span className="text-xs mt-1 opacity-70">AWS WorkMail or Stalwart SMTP</span>
+                            </button>
+
+                            {accounts.map((account) => (
+                                <Card key={account.id} className="relative group">
+                                    <div className="absolute top-4 right-4 flex gap-2">
+                                        <span className={`px-2 py-1 rounded text-xs font-medium uppercase tracking-wider ${account.account_type === 'stalwart' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}`}>
+                                            {account.account_type}
+                                        </span>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-4 mb-6">
+                                        <div className="w-12 h-12 rounded-full bg-jaguar-900 text-cream-50 flex items-center justify-center font-serif text-xl">
+                                            {account.email_address[0].toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <h3 className="font-medium text-jaguar-900 truncate max-w-[180px]">{account.email_address}</h3>
+                                            <div className="flex items-center gap-1 text-xs text-green-600">
+                                                <Icons.ShieldCheck size={12} />
+                                                <span>Verified & Active</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-stone-500">Daily Limit</span>
+                                            <span className="font-medium text-jaguar-900">{account.daily_send_limit.toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-stone-500">Health Score</span>
+                                            <span className="font-medium text-green-600">{account.health_score}%</span>
+                                        </div>
+                                    </div>
+                                </Card>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // Keep your existing Auth component
+        const Auth = ({ view, onAuthenticate, onNavigate }) => {
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [formData, setFormData] = useState({ email: '', password: '', name: '' });
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setError('');
+
+                try {
+                    if (view === 'login') {
+                        await api.login(formData.email, formData.password);
+                    } else {
+                        await api.signup(formData.email, formData.password, formData.name);
+                    }
+                    onAuthenticate();
+                } catch (err) {
+                    setError(err.message || 'Authentication failed');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex bg-[#FDFBF7]">
+                    <div className="hidden lg:flex w-1/2 bg-jaguar-900 relative overflow-hidden flex-col justify-between p-12 text-cream-50">
+                        <div className="absolute inset-0 opacity-10" style={{
+                            backgroundImage: 'radial-gradient(circle at 2px 2px, #C5A065 1px, transparent 0)',
+                            backgroundSize: '40px 40px'
+                        }}></div>
+                        
+                        <div onClick={() => onNavigate('landing')} className="relative z-10 flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity">
+                            <div className="w-8 h-8 bg-gold-600 rounded-sm rotate-45 flex items-center justify-center shadow-lg shadow-gold-600/30">
+                                <div className="w-4 h-4 bg-jaguar-900 -rotate-45"></div>
+                            </div>
+                            <h1 className="font-serif text-2xl tracking-tight font-medium">Mr. <span className="text-gold-600 font-normal">Snowman</span></h1>
+                        </div>
+
+                        <div className="relative z-10 max-w-lg">
+                            <h2 className="font-serif text-4xl leading-tight mb-6">"Simplicity is the ultimate sophistication."</h2>
+                            <p className="text-jaguar-100/60 font-light text-lg">— Leonardo da Vinci</p>
+                        </div>
+                    </div>
+
+                    <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-8 sm:p-16">
+                        <div className="w-full max-w-md space-y-8 animate-fade-in">
+                            <div className="text-center lg:text-left">
+                                <h2 className="font-serif text-3xl text-jaguar-900">{view === 'login' ? 'Welcome back' : 'Create your account'}</h2>
+                                <p className="text-stone-500 mt-2">
+                                    {view === 'login' ? 'Enter your credentials to access your dashboard.' : 'Start your 14-day free trial.'}
+                                </p>
+                            </div>
+
+                            {error && (
+                                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                                    {error}
+                                </div>
+                            )}
+
+                            <form onSubmit={handleSubmit} className="space-y-6">
+                                {view === 'signup' && (
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-jaguar-900">Full Name</label>
+                                        <input 
+                                            type="text" 
+                                            required 
+                                            value={formData.name}
+                                            onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                            className="w-full px-4 py-3 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all"
+                                            placeholder="John Doe"
+                                        />
+                                    </div>
+                                )}
+                                
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-jaguar-900">Email Address</label>
+                                    <input 
+                                        type="email" 
+                                        required 
+                                        value={formData.email}
+                                        onChange={(e) => setFormData({...formData, email: e.target.value})}
+                                        className="w-full px-4 py-3 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all"
+                                        placeholder="john@company.com"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-jaguar-900">Password</label>
+                                    <input 
+                                        type="password" 
+                                        required 
+                                        value={formData.password}
+                                        onChange={(e) => setFormData({...formData, password: e.target.value})}
+                                        className="w-full px-4 py-3 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all"
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+
+                                <button 
+                                    type="submit" 
+                                    disabled={loading}
+                                    className="w-full py-3 bg-jaguar-900 text-cream-50 rounded-lg font-medium hover:bg-jaguar-800 transition-all shadow-lg shadow-jaguar-900/10 flex items-center justify-center gap-2 disabled:opacity-70"
+                                >
+                                    {loading ? <Icons.Loader2 size={20} /> : (view === 'login' ? 'Sign In' : 'Create Account')}
+                                </button>
+                            </form>
+
+                            <div className="text-center text-sm text-stone-500">
+                                {view === 'login' ? "Don't have an account? " : "Already have an account? "}
+                                <button 
+                                    onClick={() => onNavigate(view === 'login' ? 'signup' : 'login')}
+                                    className="font-medium text-gold-600 hover:text-gold-700 underline"
+                                >
+                                    {view === 'login' ? 'Sign up' : 'Log in'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Keep your existing LandingPage component (I'll skip repeating it for brevity)
+        const LandingPage = ({ onNavigate }) => {
+            return (
+                <div className="min-h-screen bg-[#FDFBF7]">
+                    <nav className="px-6 py-6 border-b border-stone-100/50">
+                        <div className="max-w-7xl mx-auto flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-gold-600 rounded-sm rotate-45 flex items-center justify-center">
+                                    <div className="w-4 h-4 bg-jaguar-900 -rotate-45"></div>
+                                </div>
+                                <h1 className="font-serif text-2xl">Mr. <span className="text-gold-600">Snowman</span></h1>
+                            </div>
+                            <div className="flex gap-4">
+                                <button onClick={() => onNavigate('login')} className="text-stone-600 hover:text-jaguar-900">Sign In</button>
+                                <button onClick={() => onNavigate('signup')} className="px-5 py-2.5 bg-jaguar-900 text-cream-50 rounded-md">Start Free Trial</button>
+                            </div>
+                        </div>
+                    </nav>
+
+                    <section className="pt-24 pb-32 px-6">
+                        <div className="max-w-4xl mx-auto text-center space-y-8">
+                            <h1 className="font-serif text-5xl md:text-7xl text-jaguar-900">
+                                The art of <span className="italic text-gold-600">outreach</span>,<br/>refined for closers.
+                            </h1>
+                            <p className="text-xl text-stone-500 max-w-2xl mx-auto">
+                                Automate campaigns, warm up infrastructure, scale revenue without noise.
+                            </p>
+                            <button onClick={() => onNavigate('signup')} className="px-8 py-4 bg-jaguar-900 text-cream-50 text-lg rounded-lg hover:bg-jaguar-800 shadow-xl">
+                                Get Started for Free
+                            </button>
+                        </div>
+                    </section>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [authState, setAuthState] = useState('unauthenticated');
+            const [publicView, setPublicView] = useState('landing');
+            const [privateView, setPrivateView] = useState('dashboard');
+
+            useEffect(() => {
+                const token = localStorage.getItem('token');
+                if (token) {
+                    setAuthState('authenticated');
+                }
+            }, []);
+
+            const handleLogin = () => {
+                setAuthState('authenticated');
+            };
+
+            const handleLogout = async () => {
+                await api.logout();
+                setAuthState('unauthenticated');
+                setPublicView('landing');
+            };
+
+            if (authState === 'unauthenticated') {
+                if (publicView === 'landing') return <LandingPage onNavigate={setPublicView} />;
+                return <Auth view={publicView} onAuthenticate={handleLogin} onNavigate={setPublicView} />;
+            }
+
+            const NavItem = ({ view, icon: IconComponent, label }) => (
+                <button
+                    onClick={() => setPrivateView(view)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                        privateView === view ? 'bg-jaguar-800 text-cream-50' : 'text-jaguar-100/60 hover:bg-jaguar-800/50'
+                    }`}
+                >
+                    <IconComponent size={20} />
+                    <span className="font-medium">{label}</span>
+                </button>
+            );
+
+            return (
+                <div className="flex h-screen bg-[#FDFBF7]">
+                    <aside className="w-72 bg-jaguar-900 text-white flex flex-col">
+                        <div className="p-8">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-gold-600 rounded-sm rotate-45 flex items-center justify-center">
+                                    <div className="w-4 h-4 bg-jaguar-900 -rotate-45"></div>
+                                </div>
+                                <h1 className="font-serif text-2xl text-cream-50">Mr. <span className="text-gold-500">Snowman</span></h1>
+                            </div>
+                        </div>
+
+                        <nav className="flex-1 px-4 space-y-2">
+                            <NavItem view="dashboard" icon={Icons.LayoutDashboard} label="Overview" />
+                            <NavItem view="infrastructure" icon={Icons.Layers} label="Infrastructure" />
+                        </nav>
+
+                        <div className="p-4 border-t border-jaguar-800">
+                            <div className="flex items-center justify-between px-4">
+                                <span className="text-sm text-cream-50">Workspace</span>
+                                <button onClick={handleLogout} className="text-jaguar-100/40 hover:text-cream-50">
+                                    <Icons.LogOut size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <main className="flex-1 flex flex-col overflow-hidden">
+                        <header className="h-20 border-b border-stone-200 bg-white/50 flex items-center px-8">
+                            <h2 className="text-stone-400 text-sm uppercase tracking-widest">
+                                {privateView === 'dashboard' ? 'Dashboard' : 'Infrastructure'}
+                            </h2>
+                        </header>
+
+                        <div className="flex-1 overflow-y-auto p-8">
+                            <div className="max-w-7xl mx-auto">
+                                {privateView === 'dashboard' && <Dashboard />}
+                                {privateView === 'infrastructure' && <EmailAccounts />}
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
