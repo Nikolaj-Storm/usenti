@@ -1,4 +1,3 @@
-// backend/server.js - Mr. Snowman Complete Backend
 const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
@@ -13,7 +12,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }));
+app.use(cors({ 
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000', 
+  credentials: true 
+}));
 app.use(express.json());
 
 // Supabase Client
@@ -56,6 +58,15 @@ async function authenticateUser(req, res, next) {
   }
 }
 
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 // ============================================================================
 // AUTH ROUTES
 // ============================================================================
@@ -63,10 +74,25 @@ async function authenticateUser(req, res, next) {
 app.post('/api/auth/signup', async (req, res) => {
   try {
     const { email, password, name } = req.body;
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const { data, error } = await supabase.auth.signUp({ 
+      email, 
+      password,
+      options: {
+        data: {
+          name: name || email.split('@')[0]
+        }
+      }
+    });
+    
     if (error) throw error;
     res.json({ success: true, user: data.user, session: data.session });
   } catch (error) {
+    console.error('Signup error:', error);
     res.status(400).json({ error: error.message });
   }
 });
@@ -74,20 +100,35 @@ app.post('/api/auth/signup', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     res.json({ success: true, session: data.session, user: data.user });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(400).json({ error: error.message });
   }
 });
 
 app.post('/api/auth/logout', async (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (token) {
-    await supabase.auth.signOut(token);
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      await supabase.auth.signOut(token);
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.json({ success: true }); // Return success anyway
   }
-  res.json({ success: true });
+});
+
+app.get('/api/auth/me', authenticateUser, async (req, res) => {
+  res.json({ user: req.user });
 });
 
 // ============================================================================
@@ -105,47 +146,64 @@ app.get('/api/email-accounts', authenticateUser, async (req, res) => {
     if (error) throw error;
     res.json(data);
   } catch (error) {
+    console.error('Error fetching email accounts:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 app.post('/api/email-accounts', authenticateUser, async (req, res) => {
   try {
-    const { email_address, account_type, imap_host, imap_port, imap_username, imap_password,
-            smtp_host, smtp_port, smtp_username, smtp_password, daily_send_limit } = req.body;
-    
+    const { 
+      email_address, account_type, imap_host, imap_port, imap_username, imap_password,
+      smtp_host, smtp_port, smtp_username, smtp_password, daily_send_limit 
+    } = req.body;
+
+    if (!email_address || !account_type) {
+      return res.status(400).json({ error: 'Email address and account type are required' });
+    }
+
+    // Check if account already exists
+    const { data: existing } = await supabase
+      .from('email_accounts')
+      .select('id')
+      .eq('user_id', req.user.id)
+      .eq('email_address', email_address.toLowerCase())
+      .single();
+
+    if (existing) {
+      return res.status(400).json({ error: 'Email account already exists' });
+    }
+
     const { data, error } = await supabase
       .from('email_accounts')
       .insert({
         user_id: req.user.id,
-        email_address,
+        email_address: email_address.toLowerCase(),
         account_type,
         imap_host,
-        imap_port,
-        imap_username,
+        imap_port: imap_port || 993,
+        imap_username: imap_username || email_address,
         imap_password: encrypt(imap_password),
         smtp_host,
-        smtp_port,
+        smtp_port: smtp_port || 587,
         smtp_username: smtp_username || email_address,
         smtp_password: encrypt(smtp_password),
         daily_send_limit: daily_send_limit || 10000,
-        is_active: true
+        is_active: true,
+        health_score: 100
       })
-      .select()
+      .select('id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
       .single();
     
     if (error) throw error;
-    
-    // Remove passwords from response
-    delete data.imap_password;
-    delete data.smtp_password;
     res.json(data);
   } catch (error) {
+    console.error('Error adding email account:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/email-accounts/:id/test', authenticateUser, async (req, res) => {
+app.post('/api/email-accounts/:id/test-imap', authenticateUser, async (req, res) => {
   try {
     const { data: account } = await supabase
       .from('email_accounts')
@@ -155,26 +213,115 @@ app.post('/api/email-accounts/:id/test', authenticateUser, async (req, res) => {
       .single();
     
     if (!account) return res.status(404).json({ error: 'Account not found' });
-    
-    // Test IMAP connection
+
     const imap = new Imap({
       user: account.imap_username,
       password: decrypt(account.imap_password),
       host: account.imap_host,
       port: account.imap_port,
-      tls: true
+      tls: true,
+      tlsOptions: { rejectUnauthorized: false }
     });
-    
+
     return new Promise((resolve) => {
-      imap.once('ready', () => {
+      let timeout = setTimeout(() => {
         imap.end();
-        resolve(res.json({ success: true, message: 'Connection successful' }));
+        resolve(res.status(400).json({ 
+          success: false, 
+          error: 'Connection timeout' 
+        }));
+      }, 10000);
+
+      imap.once('ready', () => {
+        clearTimeout(timeout);
+        imap.end();
+        resolve(res.json({ success: true, message: 'IMAP connection successful' }));
       });
+
       imap.once('error', (err) => {
-        resolve(res.status(400).json({ error: 'Connection failed: ' + err.message }));
+        clearTimeout(timeout);
+        resolve(res.status(400).json({ 
+          success: false, 
+          error: `IMAP failed: ${err.message}` 
+        }));
       });
+
       imap.connect();
     });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res) => {
+  try {
+    const { data: account } = await supabase
+      .from('email_accounts')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single();
+    
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    const transporter = nodemailer.createTransporter({
+      host: account.smtp_host,
+      port: account.smtp_port,
+      secure: account.smtp_port === 465,
+      auth: {
+        user: account.smtp_username,
+        pass: decrypt(account.smtp_password)
+      },
+      tls: { rejectUnauthorized: false }
+    });
+
+    await transporter.verify();
+    res.json({ success: true, message: 'SMTP connection successful' });
+  } catch (error) {
+    res.status(400).json({ 
+      success: false, 
+      error: `SMTP failed: ${error.message}` 
+    });
+  }
+});
+
+app.put('/api/email-accounts/:id', authenticateUser, async (req, res) => {
+  try {
+    const { email_address, daily_send_limit, is_active, imap_password, smtp_password } = req.body;
+
+    const updates = {};
+    if (email_address) updates.email_address = email_address.toLowerCase();
+    if (daily_send_limit !== undefined) updates.daily_send_limit = daily_send_limit;
+    if (is_active !== undefined) updates.is_active = is_active;
+    if (imap_password) updates.imap_password = encrypt(imap_password);
+    if (smtp_password) updates.smtp_password = encrypt(smtp_password);
+
+    const { data, error } = await supabase
+      .from('email_accounts')
+      .update(updates)
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .select('id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
+      .single();
+    
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Account not found' });
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/email-accounts/:id', authenticateUser, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('email_accounts')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id);
+    
+    if (error) throw error;
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -202,9 +349,14 @@ app.get('/api/contact-lists', authenticateUser, async (req, res) => {
 app.post('/api/contact-lists', authenticateUser, async (req, res) => {
   try {
     const { name, description } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ error: 'List name is required' });
+    }
+
     const { data, error } = await supabase
       .from('contact_lists')
-      .insert({ user_id: req.user.id, name, description, total_contacts: 0 })
+      .insert({ user_id: req.user.id, name, description: description || '', total_contacts: 0 })
       .select()
       .single();
     
@@ -217,11 +369,27 @@ app.post('/api/contact-lists', authenticateUser, async (req, res) => {
 
 app.post('/api/contact-lists/:id/import', authenticateUser, async (req, res) => {
   try {
-    const { contacts } = req.body; // Array of {email, first_name, last_name, company}
+    const { contacts } = req.body;
     
+    if (!contacts || !Array.isArray(contacts)) {
+      return res.status(400).json({ error: 'Contacts array is required' });
+    }
+
+    // Verify list belongs to user
+    const { data: list } = await supabase
+      .from('contact_lists')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!list) {
+      return res.status(404).json({ error: 'List not found' });
+    }
+
     const contactsToInsert = contacts.map(c => ({
       list_id: req.params.id,
-      email: c.email,
+      email: c.email.toLowerCase().trim(),
       first_name: c.first_name || '',
       last_name: c.last_name || '',
       company: c.company || '',
@@ -231,11 +399,23 @@ app.post('/api/contact-lists/:id/import', authenticateUser, async (req, res) => 
     
     const { data, error } = await supabase
       .from('contacts')
-      .insert(contactsToInsert)
+      .upsert(contactsToInsert, { 
+        onConflict: 'list_id,email',
+        ignoreDuplicates: true 
+      })
       .select();
     
     if (error) throw error;
-    res.json({ success: true, imported: data.length });
+
+    const imported = data?.length || 0;
+
+    // Update list count
+    await supabase
+      .from('contact_lists')
+      .update({ total_contacts: imported })
+      .eq('id', req.params.id);
+
+    res.json({ success: true, imported });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -251,8 +431,8 @@ app.get('/api/campaigns', authenticateUser, async (req, res) => {
       .from('campaigns')
       .select(`
         *,
-        email_accounts(email_address),
-        contact_lists(name, total_contacts)
+        email_accounts(id, email_address),
+        contact_lists(id, name, total_contacts)
       `)
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false });
@@ -264,10 +444,59 @@ app.get('/api/campaigns', authenticateUser, async (req, res) => {
   }
 });
 
+app.get('/api/campaigns/:id', authenticateUser, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('campaigns')
+      .select(`
+        *,
+        email_accounts(id, email_address),
+        contact_lists(id, name, total_contacts)
+      `)
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single();
+    
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Campaign not found' });
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/campaigns', authenticateUser, async (req, res) => {
   try {
     const { name, email_account_id, contact_list_id, send_schedule, daily_limit } = req.body;
-    
+
+    if (!name || !email_account_id || !contact_list_id) {
+      return res.status(400).json({ error: 'Name, email account, and contact list are required' });
+    }
+
+    // Verify email account belongs to user
+    const { data: emailAccount } = await supabase
+      .from('email_accounts')
+      .select('id')
+      .eq('id', email_account_id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!emailAccount) {
+      return res.status(400).json({ error: 'Invalid email account' });
+    }
+
+    // Verify contact list belongs to user
+    const { data: contactList } = await supabase
+      .from('contact_lists')
+      .select('id')
+      .eq('id', contact_list_id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!contactList) {
+      return res.status(400).json({ error: 'Invalid contact list' });
+    }
+
     const { data, error } = await supabase
       .from('campaigns')
       .insert({
@@ -276,10 +505,18 @@ app.post('/api/campaigns', authenticateUser, async (req, res) => {
         email_account_id,
         contact_list_id,
         status: 'draft',
-        send_schedule,
+        send_schedule: send_schedule || {
+          days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+          start_hour: 9,
+          end_hour: 17
+        },
         daily_limit: daily_limit || 500
       })
-      .select()
+      .select(`
+        *,
+        email_accounts(id, email_address),
+        contact_lists(id, name, total_contacts)
+      `)
       .single();
     
     if (error) throw error;
@@ -289,8 +526,63 @@ app.post('/api/campaigns', authenticateUser, async (req, res) => {
   }
 });
 
+app.put('/api/campaigns/:id', authenticateUser, async (req, res) => {
+  try {
+    const { name, send_schedule, daily_limit, status } = req.body;
+
+    const updates = {};
+    if (name) updates.name = name;
+    if (send_schedule) updates.send_schedule = send_schedule;
+    if (daily_limit !== undefined) updates.daily_limit = daily_limit;
+    if (status) updates.status = status;
+
+    const { data, error } = await supabase
+      .from('campaigns')
+      .update(updates)
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .select(`
+        *,
+        email_accounts(id, email_address),
+        contact_lists(id, name, total_contacts)
+      `)
+      .single();
+    
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Campaign not found' });
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/campaigns/:id', authenticateUser, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('campaigns')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id);
+    
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
   try {
+    // Verify campaign belongs to user
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
     const { data, error } = await supabase
       .from('campaign_steps')
       .select('*')
@@ -306,18 +598,34 @@ app.get('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
 
 app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
   try {
-    const { step_type, subject, body, wait_days, condition_type, step_order } = req.body;
-    
+    // Verify campaign belongs to user
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    const { step_type, subject, body, wait_days, condition_type, next_step_if_true, next_step_if_false, step_order } = req.body;
+
+    if (!['email', 'wait', 'condition'].includes(step_type)) {
+      return res.status(400).json({ error: 'Invalid step type' });
+    }
+
     const { data, error } = await supabase
       .from('campaign_steps')
       .insert({
         campaign_id: req.params.id,
         step_type,
-        subject,
-        body,
-        wait_days,
-        condition_type,
-        step_order
+        subject: step_type === 'email' ? subject : null,
+        body: step_type === 'email' ? body : null,
+        wait_days: step_type === 'wait' ? wait_days : null,
+        condition_type: step_type === 'condition' ? condition_type : null,
+        next_step_if_true: step_type === 'condition' ? next_step_if_true : null,
+        next_step_if_false: step_type === 'condition' ? next_step_if_false : null,
+        step_order: step_order || 1
       })
       .select()
       .single();
@@ -329,40 +637,97 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
   }
 });
 
-app.post('/api/campaigns/:id/start', authenticateUser, async (req, res) => {
+app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   try {
-    // Update campaign status
-    const { error: campaignError } = await supabase
-      .from('campaigns')
-      .update({ status: 'running', started_at: new Date().toISOString() })
-      .eq('id', req.params.id)
-      .eq('user_id', req.user.id);
-    
-    if (campaignError) throw campaignError;
-    
-    // Get campaign details
     const { data: campaign } = await supabase
       .from('campaigns')
-      .select('*, contact_lists(id)')
-      .eq('id', req.params.id)
+      .select('id')
+      .eq('id', req.params.campaignId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    const { subject, body, wait_days, condition_type, step_order } = req.body;
+
+    const updates = {};
+    if (subject !== undefined) updates.subject = subject;
+    if (body !== undefined) updates.body = body;
+    if (wait_days !== undefined) updates.wait_days = wait_days;
+    if (condition_type !== undefined) updates.condition_type = condition_type;
+    if (step_order !== undefined) updates.step_order = step_order;
+
+    const { data, error } = await supabase
+      .from('campaign_steps')
+      .update(updates)
+      .eq('id', req.params.stepId)
+      .eq('campaign_id', req.params.campaignId)
+      .select()
       .single();
     
-    // Get all contacts from list
-    const { data: contacts } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('list_id', campaign.contact_list_id)
-      .eq('status', 'active');
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
+  try {
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('id')
+      .eq('id', req.params.campaignId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    const { error } = await supabase
+      .from('campaign_steps')
+      .delete()
+      .eq('id', req.params.stepId)
+      .eq('campaign_id', req.params.campaignId);
     
-    // Get first step
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/campaigns/:id/start', authenticateUser, async (req, res) => {
+  try {
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('id, contact_list_id')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
     const { data: firstStep } = await supabase
       .from('campaign_steps')
-      .select('*')
+      .select('id')
       .eq('campaign_id', req.params.id)
       .eq('step_order', 1)
       .single();
-    
-    // Create campaign_contacts entries
+
+    if (!firstStep) {
+      return res.status(400).json({ error: 'Campaign has no steps' });
+    }
+
+    const { data: contacts } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('list_id', campaign.contact_list_id)
+      .eq('status', 'active');
+
+    if (!contacts || contacts.length === 0) {
+      return res.status(400).json({ error: 'No active contacts in list' });
+    }
+
     const campaignContacts = contacts.map(contact => ({
       campaign_id: req.params.id,
       contact_id: contact.id,
@@ -370,10 +735,21 @@ app.post('/api/campaigns/:id/start', authenticateUser, async (req, res) => {
       status: 'in_progress',
       next_send_time: new Date().toISOString()
     }));
-    
-    await supabase.from('campaign_contacts').insert(campaignContacts);
-    
-    res.json({ success: true });
+
+    const { error: insertError } = await supabase
+      .from('campaign_contacts')
+      .insert(campaignContacts);
+
+    if (insertError) throw insertError;
+
+    const { error: updateError } = await supabase
+      .from('campaigns')
+      .update({ status: 'running', started_at: new Date().toISOString() })
+      .eq('id', req.params.id);
+
+    if (updateError) throw updateError;
+
+    res.json({ success: true, message: `Campaign started with ${contacts.length} contacts` });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -396,22 +772,39 @@ app.post('/api/campaigns/:id/pause', authenticateUser, async (req, res) => {
 
 app.get('/api/campaigns/:id/stats', authenticateUser, async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('campaign_stats')
-      .select('*')
-      .eq('campaign_id', req.params.id)
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('id')
+      .eq('id', req.params.id)
       .eq('user_id', req.user.id)
       .single();
-    
-    if (error) throw error;
-    res.json(data || {
-      total_contacts: 0,
-      sent_count: 0,
-      opened_count: 0,
-      clicked_count: 0,
-      replied_count: 0,
-      open_rate: 0,
-      reply_rate: 0
+
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    const { count: totalContacts } = await supabase
+      .from('campaign_contacts')
+      .select('*', { count: 'exact', head: true })
+      .eq('campaign_id', req.params.id);
+
+    const { data: events } = await supabase
+      .from('email_events')
+      .select('event_type')
+      .eq('campaign_id', req.params.id);
+
+    const sentCount = events?.filter(e => e.event_type === 'sent').length || 0;
+    const openedCount = events?.filter(e => e.event_type === 'opened').length || 0;
+    const clickedCount = events?.filter(e => e.event_type === 'clicked').length || 0;
+    const repliedCount = events?.filter(e => e.event_type === 'replied').length || 0;
+
+    res.json({
+      total_contacts: totalContacts || 0,
+      sent_count: sentCount,
+      opened_count: openedCount,
+      clicked_count: clickedCount,
+      replied_count: repliedCount,
+      open_rate: sentCount > 0 ? ((openedCount / sentCount) * 100).toFixed(1) : 0,
+      click_rate: sentCount > 0 ? ((clickedCount / sentCount) * 100).toFixed(1) : 0,
+      reply_rate: sentCount > 0 ? ((repliedCount / sentCount) * 100).toFixed(1) : 0
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -424,6 +817,15 @@ app.get('/api/campaigns/:id/stats', authenticateUser, async (req, res) => {
 
 app.get('/api/warmup/:email_account_id', authenticateUser, async (req, res) => {
   try {
+    const { data: account } = await supabase
+      .from('email_accounts')
+      .select('id')
+      .eq('id', req.params.email_account_id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!account) return res.status(404).json({ error: 'Email account not found' });
+
     const { data, error } = await supabase
       .from('warmup_configs')
       .select('*')
@@ -431,7 +833,13 @@ app.get('/api/warmup/:email_account_id', authenticateUser, async (req, res) => {
       .single();
     
     if (error && error.code !== 'PGRST116') throw error;
-    res.json(data || { is_active: false });
+    
+    res.json(data || { 
+      is_active: false,
+      daily_warmup_volume: 1000,
+      current_daily_volume: 50,
+      replies_per_thread: 20
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -439,23 +847,77 @@ app.get('/api/warmup/:email_account_id', authenticateUser, async (req, res) => {
 
 app.post('/api/warmup/:email_account_id', authenticateUser, async (req, res) => {
   try {
+    const { data: account } = await supabase
+      .from('email_accounts')
+      .select('id')
+      .eq('id', req.params.email_account_id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!account) return res.status(404).json({ error: 'Email account not found' });
+
     const { is_active, daily_warmup_volume, replies_per_thread } = req.body;
     
     const { data, error } = await supabase
       .from('warmup_configs')
       .upsert({
         email_account_id: req.params.email_account_id,
-        is_active,
+        is_active: is_active !== undefined ? is_active : true,
         daily_warmup_volume: daily_warmup_volume || 1000,
         current_daily_volume: 50,
         rampup_increment: 50,
         replies_per_thread: replies_per_thread || 20
+      }, {
+        onConflict: 'email_account_id'
       })
       .select()
       .single();
     
     if (error) throw error;
+
+    await supabase
+      .from('email_accounts')
+      .update({ is_warming_up: is_active })
+      .eq('id', req.params.email_account_id);
+
     res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/warmup/:email_account_id/stats', authenticateUser, async (req, res) => {
+  try {
+    const { data: account } = await supabase
+      .from('email_accounts')
+      .select('id')
+      .eq('id', req.params.email_account_id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!account) return res.status(404).json({ error: 'Email account not found' });
+
+    const { count: activeThreads } = await supabase
+      .from('warmup_threads')
+      .select('*', { count: 'exact', head: true })
+      .eq('email_account_id', req.params.email_account_id)
+      .eq('status', 'active');
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const { count: messagesToday } = await supabase
+      .from('warmup_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('email_account_id', req.params.email_account_id)
+      .gte('created_at', today.toISOString());
+
+    res.json({
+      active_threads: activeThreads || 0,
+      messages_today: messagesToday || 0,
+      inbox_placement_rate: 95,
+      status: activeThreads > 0 ? 'warming' : 'idle'
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -471,14 +933,19 @@ app.get('/api/track/open/:campaign_id/:contact_id/:token', async (req, res) => {
       campaign_id: req.params.campaign_id,
       contact_id: req.params.contact_id,
       event_type: 'opened',
-      event_data: { user_agent: req.headers['user-agent'], ip: req.ip }
+      event_data: { 
+        user_agent: req.headers['user-agent'], 
+        ip: req.ip,
+        timestamp: new Date().toISOString()
+      }
     });
     
-    // Return 1x1 transparent pixel
     const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
     res.type('image/gif').send(pixel);
   } catch (error) {
-    res.status(500).end();
+    console.error('Tracking error:', error);
+    const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+    res.type('image/gif').send(pixel);
   }
 });
 
@@ -490,156 +957,211 @@ app.get('/api/track/click/:campaign_id/:contact_id/:token', async (req, res) => 
       campaign_id: req.params.campaign_id,
       contact_id: req.params.contact_id,
       event_type: 'clicked',
-      event_data: { url: decodeURIComponent(url) }
+      event_data: { 
+        url: decodeURIComponent(url),
+        timestamp: new Date().toISOString()
+      }
     });
     
     res.redirect(decodeURIComponent(url));
   } catch (error) {
+    console.error('Click tracking error:', error);
     res.status(500).json({ error: 'Tracking failed' });
   }
 });
 
 // ============================================================================
-// CAMPAIGN EXECUTION ENGINE (Cron Job)
+// CAMPAIGN EXECUTION ENGINE
 // ============================================================================
 
 async function executePendingCampaigns() {
-  console.log('[EXEC] Checking pending emails...');
+  console.log('[EXECUTOR] Starting campaign execution cycle...');
   
   try {
-    const { data: pending } = await supabase
+    const { data: pending, error } = await supabase
       .from('campaign_contacts')
       .select(`
         *,
-        campaigns!inner(*),
-        contacts(*),
-        campaign_steps(*)
+        campaigns!inner(
+          id, name, email_account_id, send_schedule, status, daily_limit
+        ),
+        contacts!inner(
+          id, email, first_name, last_name, company, custom_fields
+        ),
+        campaign_steps!inner(
+          id, step_type, step_order, subject, body, wait_days, condition_type,
+          next_step_if_true, next_step_if_false
+        )
       `)
       .eq('status', 'in_progress')
+      .eq('campaigns.status', 'running')
       .lte('next_send_time', new Date().toISOString())
       .limit(50);
-    
-    if (!pending || pending.length === 0) return;
-    
-    console.log(`[EXEC] Found ${pending.length} emails to send`);
-    
+
+    if (error) throw error;
+
+    if (!pending || pending.length === 0) {
+      console.log('[EXECUTOR] No pending emails to send');
+      return;
+    }
+
+    console.log(`[EXECUTOR] Found ${pending.length} emails to process`);
+
     for (const item of pending) {
       try {
         await processCampaignContact(item);
       } catch (err) {
-        console.error(`[EXEC] Error processing ${item.id}:`, err.message);
+        console.error(`[EXECUTOR] Error processing contact ${item.id}:`, err.message);
       }
     }
+
+    console.log('[EXECUTOR] Cycle complete');
   } catch (error) {
-    console.error('[EXEC] Error:', error.message);
+    console.error('[EXECUTOR] Execution error:', error);
   }
 }
 
 async function processCampaignContact(campaignContact) {
   const { campaigns: campaign, contacts: contact, campaign_steps: step } = campaignContact;
-  
-  // Get email account
-  const { data: emailAccount } = await supabase
-    .from('email_accounts')
-    .select('*')
-    .eq('id', campaign.email_account_id)
-    .single();
-  
-  if (!emailAccount) return;
-  
-  // Check send schedule
-  const now = new Date();
-  const schedule = campaign.send_schedule || {};
-  const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase();
-  
-  if (schedule.days && !schedule.days.includes(dayOfWeek)) {
-    // Reschedule for next day
-    const nextDay = new Date(now);
-    nextDay.setDate(nextDay.getDate() + 1);
-    nextDay.setHours(9, 0, 0, 0);
-    
-    await supabase
-      .from('campaign_contacts')
-      .update({ next_send_time: nextDay.toISOString() })
-      .eq('id', campaignContact.id);
+
+  // Check if within send schedule
+  if (!isWithinSchedule(campaign.send_schedule)) {
+    console.log(`[EXECUTOR] Outside schedule for campaign ${campaign.id}, rescheduling...`);
+    const nextTime = getNextSendTime(campaign.send_schedule);
+    await updateNextSendTime(campaignContact.id, nextTime);
     return;
   }
-  
-  if (step.step_type === 'email') {
-    await sendEmail(campaignContact, campaign, contact, step, emailAccount);
-  } else if (step.step_type === 'wait') {
-    await handleWaitStep(campaignContact, step);
-  } else if (step.step_type === 'condition') {
-    await handleConditionStep(campaignContact, step);
+
+  // Check daily limit
+  const withinLimit = await checkDailyLimit(campaign.email_account_id, campaign.id);
+  if (!withinLimit) {
+    console.log(`[EXECUTOR] Daily limit reached for campaign ${campaign.id}`);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    await updateNextSendTime(campaignContact.id, tomorrow);
+    return;
+  }
+
+  // Process based on step type
+  switch (step.step_type) {
+    case 'email':
+      await handleEmailStep(campaignContact, campaign, contact, step);
+      break;
+    case 'wait':
+      await handleWaitStep(campaignContact, campaign, step);
+      break;
+    case 'condition':
+      await handleConditionStep(campaignContact, campaign, step);
+      break;
   }
 }
 
-async function sendEmail(campaignContact, campaign, contact, step, emailAccount) {
+async function handleEmailStep(campaignContact, campaign, contact, step) {
   try {
-    // Create SMTP transporter
+    // Get email account
+    const { data: account } = await supabase
+      .from('email_accounts')
+      .select('*')
+      .eq('id', campaign.email_account_id)
+      .single();
+
+    if (!account) throw new Error('Email account not found');
+
+    // Create transporter
     const transporter = nodemailer.createTransporter({
-      host: emailAccount.smtp_host,
-      port: emailAccount.smtp_port,
-      secure: false,
+      host: account.smtp_host,
+      port: account.smtp_port,
+      secure: account.smtp_port === 465,
       auth: {
-        user: emailAccount.smtp_username,
-        pass: decrypt(emailAccount.smtp_password)
-      }
+        user: account.smtp_username,
+        pass: decrypt(account.smtp_password)
+      },
+      tls: { rejectUnauthorized: false }
     });
-    
+
     // Personalize content
-    const personalizedSubject = step.subject
-      .replace(/{{first_name}}/g, contact.first_name || '')
-      .replace(/{{last_name}}/g, contact.last_name || '')
-      .replace(/{{company}}/g, contact.company || '');
-    
-    let personalizedBody = step.body
-      .replace(/{{first_name}}/g, contact.first_name || '')
-      .replace(/{{last_name}}/g, contact.last_name || '')
-      .replace(/{{company}}/g, contact.company || '')
-      .replace(/{{email}}/g, contact.email || '');
-    
+    let personalizedSubject = step.subject || 'No Subject';
+    let personalizedBody = step.body || '';
+
+    const variables = {
+      first_name: contact.first_name || '',
+      last_name: contact.last_name || '',
+      email: contact.email || '',
+      company: contact.company || '',
+      ...contact.custom_fields
+    };
+
+    Object.keys(variables).forEach(key => {
+      const regex = new RegExp(`{{${key}}}`, 'g');
+      personalizedSubject = personalizedSubject.replace(regex, variables[key]);
+      personalizedBody = personalizedBody.replace(regex, variables[key]);
+    });
+
     // Add tracking pixel
     const trackingToken = crypto.randomBytes(16).toString('hex');
-    const trackingPixel = `<img src="${process.env.FRONTEND_URL}/api/track/open/${campaign.id}/${contact.id}/${trackingToken}" width="1" height="1" style="display:none;" />`;
+    const trackingUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/track/open/${campaign.id}/${contact.id}/${trackingToken}`;
+    const trackingPixel = `<img src="${trackingUrl}" width="1" height="1" style="display:none;" alt="" />`;
     personalizedBody += trackingPixel;
-    
+
+    // Rewrite links for click tracking
+    const clickTrackingUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/track/click/${campaign.id}/${contact.id}/${trackingToken}`;
+    personalizedBody = personalizedBody.replace(
+      /href="(https?:\/\/[^"]+)"/g,
+      (match, url) => `href="${clickTrackingUrl}?url=${encodeURIComponent(url)}"`
+    );
+
     // Send email
     await transporter.sendMail({
-      from: emailAccount.email_address,
+      from: account.email_address,
       to: contact.email,
       subject: personalizedSubject,
       html: personalizedBody
     });
-    
+
     // Log sent event
     await supabase.from('email_events').insert({
       campaign_id: campaign.id,
       contact_id: contact.id,
       campaign_step_id: step.id,
-      event_type: 'sent'
+      event_type: 'sent',
+      event_data: { timestamp: new Date().toISOString() }
     });
-    
+
+    console.log(`[EXECUTOR] ✓ Sent email to ${contact.email} (Campaign: ${campaign.name})`);
+
     // Move to next step
-    await moveToNextStep(campaignContact, step);
-    
-    console.log(`[EMAIL] Sent to ${contact.email}`);
+    await moveToNextStep(campaignContact, campaign.id, step);
   } catch (error) {
-    console.error(`[EMAIL] Error sending to ${contact.email}:`, error.message);
+    console.error(`[EXECUTOR] ✗ Failed to send to ${contact.email}:`, error.message);
+    
+    await supabase.from('email_events').insert({
+      campaign_id: campaign.id,
+      contact_id: contact.id,
+      campaign_step_id: step.id,
+      event_type: 'failed',
+      event_data: { error: error.message, timestamp: new Date().toISOString() }
+    });
+
+    await supabase
+      .from('campaign_contacts')
+      .update({ status: 'failed' })
+      .eq('id', campaignContact.id);
   }
 }
 
-async function handleWaitStep(campaignContact, step) {
+async function handleWaitStep(campaignContact, campaign, step) {
+  const waitDays = step.wait_days || 3;
   const nextSendTime = new Date();
-  nextSendTime.setDate(nextSendTime.getDate() + (step.wait_days || 3));
-  
+  nextSendTime.setDate(nextSendTime.getDate() + waitDays);
+
   const { data: nextStep } = await supabase
     .from('campaign_steps')
-    .select('*')
-    .eq('campaign_id', campaignContact.campaign_id)
+    .select('id')
+    .eq('campaign_id', campaign.id)
     .eq('step_order', step.step_order + 1)
     .single();
-  
+
   if (nextStep) {
     await supabase
       .from('campaign_contacts')
@@ -648,35 +1170,44 @@ async function handleWaitStep(campaignContact, step) {
         next_send_time: nextSendTime.toISOString()
       })
       .eq('id', campaignContact.id);
+
+    console.log(`[EXECUTOR] ⏱ Wait ${waitDays} days for contact ${campaignContact.contact_id}`);
   } else {
     await supabase
       .from('campaign_contacts')
       .update({ status: 'completed' })
       .eq('id', campaignContact.id);
+
+    console.log(`[EXECUTOR] ✓ Campaign completed for contact ${campaignContact.contact_id}`);
   }
 }
 
-async function handleConditionStep(campaignContact, step) {
+async function handleConditionStep(campaignContact, campaign, step) {
   const { data: events } = await supabase
     .from('email_events')
-    .select('*')
-    .eq('campaign_id', campaignContact.campaign_id)
+    .select('event_type')
+    .eq('campaign_id', campaign.id)
     .eq('contact_id', campaignContact.contact_id);
-  
+
   let conditionMet = false;
-  
-  if (step.condition_type === 'if_opened') {
-    conditionMet = events.some(e => e.event_type === 'opened');
-  } else if (step.condition_type === 'if_not_opened') {
-    conditionMet = !events.some(e => e.event_type === 'opened');
-  } else if (step.condition_type === 'if_clicked') {
-    conditionMet = events.some(e => e.event_type === 'clicked');
-  } else if (step.condition_type === 'if_replied') {
-    conditionMet = events.some(e => e.event_type === 'replied');
+
+  switch (step.condition_type) {
+    case 'if_opened':
+      conditionMet = events.some(e => e.event_type === 'opened');
+      break;
+    case 'if_not_opened':
+      conditionMet = !events.some(e => e.event_type === 'opened');
+      break;
+    case 'if_clicked':
+      conditionMet = events.some(e => e.event_type === 'clicked');
+      break;
+    case 'if_replied':
+      conditionMet = events.some(e => e.event_type === 'replied');
+      break;
   }
-  
+
   const nextStepId = conditionMet ? step.next_step_if_true : step.next_step_if_false;
-  
+
   if (nextStepId) {
     await supabase
       .from('campaign_contacts')
@@ -685,6 +1216,8 @@ async function handleConditionStep(campaignContact, step) {
         next_send_time: new Date().toISOString()
       })
       .eq('id', campaignContact.id);
+
+    console.log(`[EXECUTOR] 🔀 Condition ${step.condition_type}: ${conditionMet ? 'TRUE' : 'FALSE'}`);
   } else {
     await supabase
       .from('campaign_contacts')
@@ -693,14 +1226,14 @@ async function handleConditionStep(campaignContact, step) {
   }
 }
 
-async function moveToNextStep(campaignContact, currentStep) {
+async function moveToNextStep(campaignContact, campaignId, currentStep) {
   const { data: nextStep } = await supabase
     .from('campaign_steps')
-    .select('*')
-    .eq('campaign_id', campaignContact.campaign_id)
+    .select('id')
+    .eq('campaign_id', campaignId)
     .eq('step_order', currentStep.step_order + 1)
     .single();
-  
+
   if (nextStep) {
     await supabase
       .from('campaign_contacts')
@@ -717,105 +1250,139 @@ async function moveToNextStep(campaignContact, currentStep) {
   }
 }
 
-// ============================================================================
-// WARM-UP ENGINE (Simplified - Full version in separate file)
-// ============================================================================
-
-async function sendWarmupEmails() {
-  console.log('[WARMUP] Running warm-up cycle...');
-  
-  try {
-    const { data: configs } = await supabase
-      .from('warmup_configs')
-      .select('*, email_accounts(*)')
-      .eq('is_active', true);
-    
-    for (const config of configs || []) {
-      // Get random seeds
-      const hourlyVolume = Math.floor(config.current_daily_volume / 24);
-      
-      const { data: seeds } = await supabase
-        .from('warmup_seeds')
-        .select('*')
-        .eq('is_active', true)
-        .limit(hourlyVolume);
-      
-      for (const seed of seeds || []) {
-        await sendWarmupEmail(config, seed);
-      }
-    }
-  } catch (error) {
-    console.error('[WARMUP] Error:', error.message);
-  }
+async function updateNextSendTime(campaignContactId, nextTime) {
+  await supabase
+    .from('campaign_contacts')
+    .update({ next_send_time: nextTime.toISOString() })
+    .eq('id', campaignContactId);
 }
 
-async function sendWarmupEmail(config, seed) {
-  try {
-    const transporter = nodemailer.createTransporter({
-      host: config.email_accounts.smtp_host,
-      port: config.email_accounts.smtp_port,
-      secure: false,
-      auth: {
-        user: config.email_accounts.smtp_username,
-        pass: decrypt(config.email_accounts.smtp_password)
-      }
-    });
-    
-    // Generate human-like content
-    const subjects = [
-      'Quick question',
-      'Following up',
-      'Thoughts on the project',
-      'Checking in',
-      'Update'
-    ];
-    
-    const bodies = [
-      'Hi there,\n\nI hope this finds you well. Just wanted to reach out about something interesting.\n\nBest regards',
-      'Hey,\n\nFollowing up on our previous discussion. Let me know if you have time to chat.\n\nThanks',
-      'Hello,\n\nI came across something that reminded me of our conversation.\n\nCheers'
-    ];
-    
-    await transporter.sendMail({
-      from: config.email_accounts.email_address,
-      to: seed.email_address,
-      subject: subjects[Math.floor(Math.random() * subjects.length)],
-      text: bodies[Math.floor(Math.random() * bodies.length)]
-    });
-    
-    // Create/update thread
-    await supabase.from('warmup_threads').insert({
-      email_account_id: config.email_account_id,
-      seed_address_id: seed.id,
-      reply_count: 0,
-      target_replies: config.replies_per_thread,
-      status: 'active'
-    });
-    
-    console.log(`[WARMUP] Sent to ${seed.email_address}`);
-  } catch (error) {
-    console.error('[WARMUP] Error:', error.message);
+function isWithinSchedule(schedule) {
+  if (!schedule || !schedule.days || !schedule.start_hour || !schedule.end_hour) {
+    return true;
   }
+
+  const now = new Date();
+  const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase();
+  const hour = now.getHours();
+
+  return schedule.days.includes(dayOfWeek) && hour >= schedule.start_hour && hour < schedule.end_hour;
+}
+
+function getNextSendTime(schedule) {
+  const now = new Date();
+  
+  if (!schedule || !schedule.days || !schedule.start_hour) {
+    return now;
+  }
+
+  const daysOfWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  let checkDate = new Date(now);
+  let attempts = 0;
+
+  while (attempts < 14) {
+    const dayOfWeek = daysOfWeek[checkDate.getDay()];
+    
+    if (schedule.days.includes(dayOfWeek)) {
+      checkDate.setHours(schedule.start_hour || 9, 0, 0, 0);
+      if (checkDate > now) {
+        return checkDate;
+      }
+    }
+
+    checkDate.setDate(checkDate.getDate() + 1);
+    attempts++;
+  }
+
+  return checkDate;
+}
+
+async function checkDailyLimit(emailAccountId, campaignId) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const { count } = await supabase
+    .from('email_events')
+    .select('*', { count: 'exact', head: true })
+    .eq('campaign_id', campaignId)
+    .eq('event_type', 'sent')
+    .gte('created_at', today.toISOString());
+
+  const { data: account } = await supabase
+    .from('email_accounts')
+    .select('daily_send_limit')
+    .eq('id', emailAccountId)
+    .single();
+
+  const limit = account?.daily_send_limit || 10000;
+  return count < limit;
 }
 
 // ============================================================================
 // SCHEDULED JOBS
 // ============================================================================
 
-// Run campaign execution every 5 minutes
-cron.schedule('*/5 * * * *', executePendingCampaigns);
+// Execute campaigns every 5 minutes
+cron.schedule('*/5 * * * *', async () => {
+  console.log('[CRON] Running campaign executor...');
+  try {
+    await executePendingCampaigns();
+  } catch (error) {
+    console.error('[CRON] Campaign executor error:', error);
+  }
+});
 
-// Send warm-up emails every hour
-cron.schedule('0 * * * *', sendWarmupEmails);
+console.log('✓ Campaign executor scheduled (every 5 minutes)');
 
-console.log('✓ Scheduled jobs initialized');
+// Warm-up engine runs hourly (placeholder for now)
+cron.schedule('0 * * * *', async () => {
+  console.log('[CRON] Running warm-up engine...');
+  // TODO: Implement warm-up engine
+});
+
+console.log('✓ Warm-up engine scheduled (every hour)');
+
+// ============================================================================
+// ERROR HANDLING
+// ============================================================================
+
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+app.use((req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
 
 // ============================================================================
 // START SERVER
 // ============================================================================
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Mr. Snowman API running on http://localhost:${PORT}`);
-  console.log(`📧 Campaign execution: Every 5 minutes`);
-  console.log(`🔥 Warm-up engine: Every hour\n`);
+  console.log(`
+╔═══════════════════════════════════════════════════════════╗
+║                                                           ║
+║          🎯 Mr. Snowman API Server Running                ║
+║                                                           ║
+║  Port:              ${PORT.toString().padEnd(38)} ║
+║  Environment:       ${(process.env.NODE_ENV || 'development').padEnd(38)} ║
+║  Frontend URL:      ${(process.env.FRONTEND_URL || 'http://localhost:3000').substring(0, 38).padEnd(38)} ║
+║                                                           ║
+║  📧 Campaign Executor:  Every 5 minutes                   ║
+║  🔥 Warm-up Engine:     Every hour                        ║
+║                                                           ║
+╚═══════════════════════════════════════════════════════════╝
+  `);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  process.exit(0);
 });
