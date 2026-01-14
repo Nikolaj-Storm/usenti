@@ -8,7 +8,7 @@ const APP_CONFIG = {
   // For local development, use localhost
   API_BASE_URL: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3001'
-    : 'https://snowman-2-0.onrender.com', // Update with your actual Render URL
+    : 'https://snowman-2-0.onrender.com', 
 
   // Local Storage Keys
   STORAGE_KEYS: {
