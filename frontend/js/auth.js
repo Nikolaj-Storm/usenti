@@ -174,3 +174,6 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
     </div>
   );
 };
+
+// Export Auth globally
+window.Auth = Auth;
