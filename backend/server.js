@@ -8,6 +8,10 @@ const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 require('dotenv').config();
 
+// Import services
+const warmupEngine = require('./services/warmupEngine');
+const imapMonitor = require('./services/imapMonitor');
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -1334,10 +1338,14 @@ cron.schedule('*/5 * * * *', async () => {
 
 console.log('✓ Campaign executor scheduled (every 5 minutes)');
 
-// Warm-up engine runs hourly (placeholder for now)
+// Warm-up engine runs hourly
 cron.schedule('0 * * * *', async () => {
   console.log('[CRON] Running warm-up engine...');
-  // TODO: Implement warm-up engine
+  try {
+    await warmupEngine.execute();
+  } catch (error) {
+    console.error('[CRON] Warm-up engine error:', error);
+  }
 });
 
 console.log('✓ Warm-up engine scheduled (every hour)');
@@ -1359,7 +1367,7 @@ app.use((req, res) => {
 // START SERVER
 // ============================================================================
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
@@ -1371,18 +1379,29 @@ app.listen(PORT, () => {
 ║                                                           ║
 ║  📧 Campaign Executor:  Every 5 minutes                   ║
 ║  🔥 Warm-up Engine:     Every hour                        ║
+║  📬 IMAP Monitor:       Active                            ║
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝
   `);
+
+  // Start IMAP monitoring for reply detection
+  try {
+    await imapMonitor.startMonitoringAll();
+    console.log('✓ IMAP monitoring started');
+  } catch (error) {
+    console.error('⚠ Failed to start IMAP monitoring:', error.message);
+  }
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully...');
+  imapMonitor.stopAll();
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully...');
+  imapMonitor.stopAll();
   process.exit(0);
 });
