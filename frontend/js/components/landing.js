@@ -58,3 +58,6 @@ const LandingPage = ({ onNavigate }) => {
     </div>
   );
 };
+
+// Export LandingPage globally
+window.LandingPage = LandingPage;
