@@ -29,7 +29,10 @@ const EmailAccounts = () => {
           <h2 className="font-serif text-3xl text-jaguar-900">Infrastructure</h2>
           <p className="text-stone-500 mt-2 font-light">Connect and manage your sending accounts.</p>
         </div>
-        <button className="px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2 hover:scale-105">
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2 hover:scale-105"
+        >
           <Icons.Plus size={20} />
           Connect Account
         </button>
@@ -38,12 +41,15 @@ const EmailAccounts = () => {
       {/* Email Accounts Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Add Account Card */}
-        <button className="group relative bg-white border-2 border-dashed border-stone-300 rounded-2xl p-8 flex flex-col items-center justify-center text-stone-400 hover:border-jaguar-900 hover:bg-cream-50 transition-all duration-500 min-h-[240px] hover:shadow-xl">
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="group relative bg-white border-2 border-dashed border-stone-300 rounded-2xl p-8 flex flex-col items-center justify-center text-stone-400 hover:border-jaguar-900 hover:bg-cream-50 transition-all duration-500 min-h-[240px] hover:shadow-xl"
+        >
           <div className="w-16 h-16 rounded-2xl bg-stone-100 group-hover:bg-jaguar-100 flex items-center justify-center mb-4 transition-all duration-300 group-hover:scale-110">
             <Icons.Plus size={28} className="text-stone-400 group-hover:text-jaguar-900 transition-colors" />
           </div>
           <span className="font-medium text-stone-600 group-hover:text-jaguar-900 transition-colors">Connect New Account</span>
-          <span className="text-xs text-stone-400 mt-1">AWS WorkMail or SMTP</span>
+          <span className="text-xs text-stone-400 mt-1">Gmail, Outlook or Custom SMTP</span>
         </button>
 
         {accounts.map((account, index) => (
