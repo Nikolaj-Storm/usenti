@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mr. Snowman - Email Outreach Automation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              jaguar: { 900: '#0B2B26', 800: '#16423C', 700: '#1F5750', 100: '#E8F5F3' },
+              cream: { 50: '#FDFBF7', 100: '#F7F4EB', 200: '#EBE6D9' },
+              gold: { 500: '#C5A065', 600: '#B08D55' },
+              stone: { 100: '#f5f5f4', 200: '#e7e5e4', 300: '#d6d3d1', 400: '#a8a29e', 500: '#78716c', 600: '#57534e', 700: '#44403c', 900: '#1c1917' }
+            },
+            fontFamily: { sans: ['Inter', 'sans-serif'], serif: ['Playfair Display', 'serif'] }
+          }
+        }
+      }
+    </script>
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.5.0/dist/Recharts.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <style>
+      body { background-color: #FDFBF7; color: #1F2937; font-family: 'Inter', sans-serif; }
+      .font-serif { font-family: 'Playfair Display', serif; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: #F7F4EB; }
+      ::-webkit-scrollbar-thumb { background: #C5A065; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #B08D55; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script>
+    const { useState, useEffect, createElement: h, Fragment } = React;
+
+    // Configuration
+    const APP_CONFIG = {
+      API_BASE_URL: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:3001'
+        : 'https://snowman-2-0.onrender.com',
+      STORAGE_KEYS: { TOKEN: 'mr_snowman_token', USER: 'mr_snowman_user' },
+      ENDPOINTS: {
+        AUTH_SIGNUP: '/api/auth/signup',
+        AUTH_LOGIN: '/api/auth/login',
+        AUTH_LOGOUT: '/api/auth/logout',
+        EMAIL_ACCOUNTS: '/api/email-accounts',
+        EMAIL_ACCOUNTS_TEST: '/api/email-accounts/test',
+        CONTACT_LISTS: '/api/contact-lists',
+        CONTACTS: '/api/contacts',
+        CONTACTS_IMPORT: '/api/contacts/import',
+        CAMPAIGNS: '/api/campaigns',
+        CAMPAIGN_STEPS: '/api/campaign-steps',
+        DASHBOARD_STATS: '/api/dashboard/stats'
+      }
+    };
+
+    // API Service
+    const api = {
+      async request(endpoint, options = {}) {
+        const url = APP_CONFIG.API_BASE_URL + endpoint;
+        const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+        const config = {
+          headers: { 'Content-Type': 'application/json', ...options.headers },
+          ...options
+        };
+        if (token && !options.skipAuth) config.headers['Authorization'] = `Bearer ${token}`;
+        try {
+          const response = await fetch(url, config);
+          const data = await response.json();
+          if (!response.ok) {
+            if (response.status === 401) {
+              localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+              localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
+              window.location.reload();
+            }
+            throw new Error(data.error || data.message || 'Request failed');
+          }
+          return data;
+        } catch (error) {
+          console.error('API Error:', error);
+          throw error;
+        }
+      },
+      async get(endpoint, options = {}) { return this.request(endpoint, { method: 'GET', ...options }); },
+      async post(endpoint, data, options = {}) { return this.request(endpoint, { method: 'POST', body: JSON.stringify(data), ...options }); },
+      async put(endpoint, data, options = {}) { return this.request(endpoint, { method: 'PUT', body: JSON.stringify(data), ...options }); },
+      async delete(endpoint, options = {}) { return this.request(endpoint, { method: 'DELETE', ...options }); },
+      async upload(endpoint, formData, options = {}) {
+        const url = APP_CONFIG.API_BASE_URL + endpoint;
+        const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+        const config = { method: 'POST', body: formData, headers: {}, ...options };
+        if (token) config.headers['Authorization'] = `Bearer ${token}`;
+        const response = await fetch(url, config);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Upload failed');
+        return data;
+      },
+      async signup(email, password, name) {
+        const response = await this.post(APP_CONFIG.ENDPOINTS.AUTH_SIGNUP, { email, password, name }, { skipAuth: true });
+        if (response.session?.access_token) {
+          localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, response.session.access_token);
+          localStorage.setItem(APP_CONFIG.STORAGE_KEYS.USER, JSON.stringify(response.user));
+        }
+        return response;
+      },
+      async login(email, password) {
+        const response = await this.post(APP_CONFIG.ENDPOINTS.AUTH_LOGIN, { email, password }, { skipAuth: true });
+        if (response.session?.access_token) {
+          localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, response.session.access_token);
+          localStorage.setItem(APP_CONFIG.STORAGE_KEYS.USER, JSON.stringify(response.user));
+        }
+        return response;
+      },
+      async logout() {
+        try { await this.post(APP_CONFIG.ENDPOINTS.AUTH_LOGOUT); }
+        finally {
+          localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+          localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
+        }
+      },
+      async getEmailAccounts() { return this.get(APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS); },
+      async createEmailAccount(accountData) { return this.post(APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS, accountData); },
+      async testEmailAccount(accountData) { return this.post(APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS_TEST, accountData); },
+      async getContactLists() { return this.get(APP_CONFIG.ENDPOINTS.CONTACT_LISTS); },
+      async createContactList(name, description = '') { return this.post(APP_CONFIG.ENDPOINTS.CONTACT_LISTS, { name, description }); },
+      async getContacts(listId) { return this.get(`${APP_CONFIG.ENDPOINTS.CONTACTS}?listId=${listId}`); },
+      async importContacts(listId, csvFile) {
+        const formData = new FormData();
+        formData.append('csv', csvFile);
+        formData.append('listId', listId);
+        return this.upload(APP_CONFIG.ENDPOINTS.CONTACTS_IMPORT, formData);
+      },
+      async getCampaigns() { return this.get(APP_CONFIG.ENDPOINTS.CAMPAIGNS); },
+      async createCampaign(campaignData) { return this.post(APP_CONFIG.ENDPOINTS.CAMPAIGNS, campaignData); },
+      async startCampaign(id) { return this.post(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${id}/start`); },
+      async getCampaignStats(id) { return this.get(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${id}/stats`); },
+      async getDashboardStats() { return this.get(APP_CONFIG.ENDPOINTS.DASHBOARD_STATS); }
+    };
+
+    // Icons
+    const Icon = ({ d, size = 24, className = "" }) => h('svg', {
+      xmlns: "http://www.w3.org/2000/svg", width: size, height: size, viewBox: "0 0 24 24",
+      fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round",
+      strokeLinejoin: "round", className
+    }, typeof d === 'string' ? h('path', { d }) : d);
+
+    const Icons = {
+      LayoutDashboard: (p) => Icon({...p, d: [h('rect', {key:1,width:"7",height:"9",x:"3",y:"3",rx:"1"}), h('rect', {key:2,width:"7",height:"5",x:"14",y:"3",rx:"1"}), h('rect', {key:3,width:"7",height:"9",x:"14",y:"12",rx:"1"}), h('rect', {key:4,width:"7",height:"5",x:"3",y:"16",rx:"1"})]}),
+      Send: (p) => Icon({...p, d: [h('path', {key:1,d:"m22 2-7 20-4-9-9-4Z"}), h('path', {key:2,d:"M22 2 11 13"})]}),
+      Users: (p) => Icon({...p, d: [h('path', {key:1,d:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"}), h('circle', {key:2,cx:"9",cy:"7",r:"4"}), h('path', {key:3,d:"M22 21v-2a4 4 0 0 0-3-3.87"})]}),
+      Plus: (p) => Icon({...p, d: [h('path', {key:1,d:"M5 12h14"}), h('path', {key:2,d:"M12 5v14"})]}),
+      Mail: (p) => Icon({...p, d: [h('rect', {key:1,width:"20",height:"16",x:"2",y:"4",rx:"2"}), h('path', {key:2,d:"m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"})]}),
+      Layers: (p) => Icon({...p, d: [h('polygon', {key:1,points:"12 2 2 7 12 12 22 7 12 2"}), h('polyline', {key:2,points:"2 17 12 22 22 17"}), h('polyline', {key:3,points:"2 12 12 17 22 12"})]}),
+      Settings: (p) => Icon({...p, d: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"}),
+      LogOut: (p) => Icon({...p, d: [h('path', {key:1,d:"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"}), h('polyline', {key:2,points:"16 17 21 12 16 7"}), h('line', {key:3,x1:"21",x2:"9",y1:"12",y2:"12"})]}),
+      Loader2: (p) => Icon({...p, className:`animate-spin ${p.className||''}`, d: "M21 12a9 9 0 1 1-6.219-8.56"}),
+      X: (p) => Icon({...p, d: [h('path', {key:1,d:"M18 6 6 18"}), h('path', {key:2,d:"m6 6 12 12"})]}),
+      Upload: (p) => Icon({...p, d: [h('path', {key:1,d:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"}), h('polyline', {key:2,points:"17 8 12 3 7 8"}), h('line', {key:3,x1:"12",y1:"3",x2:"12",y2:"15"})]}),
+      Download: (p) => Icon({...p, d: [h('path', {key:1,d:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"}), h('polyline', {key:2,points:"7 10 12 15 17 10"}), h('line', {key:3,x1:"12",y1:"15",x2:"12",y2:"3"})]}),
+      AlertCircle: (p) => Icon({...p, d: [h('circle', {key:1,cx:"12",cy:"12",r:"10"}), h('line', {key:2,x1:"12",x2:"12",y1:"8",y2:"12"}), h('line', {key:3,x1:"12",x2:"12.01",y1:"16",y2:"16"})]})
+    };
+
+    // Auth Component
+    const Auth = ({ view, onAuthenticate, onNavigate }) => {
+      const [name, setName] = useState('');
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [confirmPassword, setConfirmPassword] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const isSignup = view === 'signup';
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        if (!email || !password) { setError('Please fill in all fields'); return; }
+        if (isSignup && !name) { setError('Please enter your name'); return; }
+        if (isSignup && password !== confirmPassword) { setError('Passwords do not match'); return; }
+        if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+        setLoading(true);
+        try {
+          if (isSignup) await api.signup(email, password, name);
+          else await api.login(email, password);
+          onAuthenticate();
+        } catch (err) {
+          setError(err.message || 'Authentication failed');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return h('div', { className: "min-h-screen bg-gradient-to-br from-jaguar-900 via-jaguar-800 to-jaguar-900 flex items-center justify-center p-4" },
+        h('div', { className: "w-full max-w-md" },
+          h('div', { className: "text-center mb-8" },
+            h('div', { className: "inline-flex items-center gap-3" },
+              h('div', { className: "w-12 h-12 bg-gold-600 rounded-xl rotate-45 flex items-center justify-center shadow-2xl shadow-gold-600/30" },
+                h('div', { className: "w-6 h-6 bg-jaguar-900 -rotate-45 rounded-lg" })),
+              h('div', { className: "text-left" },
+                h('h1', { className: "font-serif text-2xl text-cream-50" }, 'Mr. ', h('span', { className: "text-gold-500" }, 'Snowman')),
+                h('p', { className: "text-xs text-jaguar-100/60" }, 'Email Outreach Automation')))),
+          h('div', { className: "bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8" },
+            h('div', { className: "mb-6" },
+              h('h2', { className: "text-2xl font-bold text-jaguar-900 mb-2" }, isSignup ? 'Create Account' : 'Welcome Back'),
+              h('p', { className: "text-stone-600" }, isSignup ? 'Sign up to start automating your outreach' : 'Sign in to access your campaigns')),
+            error && h('div', { className: "mb-4 p-4 bg-red-50 border border-red-200 rounded-lg" },
+              h('p', { className: "text-sm text-red-600" }, error)),
+            h('form', { onSubmit: handleSubmit, className: "space-y-4" },
+              isSignup && h('div', null,
+                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Full Name'),
+                h('input', { type: "text", value: name, onChange: (e) => setName(e.target.value), placeholder: "John Doe", className: "w-full px-4 py-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-gold-500 focus:border-transparent outline-none transition-all", disabled: loading })),
+              h('div', null,
+                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Email Address'),
+                h('input', { type: "email", value: email, onChange: (e) => setEmail(e.target.value), placeholder: "you@company.com", className: "w-full px-4 py-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-gold-500 focus:border-transparent outline-none transition-all", disabled: loading })),
+              h('div', null,
+                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Password'),
+                h('input', { type: "password", value: password, onChange: (e) => setPassword(e.target.value), placeholder: "••••••••", className: "w-full px-4 py-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-gold-500 focus:border-transparent outline-none transition-all", disabled: loading })),
+              isSignup && h('div', null,
+                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Confirm Password'),
+                h('input', { type: "password", value: confirmPassword, onChange: (e) => setConfirmPassword(e.target.value), placeholder: "••••••••", className: "w-full px-4 py-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-gold-500 focus:border-transparent outline-none transition-all", disabled: loading })),
+              h('button', { type: "submit", disabled: loading, className: "w-full py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-white rounded-lg font-medium hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" },
+                loading ? 'Processing...' : (isSignup ? 'Create Account' : 'Sign In'))),
+            h('div', { className: "mt-6 text-center" },
+              h('button', { onClick: () => onNavigate(isSignup ? 'login' : 'signup'), className: "text-sm text-jaguar-700 hover:text-jaguar-900 font-medium transition-colors" },
+                isSignup ? 'Already have an account? Sign in' : "Don't have an account? Sign up"))),
+          h('div', { className: "mt-6 text-center" },
+            h('button', { onClick: () => onNavigate('landing'), className: "text-sm text-cream-50/80 hover:text-cream-50 transition-colors" }, '← Back to home'))));
+    };
+
+    // Landing Page
+    const LandingPage = ({ onNavigate }) => {
+      return h('div', { className: "min-h-screen bg-gradient-to-br from-jaguar-900 via-jaguar-800 to-jaguar-900" },
+        h('nav', { className: "bg-jaguar-900/50 backdrop-blur-sm border-b border-jaguar-700" },
+          h('div', { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" },
+            h('div', { className: "flex justify-between items-center h-16" },
+              h('div', { className: "flex items-center gap-3" },
+                h('div', { className: "w-10 h-10 bg-gold-600 rounded-xl rotate-45 flex items-center justify-center shadow-xl shadow-gold-600/30" },
+                  h('div', { className: "w-5 h-5 bg-jaguar-900 -rotate-45 rounded-lg" })),
+                h('h1', { className: "font-serif text-xl text-cream-50" }, 'Mr. ', h('span', { className: "text-gold-500" }, 'Snowman'))),
+              h('div', { className: "flex items-center gap-4" },
+                h('button', { onClick: () => onNavigate('login'), className: "px-6 py-2 text-cream-50 hover:text-gold-500 transition-colors font-medium" }, 'Sign In'),
+                h('button', { onClick: () => onNavigate('signup'), className: "px-6 py-2 bg-gold-600 hover:bg-gold-500 text-white rounded-lg font-medium shadow-lg hover:shadow-xl transition-all duration-300" }, 'Get Started'))))),
+        h('div', { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24" },
+          h('div', { className: "text-center space-y-8" },
+            h('div', { className: "space-y-4" },
+              h('h1', { className: "font-serif text-5xl md:text-7xl text-cream-50 leading-tight" }, 'Email Outreach,', h('br'), h('span', { className: "text-gold-500" }, 'Automated')),
+              h('p', { className: "text-xl md:text-2xl text-cream-100/80 max-w-3xl mx-auto" }, 'Build multi-step campaigns, warm up your domains, and track every interaction.')),
+            h('div', { className: "pt-8" },
+              h('button', { onClick: () => onNavigate('signup'), className: "px-8 py-4 bg-gold-600 hover:bg-gold-500 text-white rounded-xl font-medium text-lg shadow-2xl hover:shadow-gold-600/50 transition-all duration-300 transform hover:scale-105" }, 'Start Free Trial')))),
+        h('footer', { className: "border-t border-jaguar-700 mt-32" },
+          h('div', { className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12" },
+            h('div', { className: "text-center text-cream-100/60 text-sm" }, '© 2024 Mr. Snowman. All rights reserved.'))));
+    };
+
+    // Simple Dashboard
+    const Dashboard = () => {
+      return h('div', { className: "space-y-8 animate-fade-in" },
+        h('div', null,
+          h('h2', { className: "font-serif text-3xl text-jaguar-900" }, 'Overview'),
+          h('p', { className: "text-stone-500 mt-2" }, 'Your campaign performance at a glance.')),
+        h('div', { className: "grid grid-cols-1 md:grid-cols-4 gap-6" },
+          ['Total Sent', 'Open Rate', 'Click Rate', 'Reply Rate'].map(label =>
+            h('div', { key: label, className: "bg-white rounded-xl p-6 border border-stone-200 shadow-sm" },
+              h('p', { className: "text-stone-500 text-sm" }, label),
+              h('p', { className: "text-3xl font-bold text-jaguar-900 mt-2" }, '0')))));
+    };
+
+    // Campaigns Component with Full Functionality
+    const Campaigns = () => {
+      const [campaigns, setCampaigns] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [showModal, setShowModal] = useState(false);
+
+      useEffect(() => {
+        loadCampaigns();
+      }, []);
+
+      const loadCampaigns = async () => {
+        try {
+          setLoading(true);
+          const data = await api.getCampaigns();
+          setCampaigns(data);
+        } catch (err) {
+          console.error('Failed to load campaigns:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleCampaignCreated = () => {
+        loadCampaigns();
+        setShowModal(false);
+      };
+
+      return h('div', { className: "space-y-8" },
+        h('div', { className: "flex justify-between items-end" },
+          h('div', null,
+            h('h2', { className: "font-serif text-3xl text-jaguar-900" }, 'Campaigns'),
+            h('p', { className: "text-stone-500 mt-2" }, 'Create and manage your email campaigns.')),
+          h('button', {
+            onClick: () => setShowModal(true),
+            className: "px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2"
+          },
+            Icons.Plus({ size: 20 }), 'Create Campaign')),
+        loading ? h('div', { className: "text-center py-12" },
+          h('div', { className: "inline-block animate-spin text-jaguar-900" }, Icons.Loader2({ size: 32 })),
+          h('p', { className: "text-stone-400 mt-4" }, 'Loading campaigns...')
+        ) : campaigns.length === 0 ? h('div', { className: "text-center py-12" },
+          h('p', { className: "text-stone-400" }, 'No campaigns yet. Create your first campaign to get started!')
+        ) : h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
+          ...campaigns.map(campaign =>
+            h('div', { key: campaign.id, className: "bg-white rounded-2xl p-6 border border-stone-200 shadow-sm hover:shadow-md transition-shadow" },
+              h('div', { className: "flex items-start justify-between mb-4" },
+                h('div', null,
+                  h('h3', { className: "font-medium text-jaguar-900 text-lg" }, campaign.name),
+                  h('p', { className: "text-xs text-stone-500 mt-1" },
+                    campaign.email_accounts?.email_address || 'No account')),
+                h('span', {
+                  className: `px-2 py-1 text-xs rounded-full ${
+                    campaign.status === 'running' ? 'bg-green-100 text-green-700' :
+                    campaign.status === 'paused' ? 'bg-yellow-100 text-yellow-700' :
+                    campaign.status === 'completed' ? 'bg-blue-100 text-blue-700' :
+                    'bg-stone-100 text-stone-700'
+                  }`
+                }, campaign.status)),
+              h('div', { className: "space-y-2 text-sm" },
+                h('div', { className: "flex justify-between" },
+                  h('span', { className: "text-stone-500" }, 'Contact List:'),
+                  h('span', { className: "font-medium text-jaguar-900" },
+                    campaign.contact_lists?.name || 'None')),
+                h('div', { className: "flex justify-between" },
+                  h('span', { className: "text-stone-500" }, 'Daily Limit:'),
+                  h('span', { className: "font-medium text-jaguar-900" }, campaign.daily_limit || 'N/A')),
+                campaign.started_at && h('div', { className: "flex justify-between" },
+                  h('span', { className: "text-stone-500" }, 'Started:'),
+                  h('span', { className: "text-xs text-stone-600" },
+                    new Date(campaign.started_at).toLocaleDateString()))))
+          )),
+        showModal && h(CreateCampaignModal, {
+          onClose: () => setShowModal(false),
+          onSuccess: handleCampaignCreated
+        })
+      );
+    };
+
+    // Campaign Sequence Builder - Full Featured
+    const CreateCampaignModal = ({ onClose, onSuccess }) => {
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [emailAccounts, setEmailAccounts] = useState([]);
+      const [contactLists, setContactLists] = useState([]);
+      const [campaignName, setCampaignName] = useState('');
+      const [emailAccountId, setEmailAccountId] = useState('');
+      const [contactListId, setContactListId] = useState('');
+      const [dailyLimit, setDailyLimit] = useState(500);
+      const [steps, setSteps] = useState([{
+        id: 1,
+        type: 'email',
+        subject: 'Collaboration Opportunity',
+        body: 'Hi {{first_name}}, I saw your work at...',
+        order: 1
+      }]);
+      const [selectedStepId, setSelectedStepId] = useState(1);
+      const [showAddMenu, setShowAddMenu] = useState(false);
+
+      useEffect(() => { loadData(); }, []);
+
+      const loadData = async () => {
+        try {
+          const [accounts, lists] = await Promise.all([api.getEmailAccounts(), api.getContactLists()]);
+          setEmailAccounts(accounts);
+          setContactLists(lists);
+          if (accounts.length > 0) setEmailAccountId(accounts[0].id);
+          if (lists.length > 0) setContactListId(lists[0].id);
+        } catch (err) {
+          setError('Failed to load accounts and lists');
+        }
+      };
+
+      const getCurrentStep = () => steps.find(s => s.id === selectedStepId);
+      const updateStep = (id, updates) => setSteps(steps.map(s => s.id === id ? { ...s, ...updates } : s));
+
+      const addStep = (type) => {
+        const newId = Math.max(...steps.map(s => s.id), 0) + 1;
+        const newStep = {
+          id: newId, order: steps.length + 1, type,
+          subject: type === 'email' ? 'Follow Up' : '',
+          body: type === 'email' ? 'Hi {{first_name}},' : '',
+          wait_days: type === 'wait' ? 2 : undefined,
+          condition_type: type === 'condition' ? 'if_opened' : undefined
+        };
+        setSteps([...steps, newStep]);
+        setSelectedStepId(newId);
+        setShowAddMenu(false);
+      };
+
+      const deleteStep = (id) => {
+        if (steps.length === 1) return;
+        const filtered = steps.filter(s => s.id !== id);
+        setSteps(filtered.map((s, idx) => ({ ...s, order: idx + 1 })));
+        setSelectedStepId(filtered[0]?.id || steps[0]?.id);
+      };
+
+      const insertVariable = (variable) => {
+        const step = getCurrentStep();
+        if (step && step.type === 'email') {
+          updateStep(step.id, { body: (step.body || '') + ` {{${variable}}}` });
+        }
+      };
+
+      const handleSaveDraft = async () => {
+        if (!campaignName) { setError('Please enter a campaign name'); return; }
+        if (!emailAccountId) { setError('Please select an email account'); return; }
+        if (!contactListId) { setError('Please select a contact list'); return; }
+        setLoading(true);
+        setError('');
+        try {
+          await api.createCampaign({ name: campaignName, email_account_id: emailAccountId, contact_list_id: contactListId, daily_limit: dailyLimit });
+          onSuccess();
+        } catch (err) {
+          setError(err.message || 'Failed to save campaign');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const currentStep = getCurrentStep();
+
+      return h('div', { className: "fixed inset-0 bg-stone-50 z-50 flex flex-col" },
+        h('div', { className: "bg-white border-b border-stone-200 px-6 py-4 flex items-center justify-between" },
+          h('div', { className: "flex items-center gap-4" },
+            h('button', { onClick: onClose, className: "p-2 hover:bg-stone-100 rounded-lg transition-colors" }, Icons.X({ size: 20 })),
+            h('div', null,
+              h('input', {
+                type: "text", value: campaignName, onChange: e => setCampaignName(e.target.value),
+                placeholder: "Campaign Name",
+                className: "text-xl font-serif font-semibold text-jaguar-900 border-none outline-none focus:ring-0 bg-transparent"
+              }),
+              h('p', { className: "text-xs text-stone-500 mt-0.5" }, 'Draft • Last saved just now'))),
+          h('div', { className: "flex items-center gap-3" },
+            h('button', {
+              onClick: handleSaveDraft, disabled: loading,
+              className: "px-4 py-2 border-2 border-stone-300 text-stone-700 rounded-lg hover:bg-stone-50 transition-colors font-medium flex items-center gap-2"
+            }, loading ? Icons.Loader2({ size: 16 }) : Icons.Upload({ size: 16 }), 'Save Draft'),
+            h('button', {
+              onClick: handleSaveDraft, disabled: loading || !campaignName,
+              className: "px-5 py-2 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-lg hover:shadow-lg transition-all font-medium flex items-center gap-2 disabled:opacity-50"
+            }, Icons.Send({ size: 16 }), 'Launch'))),
+
+        error && h('div', { className: "mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2" },
+          Icons.AlertCircle({ size: 16 }), error),
+
+        h('div', { className: "flex-1 flex overflow-hidden" },
+          h('div', { className: "w-96 bg-cream-50 border-r border-stone-200 flex flex-col" },
+            h('div', { className: "p-4 space-y-3 flex-1 overflow-y-auto" },
+              ...steps.map((step, idx) =>
+                h('div', { key: step.id, className: "space-y-2" },
+                  h('button', {
+                    onClick: () => setSelectedStepId(step.id),
+                    className: `w-full text-left p-4 rounded-xl transition-all ${selectedStepId === step.id ? 'bg-white shadow-md border-2 border-jaguar-900' : 'bg-white border border-stone-200 hover:border-jaguar-300'}`
+                  },
+                    h('div', { className: "flex items-start gap-3" },
+                      h('div', { className: `w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${step.type === 'email' ? 'bg-blue-100' : step.type === 'wait' ? 'bg-yellow-100' : 'bg-purple-100'}` },
+                        step.type === 'email' ? Icons.Mail({ size: 18, className: "text-blue-600" }) :
+                        step.type === 'wait' ? h('svg', { className: "w-5 h-5 text-yellow-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" })) :
+                        h('svg', { className: "w-5 h-5 text-purple-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M8 9l4-4 4 4m0 6l-4 4-4-4" }))),
+                      h('div', { className: "flex-1 min-w-0" },
+                        h('div', { className: "flex items-center justify-between mb-1" },
+                          h('span', { className: "text-xs font-semibold text-stone-500 uppercase tracking-wide" }, `Step ${idx + 1}`),
+                          selectedStepId === step.id && steps.length > 1 && h('button', {
+                            onClick: (e) => { e.stopPropagation(); deleteStep(step.id); },
+                            className: "text-red-500 hover:text-red-700 p-1"
+                          }, h('svg', { className: "w-4 h-4", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" })))),
+                        step.type === 'email' && h('div', null,
+                          h('p', { className: "font-semibold text-stone-900 truncate" }, step.subject || 'Untitled Email'),
+                          h('p', { className: "text-xs text-stone-500 truncate mt-0.5" }, step.body?.substring(0, 50) + '...' || 'No content')),
+                        step.type === 'wait' && h('div', null,
+                          h('p', { className: "font-semibold text-stone-900" }, `Wait ${step.wait_days || 2} Days`),
+                          h('p', { className: "text-xs text-stone-500 mt-0.5" }, 'Pause before next step')),
+                        step.type === 'condition' && h('div', null,
+                          h('p', { className: "font-semibold text-stone-900" }, `Condition: ${step.condition_type === 'if_opened' ? 'If opened...' : step.condition_type === 'if_clicked' ? 'If clicked...' : 'If replied...'}`),
+                          h('p', { className: "text-xs text-stone-500 mt-0.5" }, 'Branch based on action'))))),
+                  idx < steps.length - 1 && h('div', { className: "flex justify-center" }, h('div', { className: "w-0.5 h-4 bg-stone-300" })))),
+
+            h('div', { className: "p-4 border-t border-stone-200 relative" },
+              h('button', {
+                onClick: () => setShowAddMenu(!showAddMenu),
+                className: "w-full py-3 border-2 border-dashed border-stone-300 rounded-xl hover:border-jaguar-900 hover:bg-jaguar-50 transition-all font-medium text-stone-600 hover:text-jaguar-900 flex items-center justify-center gap-2"
+              }, Icons.Plus({ size: 20 }), 'Add Next Step'),
+              showAddMenu && h('div', { className: "absolute bottom-full left-4 right-4 mb-2 bg-white rounded-xl shadow-xl border border-stone-200 overflow-hidden z-10" },
+                h('button', {
+                  onClick: () => addStep('email'),
+                  className: "w-full px-4 py-3 text-left hover:bg-stone-50 flex items-center gap-3 border-b border-stone-100"
+                },
+                  h('div', { className: "w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center" }, Icons.Mail({ size: 16, className: "text-blue-600" })),
+                  h('div', null, h('p', { className: "font-medium text-stone-900" }, 'Email'), h('p', { className: "text-xs text-stone-500" }, 'Send an email message'))),
+                h('button', {
+                  onClick: () => addStep('wait'),
+                  className: "w-full px-4 py-3 text-left hover:bg-stone-50 flex items-center gap-3 border-b border-stone-100"
+                },
+                  h('div', { className: "w-8 h-8 rounded-lg bg-yellow-100 flex items-center justify-center" }, h('svg', { className: "w-4 h-4 text-yellow-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" }))),
+                  h('div', null, h('p', { className: "font-medium text-stone-900" }, 'Wait'), h('p', { className: "text-xs text-stone-500" }, 'Delay before next step'))),
+                h('button', {
+                  onClick: () => addStep('condition'),
+                  className: "w-full px-4 py-3 text-left hover:bg-stone-50 flex items-center gap-3"
+                },
+                  h('div', { className: "w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center" }, h('svg', { className: "w-4 h-4 text-purple-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M8 9l4-4 4 4m0 6l-4 4-4-4" }))),
+                  h('div', null, h('p', { className: "font-medium text-stone-900" }, 'Condition'), h('p', { className: "text-xs text-stone-500" }, 'Branch based on action')))))),
+
+          h('div', { className: "flex-1 flex flex-col bg-white" },
+            !currentStep ? h('div', { className: "flex-1 flex items-center justify-center text-stone-400" },
+              h('div', { className: "text-center" }, h('p', { className: "text-lg font-medium" }, 'Select a step from the timeline'), h('p', { className: "text-sm mt-1" }, 'Choose a step to edit'))) :
+
+            currentStep.type === 'email' ? h('div', { className: "flex-1 flex flex-col p-6 overflow-y-auto" },
+              h('div', { className: "max-w-3xl mx-auto w-full space-y-6" },
+                h('div', null,
+                  h('label', { className: "block text-sm font-semibold text-stone-700 mb-2" }, 'Subject Line'),
+                  h('input', {
+                    type: "text", value: currentStep.subject || '', onChange: e => updateStep(currentStep.id, { subject: e.target.value }),
+                    className: "w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
+                    placeholder: "e.g., Collaboration Opportunity"
+                  }),
+                  h('p', { className: "text-xs text-stone-500 mt-1" }, `${(currentStep.subject || '').length} / 60 characters`)),
+
+                h('div', null,
+                  h('div', { className: "flex items-center justify-between mb-2" },
+                    h('label', { className: "block text-sm font-semibold text-stone-700" }, 'Email Body'),
+                    h('div', { className: "flex gap-1" },
+                      ['first_name', 'last_name', 'company', 'email'].map(v =>
+                        h('button', {
+                          key: v, onClick: () => insertVariable(v),
+                          className: "px-2 py-1 text-xs bg-stone-100 hover:bg-jaguar-100 text-stone-700 hover:text-jaguar-900 rounded border border-stone-200 hover:border-jaguar-300 transition-colors"
+                        }, `{{${v}}}`)))),
+                  h('textarea', {
+                    value: currentStep.body || '', onChange: e => updateStep(currentStep.id, { body: e.target.value }),
+                    rows: 12,
+                    className: "w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all resize-none font-mono text-sm",
+                    placeholder: "Hi {{first_name}},\n\nI came across your work and..."
+                  }),
+                  h('p', { className: "text-xs text-stone-500 mt-1" }, 'Use {{variable}} for personalization')),
+
+                h('div', { className: "grid grid-cols-2 gap-4 pt-4 border-t border-stone-200" },
+                  h('div', null,
+                    h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Email Account'),
+                    h('select', {
+                      value: emailAccountId, onChange: e => setEmailAccountId(e.target.value),
+                      className: "w-full px-3 py-2 border border-stone-200 rounded-lg text-sm"
+                    }, ...emailAccounts.map(acc => h('option', { key: acc.id, value: acc.id }, acc.email_address)))),
+                  h('div', null,
+                    h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Contact List'),
+                    h('select', {
+                      value: contactListId, onChange: e => setContactListId(e.target.value),
+                      className: "w-full px-3 py-2 border border-stone-200 rounded-lg text-sm"
+                    }, ...contactLists.map(list => h('option', { key: list.id, value: list.id }, `${list.name} (${list.total_contacts || 0})`))))))) :
+
+            currentStep.type === 'wait' ? h('div', { className: "flex-1 flex items-center justify-center p-6" },
+              h('div', { className: "max-w-md w-full space-y-6" },
+                h('div', { className: "text-center mb-6" },
+                  h('div', { className: "w-16 h-16 mx-auto rounded-full bg-yellow-100 flex items-center justify-center mb-4" }, h('svg', { className: "w-8 h-8 text-yellow-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" }))),
+                  h('h3', { className: "text-xl font-semibold text-stone-900" }, 'Wait Step')),
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Wait Duration (Days)'),
+                  h('input', {
+                    type: "number", min: 1, max: 30, value: currentStep.wait_days || 2,
+                    onChange: e => updateStep(currentStep.id, { wait_days: parseInt(e.target.value) }),
+                    className: "w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all text-center text-2xl font-bold"
+                  }),
+                  h('p', { className: "text-sm text-stone-500 mt-2 text-center" }, 'Pause before sending the next message')))) :
+
+            h('div', { className: "flex-1 flex items-center justify-center p-6" },
+              h('div', { className: "max-w-md w-full space-y-6" },
+                h('div', { className: "text-center mb-6" },
+                  h('div', { className: "w-16 h-16 mx-auto rounded-full bg-purple-100 flex items-center justify-center mb-4" }, h('svg', { className: "w-8 h-8 text-purple-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M8 9l4-4 4 4m0 6l-4 4-4-4" }))),
+                  h('h3', { className: "text-xl font-semibold text-stone-900" }, 'Conditional Branch')),
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Condition Type'),
+                  h('select', {
+                    value: currentStep.condition_type || 'if_opened',
+                    onChange: e => updateStep(currentStep.id, { condition_type: e.target.value }),
+                    className: "w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  },
+                    h('option', { value: 'if_opened' }, 'If email was opened'),
+                    h('option', { value: 'if_not_opened' }, 'If email was NOT opened'),
+                    h('option', { value: 'if_clicked' }, 'If link was clicked'),
+                    h('option', { value: 'if_replied' }, 'If contact replied')),
+                  h('p', { className: "text-sm text-stone-500 mt-2" }, 'Branch to different steps based on contact behavior'))))))
+      );
+    };
+
+    // Contacts Component with Full Functionality
+    const Contacts = () => {
+      const [contactLists, setContactLists] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [showModal, setShowModal] = useState(false);
+
+      useEffect(() => {
+        loadContactLists();
+      }, []);
+
+      const loadContactLists = async () => {
+        try {
+          setLoading(true);
+          const data = await api.getContactLists();
+          setContactLists(data);
+        } catch (err) {
+          console.error('Failed to load contact lists:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleImportComplete = () => {
+        loadContactLists();
+        setShowModal(false);
+      };
+
+      return h('div', { className: "space-y-8" },
+        h('div', { className: "flex justify-between items-end" },
+          h('div', null,
+            h('h2', { className: "font-serif text-3xl text-jaguar-900" }, 'Contacts'),
+            h('p', { className: "text-stone-500 mt-2" }, 'Manage your contact lists and import from CSV.')),
+          h('button', {
+            onClick: () => setShowModal(true),
+            className: "px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2"
+          },
+            Icons.Upload({ size: 20 }), 'Import CSV')),
+        loading ? h('div', { className: "text-center py-12" },
+          h('div', { className: "inline-block animate-spin text-jaguar-900" }, Icons.Loader2({ size: 32 })),
+          h('p', { className: "text-stone-400 mt-4" }, 'Loading contacts...')
+        ) : contactLists.length === 0 ? h('div', { className: "text-center py-12" },
+          h('p', { className: "text-stone-400" }, 'No contacts yet. Import a CSV file to get started!')
+        ) : h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
+          ...contactLists.map(list =>
+            h('div', { key: list.id, className: "bg-white rounded-2xl p-6 border border-stone-200 shadow-sm hover:shadow-md transition-shadow" },
+              h('div', { className: "flex items-start justify-between mb-4" },
+                h('div', { className: "flex items-center gap-3" },
+                  h('div', { className: "w-12 h-12 rounded-xl bg-gradient-to-br from-jaguar-900 to-jaguar-800 flex items-center justify-center shadow-lg" },
+                    Icons.Users({ size: 24, className: "text-cream-50" })),
+                  h('div', null,
+                    h('h3', { className: "font-medium text-jaguar-900" }, list.name),
+                    h('p', { className: "text-xs text-stone-500" }, list.description || 'No description'))),
+                h('span', { className: "px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-700 font-medium" },
+                  `${list.total_contacts || 0} contacts`)),
+              list.created_at && h('div', { className: "text-xs text-stone-500 mt-4" },
+                `Created ${new Date(list.created_at).toLocaleDateString()}`))
+          )),
+        showModal && h(ImportContactsModal, {
+          onClose: () => setShowModal(false),
+          onSuccess: handleImportComplete
+        })
+      );
+    };
+
+    // Import Contacts Modal - Enhanced with drag-drop, Excel support, and column mapping
+    const ImportContactsModal = ({ onClose, onSuccess }) => {
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [success, setSuccess] = useState('');
+      const [step, setStep] = useState(1); // 1: list name, 2: file upload, 3: column mapping
+      const [listName, setListName] = useState('');
+      const [listDescription, setListDescription] = useState('');
+      const [file, setFile] = useState(null);
+      const [parsedData, setParsedData] = useState(null);
+      const [columnMapping, setColumnMapping] = useState({});
+      const [dragActive, setDragActive] = useState(false);
+      const fileInputRef = { current: null };
+
+      const parseFile = (file) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = e.target.result;
+            let workbook;
+
+            if (file.name.endsWith('.csv')) {
+              workbook = XLSX.read(data, { type: 'string' });
+            } else {
+              workbook = XLSX.read(data, { type: 'binary' });
+            }
+
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+
+            if (jsonData.length < 2) {
+              setError('File must contain at least a header row and one data row');
+              return;
+            }
+
+            const headers = jsonData[0];
+            const rows = jsonData.slice(1, 6); // Preview first 5 rows
+
+            setParsedData({ headers, rows, allData: jsonData });
+            setFile(file);
+            setError('');
+            setSuccess('');
+
+            // Auto-detect columns
+            const mapping = {};
+            headers.forEach((header, idx) => {
+              const lower = String(header).toLowerCase();
+              if (lower.includes('email') || lower.includes('e-mail')) mapping[idx] = 'email';
+              else if (lower.includes('first') && lower.includes('name')) mapping[idx] = 'first_name';
+              else if (lower.includes('last') && lower.includes('name')) mapping[idx] = 'last_name';
+              else if (lower.includes('name') && !mapping[idx]) mapping[idx] = 'first_name';
+              else if (lower.includes('company') || lower.includes('organization')) mapping[idx] = 'company';
+            });
+            setColumnMapping(mapping);
+            setStep(3);
+          } catch (err) {
+            setError('Failed to parse file: ' + err.message);
+          }
+        };
+
+        if (file.name.endsWith('.csv')) {
+          reader.readAsText(file);
+        } else {
+          reader.readAsBinaryString(file);
+        }
+      };
+
+      const handleFileChange = (e) => {
+        const selectedFile = e.target.files[0];
+        if (!selectedFile) return;
+
+        const validExtensions = ['.csv', '.xlsx', '.xls'];
+        const isValid = validExtensions.some(ext => selectedFile.name.toLowerCase().endsWith(ext));
+
+        if (!isValid) {
+          setError('Please select a CSV or Excel file (.csv, .xlsx, .xls)');
+          return;
+        }
+
+        parseFile(selectedFile);
+      };
+
+      const handleDrag = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === 'dragenter' || e.type === 'dragover') {
+          setDragActive(true);
+        } else if (e.type === 'dragleave') {
+          setDragActive(false);
+        }
+      };
+
+      const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragActive(false);
+
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          const droppedFile = e.dataTransfer.files[0];
+          const validExtensions = ['.csv', '.xlsx', '.xls'];
+          const isValid = validExtensions.some(ext => droppedFile.name.toLowerCase().endsWith(ext));
+
+          if (!isValid) {
+            setError('Please drop a CSV or Excel file (.csv, .xlsx, .xls)');
+            return;
+          }
+
+          parseFile(droppedFile);
+        }
+      };
+
+      const handleNext = () => {
+        if (!listName) {
+          setError('Please enter a list name');
+          return;
+        }
+        setError('');
+        setStep(2);
+      };
+
+      const handleSubmit = async () => {
+        setLoading(true);
+        setError('');
+        setSuccess('');
+
+        try {
+          // Validate email column is mapped
+          const emailColumnIdx = Object.keys(columnMapping).find(idx => columnMapping[idx] === 'email');
+          if (!emailColumnIdx) {
+            setError('Please map at least one column to Email');
+            setLoading(false);
+            return;
+          }
+
+          // Create contact list
+          const list = await api.createContactList(listName, listDescription);
+
+          // Build contacts array
+          const contacts = [];
+          for (let i = 1; i < parsedData.allData.length; i++) {
+            const row = parsedData.allData[i];
+            const contact = {
+              email: '',
+              first_name: '',
+              last_name: '',
+              company: '',
+              custom_fields: {}
+            };
+
+            Object.keys(columnMapping).forEach(colIdx => {
+              const fieldType = columnMapping[colIdx];
+              const value = String(row[colIdx] || '').trim();
+
+              if (fieldType === 'email') contact.email = value;
+              else if (fieldType === 'first_name') contact.first_name = value;
+              else if (fieldType === 'last_name') contact.last_name = value;
+              else if (fieldType === 'company') contact.company = value;
+              else if (fieldType !== 'skip') contact.custom_fields[parsedData.headers[colIdx]] = value;
+            });
+
+            if (contact.email && contact.email.includes('@')) {
+              contacts.push(contact);
+            }
+          }
+
+          if (contacts.length === 0) {
+            setError('No valid contacts found. Please ensure email addresses are valid.');
+            setLoading(false);
+            return;
+          }
+
+          // Import contacts
+          const result = await api.post(`/api/contact-lists/${list.id}/import`, { contacts });
+          setSuccess(`Successfully imported ${result.imported} contacts!${result.duplicates > 0 ? ` (${result.duplicates} duplicates skipped)` : ''}`);
+          setTimeout(() => onSuccess(), 1500);
+        } catch (err) {
+          setError(err.message || 'Failed to import contacts');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const stepTitles = ['Contact List Info', 'Upload File', 'Map Columns'];
+      const stepDescriptions = ['Name your contact list', 'CSV, Excel (.xlsx, .xls)', 'Match columns to fields'];
+
+      return h('div', {
+        className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4",
+        onClick: onClose
+      },
+        h('div', {
+          className: "bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl",
+          onClick: e => e.stopPropagation()
+        },
+          h('div', { className: "sticky top-0 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 p-6 rounded-t-2xl z-10" },
+            h('div', { className: "flex justify-between items-center mb-4" },
+              h('div', null,
+                h('h3', { className: "font-serif text-2xl" }, 'Import Contacts'),
+                h('p', { className: "text-jaguar-100 text-sm mt-1" }, stepDescriptions[step - 1])),
+              h('button', {
+                onClick: onClose,
+                className: "w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all duration-300"
+              }, Icons.X({ size: 20 }))),
+            h('div', { className: "flex gap-2" },
+              ...stepTitles.map((title, idx) =>
+                h('div', {
+                  key: idx,
+                  className: `flex-1 h-1 rounded-full transition-all ${idx < step ? 'bg-gold-500' : 'bg-white/20'}`
+                })))),
+
+          h('div', { className: "p-6" },
+            error && h('div', { className: "mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2" },
+              Icons.AlertCircle({ size: 16 }), error),
+            success && h('div', { className: "mb-4 p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex items-center gap-2" },
+              h('svg', { className: "w-4 h-4", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" },
+                h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M5 13l4 4L19 7" })),
+              success),
+
+            // Step 1: List Name
+            step === 1 && h('div', { className: "space-y-5" },
+              h('div', null,
+                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'List Name *'),
+                h('input', {
+                  type: "text",
+                  required: true,
+                  value: listName,
+                  onChange: e => setListName(e.target.value),
+                  className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
+                  placeholder: "e.g., Q1 2024 Prospects"
+                })),
+              h('div', null,
+                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Description'),
+                h('textarea', {
+                  value: listDescription,
+                  onChange: e => setListDescription(e.target.value),
+                  rows: 3,
+                  className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all resize-none",
+                  placeholder: "Brief description of this contact list..."
+                })),
+              h('button', {
+                onClick: handleNext,
+                disabled: !listName,
+                className: "w-full px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl hover:from-jaguar-800 hover:to-jaguar-700 transition-all duration-300 shadow-lg hover:shadow-xl font-medium disabled:opacity-50"
+              }, 'Next: Upload File →')),
+
+            // Step 2: File Upload with Drag-Drop
+            step === 2 && h('div', { className: "space-y-5" },
+              h('div', {
+                className: `border-2 border-dashed rounded-xl p-12 text-center transition-all ${dragActive ? 'border-jaguar-900 bg-jaguar-50' : file ? 'border-green-500 bg-green-50' : 'border-stone-300 hover:border-jaguar-900'}`,
+                onDragEnter: handleDrag,
+                onDragLeave: handleDrag,
+                onDragOver: handleDrag,
+                onDrop: handleDrop
+              },
+                h('input', {
+                  ref: r => fileInputRef.current = r,
+                  type: "file",
+                  accept: ".csv,.xlsx,.xls",
+                  onChange: handleFileChange,
+                  className: "hidden"
+                }),
+                file ? h('div', { className: "space-y-3" },
+                  h('div', { className: "w-16 h-16 mx-auto rounded-full bg-green-100 flex items-center justify-center" },
+                    h('svg', { className: "w-8 h-8 text-green-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" },
+                      h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M5 13l4 4L19 7" }))),
+                  h('div', null,
+                    h('p', { className: "font-semibold text-green-900 text-lg" }, file.name),
+                    h('p', { className: "text-sm text-green-700 mt-1" },
+                      `${(file.size / 1024).toFixed(1)} KB • ${parsedData.allData.length - 1} rows detected`)),
+                  h('button', {
+                    type: "button",
+                    onClick: () => fileInputRef.current?.click(),
+                    className: "mt-2 px-4 py-2 text-sm bg-white border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors font-medium"
+                  }, 'Choose Different File')
+                ) : h('div', { className: "space-y-4" },
+                  h('div', { className: "w-20 h-20 mx-auto rounded-full bg-jaguar-100 flex items-center justify-center" },
+                    Icons.Upload({ size: 32, className: "text-jaguar-900" })),
+                  h('div', null,
+                    h('p', { className: "text-lg font-semibold text-stone-700" }, 'Drag & drop your file here'),
+                    h('p', { className: "text-sm text-stone-500 mt-1" }, 'or click to browse')),
+                  h('div', { className: "flex items-center justify-center gap-2 mt-4" },
+                    h('span', { className: "px-3 py-1 bg-stone-100 text-stone-600 rounded-full text-xs font-medium" }, '.CSV'),
+                    h('span', { className: "px-3 py-1 bg-stone-100 text-stone-600 rounded-full text-xs font-medium" }, '.XLSX'),
+                    h('span', { className: "px-3 py-1 bg-stone-100 text-stone-600 rounded-full text-xs font-medium" }, '.XLS')),
+                  h('button', {
+                    type: "button",
+                    onClick: () => fileInputRef.current?.click(),
+                    className: "mt-4 px-6 py-3 bg-jaguar-900 text-cream-50 rounded-xl hover:bg-jaguar-800 transition-colors font-medium"
+                  }, 'Browse Files'))),
+              file && h('button', {
+                onClick: () => setStep(1),
+                className: "w-full px-6 py-3 bg-white border-2 border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-all font-medium"
+              }, '← Back')),
+
+            // Step 3: Column Mapping
+            step === 3 && parsedData && h('div', { className: "space-y-5" },
+              h('div', { className: "bg-blue-50 border border-blue-200 rounded-xl p-4" },
+                h('p', { className: "text-sm text-blue-800 font-medium" },
+                  `📊 ${parsedData.allData.length - 1} contacts detected. Map columns below:`)),
+
+              h('div', { className: "overflow-x-auto" },
+                h('table', { className: "w-full border-collapse" },
+                  h('thead', null,
+                    h('tr', { className: "border-b-2 border-stone-200" },
+                      h('th', { className: "text-left py-3 px-4 text-sm font-semibold text-stone-700" }, 'Column'),
+                      h('th', { className: "text-left py-3 px-4 text-sm font-semibold text-stone-700" }, 'Sample Data'),
+                      h('th', { className: "text-left py-3 px-4 text-sm font-semibold text-stone-700 w-48" }, 'Map To Field'))),
+                  h('tbody', null,
+                    ...parsedData.headers.map((header, idx) =>
+                      h('tr', { key: idx, className: "border-b border-stone-100 hover:bg-stone-50" },
+                        h('td', { className: "py-3 px-4 font-medium text-stone-900" }, header || `Column ${idx + 1}`),
+                        h('td', { className: "py-3 px-4 text-sm text-stone-600" },
+                          parsedData.rows[0]?.[idx] ? String(parsedData.rows[0][idx]).substring(0, 30) + (String(parsedData.rows[0][idx]).length > 30 ? '...' : '') : '—'),
+                        h('td', { className: "py-3 px-4" },
+                          h('select', {
+                            value: columnMapping[idx] || '',
+                            onChange: e => setColumnMapping({ ...columnMapping, [idx]: e.target.value }),
+                            className: "w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900"
+                          },
+                            h('option', { value: '' }, 'Skip'),
+                            h('option', { value: 'email' }, '📧 Email'),
+                            h('option', { value: 'first_name' }, '👤 First Name'),
+                            h('option', { value: 'last_name' }, '👤 Last Name'),
+                            h('option', { value: 'company' }, '🏢 Company')))))))),
+
+              h('div', { className: "flex gap-3" },
+                h('button', {
+                  onClick: () => { setStep(2); setParsedData(null); setFile(null); },
+                  className: "flex-1 px-6 py-3 bg-white border-2 border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-all font-medium"
+                }, '← Back'),
+                h('button', {
+                  onClick: handleSubmit,
+                  disabled: loading || !Object.values(columnMapping).includes('email'),
+                  className: "flex-1 px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl hover:from-jaguar-800 hover:to-jaguar-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+                }, loading ? [Icons.Loader2({ size: 18 }), ' Importing...'] : 'Import Contacts')))
+          ))
+        )
+      );
+    };
+
+    // Email Accounts Component with Full Functionality
+    const EmailAccounts = () => {
+      const [accounts, setAccounts] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [showModal, setShowModal] = useState(false);
+
+      useEffect(() => {
+        loadAccounts();
+      }, []);
+
+      const loadAccounts = async () => {
+        try {
+          setLoading(true);
+          const data = await api.getEmailAccounts();
+          setAccounts(data);
+        } catch (err) {
+          console.error('Failed to load accounts:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleAccountAdded = () => {
+        loadAccounts();
+        setShowModal(false);
+      };
+
+      return h('div', { className: "space-y-8" },
+        h('div', { className: "flex justify-between items-end" },
+          h('div', null,
+            h('h2', { className: "font-serif text-3xl text-jaguar-900" }, 'Infrastructure'),
+            h('p', { className: "text-stone-500 mt-2" }, 'Connect and manage your sending accounts.')),
+          h('button', {
+            onClick: () => setShowModal(true),
+            className: "px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2"
+          },
+            Icons.Plus({ size: 20 }), 'Connect Account')),
+        loading ? h('div', { className: "text-center py-12" },
+          h('div', { className: "inline-block animate-spin text-jaguar-900" }, Icons.Loader2({ size: 32 })),
+          h('p', { className: "text-stone-400 mt-4" }, 'Loading accounts...')
+        ) : accounts.length === 0 ? h('div', { className: "text-center py-12" },
+          h('p', { className: "text-stone-400" }, 'No email accounts yet. Connect your first account to get started!')
+        ) : h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
+          ...accounts.map(account =>
+            h('div', { key: account.id, className: "bg-white rounded-2xl p-6 border border-stone-200 shadow-sm hover:shadow-md transition-shadow" },
+              h('div', { className: "flex items-start justify-between mb-4" },
+                h('div', { className: "flex items-center gap-3" },
+                  h('div', { className: "w-12 h-12 rounded-xl bg-gradient-to-br from-jaguar-900 to-jaguar-800 flex items-center justify-center shadow-lg" },
+                    Icons.Mail({ size: 24, className: "text-cream-50" })),
+                  h('div', null,
+                    h('h3', { className: "font-medium text-jaguar-900" }, account.email_address),
+                    h('p', { className: "text-xs text-stone-500" }, account.account_type || 'Custom SMTP'))),
+                h('span', {
+                  className: `px-2 py-1 text-xs rounded-full ${account.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`
+                }, account.is_active ? 'Active' : 'Inactive')),
+              h('div', { className: "space-y-2 text-sm" },
+                h('div', { className: "flex justify-between" },
+                  h('span', { className: "text-stone-500" }, 'Daily Limit:'),
+                  h('span', { className: "font-medium text-jaguar-900" }, account.daily_send_limit || 'N/A')),
+                h('div', { className: "flex justify-between" },
+                  h('span', { className: "text-stone-500" }, 'Warming Up:'),
+                  h('span', { className: "font-medium" }, account.is_warming_up ? '🔥 Yes' : 'No')),
+                account.health_score && h('div', { className: "flex justify-between" },
+                  h('span', { className: "text-stone-500" }, 'Health:'),
+                  h('span', { className: `font-medium ${account.health_score > 80 ? 'text-green-600' : account.health_score > 50 ? 'text-yellow-600' : 'text-red-600'}` },
+                    `${account.health_score}%`))))
+          )),
+        showModal && h(AddEmailAccountModal, { onClose: () => setShowModal(false), onSuccess: handleAccountAdded })
+      );
+    };
+
+    // Add Email Account Modal Component
+    const AddEmailAccountModal = ({ onClose, onSuccess }) => {
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [formData, setFormData] = useState({
+        email_address: '',
+        account_type: 'stalwart',
+        imap_host: '',
+        imap_port: 993,
+        imap_username: '',
+        imap_password: '',
+        smtp_host: '',
+        smtp_port: 587,
+        smtp_username: '',
+        smtp_password: '',
+        daily_send_limit: 10000
+      });
+
+      const updateField = (field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+      };
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        try {
+          await api.createEmailAccount(formData);
+          onSuccess();
+        } catch (err) {
+          setError(err.message || 'Failed to add email account');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return h('div', {
+        className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4",
+        onClick: onClose
+      },
+        h('div', {
+          className: "bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl",
+          onClick: e => e.stopPropagation()
+        },
+          h('div', { className: "sticky top-0 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 p-6 rounded-t-2xl" },
+            h('div', { className: "flex justify-between items-center" },
+              h('div', null,
+                h('h3', { className: "font-serif text-2xl" }, 'Add Email Account'),
+                h('p', { className: "text-jaguar-100 text-sm mt-1" }, 'Connect your IMAP and SMTP servers')),
+              h('button', {
+                onClick: onClose,
+                className: "w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all duration-300"
+              }, Icons.X({ size: 20 })))),
+          h('form', { onSubmit: handleSubmit, className: "p-6 space-y-6" },
+            error && h('div', { className: "p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2" },
+              Icons.AlertCircle({ size: 16 }), error),
+
+            // Basic Info
+            h('div', { className: "space-y-4" },
+              h('h4', { className: "font-medium text-jaguar-900 flex items-center gap-2" },
+                Icons.Mail({ size: 18 }), 'Basic Information'),
+              h('div', { className: "grid grid-cols-2 gap-4" },
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Email Address'),
+                  h('input', {
+                    type: "email",
+                    required: true,
+                    value: formData.email_address,
+                    onChange: e => updateField('email_address', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
+                    placeholder: "your@email.com"
+                  })),
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Account Type'),
+                  h('select', {
+                    value: formData.account_type,
+                    onChange: e => updateField('account_type', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all"
+                  },
+                    h('option', { value: "stalwart" }, 'Stalwart SMTP'),
+                    h('option', { value: "aws_workmail" }, 'AWS WorkMail'),
+                    h('option', { value: "other" }, 'Other'))))),
+
+            // IMAP Settings
+            h('div', { className: "space-y-4 p-4 bg-cream-50 rounded-xl border border-stone-200" },
+              h('h4', { className: "font-medium text-jaguar-900 flex items-center gap-2" },
+                Icons.Download({ size: 18 }), 'IMAP Settings (Incoming)'),
+              h('div', { className: "grid grid-cols-3 gap-4" },
+                h('div', { className: "col-span-2" },
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'IMAP Host'),
+                  h('input', {
+                    type: "text",
+                    required: true,
+                    value: formData.imap_host,
+                    onChange: e => updateField('imap_host', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all",
+                    placeholder: "imap.yourserver.com"
+                  })),
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Port'),
+                  h('input', {
+                    type: "number",
+                    required: true,
+                    value: formData.imap_port,
+                    onChange: e => updateField('imap_port', parseInt(e.target.value)),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  }))),
+              h('div', { className: "grid grid-cols-2 gap-4" },
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Username'),
+                  h('input', {
+                    type: "text",
+                    required: true,
+                    value: formData.imap_username,
+                    onChange: e => updateField('imap_username', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  })),
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Password'),
+                  h('input', {
+                    type: "password",
+                    required: true,
+                    value: formData.imap_password,
+                    onChange: e => updateField('imap_password', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  })))),
+
+            // SMTP Settings
+            h('div', { className: "space-y-4 p-4 bg-cream-50 rounded-xl border border-stone-200" },
+              h('h4', { className: "font-medium text-jaguar-900 flex items-center gap-2" },
+                Icons.Upload({ size: 18 }), 'SMTP Settings (Outgoing)'),
+              h('div', { className: "grid grid-cols-3 gap-4" },
+                h('div', { className: "col-span-2" },
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'SMTP Host'),
+                  h('input', {
+                    type: "text",
+                    required: true,
+                    value: formData.smtp_host,
+                    onChange: e => updateField('smtp_host', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all",
+                    placeholder: "smtp.yourserver.com"
+                  })),
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Port'),
+                  h('input', {
+                    type: "number",
+                    required: true,
+                    value: formData.smtp_port,
+                    onChange: e => updateField('smtp_port', parseInt(e.target.value)),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  }))),
+              h('div', { className: "grid grid-cols-2 gap-4" },
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Username'),
+                  h('input', {
+                    type: "text",
+                    required: true,
+                    value: formData.smtp_username,
+                    onChange: e => updateField('smtp_username', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  })),
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Password'),
+                  h('input', {
+                    type: "password",
+                    required: true,
+                    value: formData.smtp_password,
+                    onChange: e => updateField('smtp_password', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  })))),
+
+            // Daily Limit
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Daily Send Limit'),
+              h('input', {
+                type: "number",
+                value: formData.daily_send_limit,
+                onChange: e => updateField('daily_send_limit', parseInt(e.target.value)),
+                className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all",
+                placeholder: "10000"
+              })),
+
+            // Actions
+            h('div', { className: "flex gap-3 pt-4 border-t border-stone-200" },
+              h('button', {
+                type: "button",
+                onClick: onClose,
+                className: "flex-1 px-6 py-3 bg-white border-2 border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-all duration-300 font-medium"
+              }, 'Cancel'),
+              h('button', {
+                type: "submit",
+                disabled: loading,
+                className: "flex-1 px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl hover:from-jaguar-800 hover:to-jaguar-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+              }, loading ? [Icons.Loader2({ size: 18 }), ' Adding...'] : 'Add Account'))))
+      );
+    };
+
+    // Main App
+    const App = () => {
+      const [authState, setAuthState] = useState('checking');
+      const [publicView, setPublicView] = useState('landing');
+      const [privateView, setPrivateView] = useState('dashboard');
+      const [user, setUser] = useState(null);
+
+      useEffect(() => {
+        const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+        const userData = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.USER);
+        if (token && userData) {
+          setUser(JSON.parse(userData));
+          setAuthState('authenticated');
+        } else {
+          setAuthState('unauthenticated');
+        }
+      }, []);
+
+      const handleLogin = () => {
+        const userData = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.USER);
+        if (userData) setUser(JSON.parse(userData));
+        setAuthState('authenticated');
+      };
+
+      const handleLogout = async () => {
+        try { await api.logout(); } catch (error) { console.error('Logout error:', error); }
+        setUser(null);
+        setAuthState('unauthenticated');
+        setPublicView('landing');
+      };
+
+      if (authState === 'checking') {
+        return h('div', { className: "min-h-screen bg-[#FDFBF7] flex items-center justify-center" },
+          h('div', { className: "text-center space-y-4" },
+            h('div', { className: "w-16 h-16 bg-gold-600 rounded-xl rotate-45 mx-auto flex items-center justify-center shadow-2xl animate-pulse" },
+              h('div', { className: "w-8 h-8 bg-jaguar-900 -rotate-45 rounded-lg" })),
+            h('p', { className: "text-stone-500 font-medium" }, 'Loading Mr. Snowman...')));
+      }
+
+      if (authState === 'unauthenticated') {
+        if (publicView === 'landing') return h(LandingPage, { onNavigate: setPublicView });
+        return h(Auth, { view: publicView, onAuthenticate: handleLogin, onNavigate: setPublicView });
+      }
+
+      const NavItem = ({ view, icon, label }) => h('button', {
+        onClick: () => setPrivateView(view),
+        className: `w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${privateView === view ? 'bg-jaguar-800 text-cream-50 shadow-lg' : 'text-jaguar-100/60 hover:bg-jaguar-800/50 hover:text-cream-50'}`
+      }, icon({ size: 20 }), h('span', { className: "font-medium" }, label));
+
+      return h('div', { className: "flex h-screen bg-[#FDFBF7] overflow-hidden" },
+        h('aside', { className: "w-72 bg-gradient-to-b from-jaguar-900 to-jaguar-800 text-white flex flex-col shadow-2xl" },
+          h('div', { className: "p-8 border-b border-jaguar-700" },
+            h('div', { className: "flex items-center gap-3" },
+              h('div', { className: "w-10 h-10 bg-gold-600 rounded-xl rotate-45 flex items-center justify-center shadow-xl" },
+                h('div', { className: "w-5 h-5 bg-jaguar-900 -rotate-45 rounded-lg" })),
+              h('div', null,
+                h('h1', { className: "font-serif text-xl text-cream-50" }, 'Mr. ', h('span', { className: "text-gold-500" }, 'Snowman')),
+                h('p', { className: "text-xs text-jaguar-100/60" }, 'Outreach Automation')))),
+          h('nav', { className: "flex-1 px-4 py-6 space-y-2" },
+            h(NavItem, { view: 'dashboard', icon: Icons.LayoutDashboard, label: 'Overview' }),
+            h(NavItem, { view: 'campaigns', icon: Icons.Send, label: 'Campaigns' }),
+            h(NavItem, { view: 'contacts', icon: Icons.Users, label: 'Contacts' }),
+            h(NavItem, { view: 'infrastructure', icon: Icons.Layers, label: 'Infrastructure' })),
+          h('div', { className: "p-4 border-t border-jaguar-700" },
+            h('div', { className: "flex items-center justify-between px-4 py-3 bg-jaguar-800/50 rounded-xl" },
+              h('div', { className: "flex items-center gap-3" },
+                h('div', { className: "w-10 h-10 rounded-full bg-gradient-to-br from-gold-500 to-gold-600 flex items-center justify-center font-serif text-lg text-jaguar-900" },
+                  (user?.user_metadata?.name?.[0] || user?.email?.[0])?.toUpperCase() || 'U'),
+                h('div', { className: "flex-1 min-w-0" },
+                  h('p', { className: "text-sm font-medium text-cream-50 truncate" }, user?.user_metadata?.name || user?.email?.split('@')[0] || 'User'))),
+              h('button', { onClick: handleLogout, className: "text-jaguar-100/40 hover:text-cream-50 transition-colors p-2 hover:bg-jaguar-700 rounded-lg", title: "Logout" },
+                Icons.LogOut({ size: 18 }))))),
+        h('main', { className: "flex-1 flex flex-col overflow-hidden" },
+          h('header', { className: "h-20 border-b border-stone-200 bg-white/80 backdrop-blur-sm flex items-center px-8 shadow-sm" },
+            h('div', { className: "flex-1" },
+              h('h2', { className: "text-stone-400 text-sm uppercase tracking-widest font-medium" },
+                privateView === 'dashboard' ? 'Dashboard' : privateView === 'campaigns' ? 'Campaign Builder' : privateView === 'contacts' ? 'Contacts' : 'Infrastructure'))),
+          h('div', { className: "flex-1 overflow-y-auto" },
+            h('div', { className: "max-w-7xl mx-auto p-8" },
+              privateView === 'dashboard' && h(Dashboard),
+              privateView === 'campaigns' && h(Campaigns),
+              privateView === 'contacts' && h(Contacts),
+              privateView === 'infrastructure' && h(EmailAccounts)))));
+    };
+
+    // Render
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(h(App));
+    </script>
+</body>
+</html>
