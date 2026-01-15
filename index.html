@@ -165,6 +165,7 @@
       Loader2: (p) => Icon({...p, className:`animate-spin ${p.className||''}`, d: "M21 12a9 9 0 1 1-6.219-8.56"}),
       X: (p) => Icon({...p, d: [h('path', {key:1,d:"M18 6 6 18"}), h('path', {key:2,d:"m6 6 12 12"})]}),
       Upload: (p) => Icon({...p, d: [h('path', {key:1,d:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"}), h('polyline', {key:2,points:"17 8 12 3 7 8"}), h('line', {key:3,x1:"12",y1:"3",x2:"12",y2:"15"})]}),
+      Download: (p) => Icon({...p, d: [h('path', {key:1,d:"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"}), h('polyline', {key:2,points:"7 10 12 15 17 10"}), h('line', {key:3,x1:"12",y1:"15",x2:"12",y2:"3"})]}),
       AlertCircle: (p) => Icon({...p, d: [h('circle', {key:1,cx:"12",cy:"12",r:"10"}), h('line', {key:2,x1:"12",x2:"12",y1:"8",y2:"12"}), h('line', {key:3,x1:"12",x2:"12.01",y1:"16",y2:"16"})]})
     };
 
@@ -267,61 +268,755 @@
               h('p', { className: "text-3xl font-bold text-jaguar-900 mt-2" }, '0')))));
     };
 
-    // Simple Campaigns
+    // Campaigns Component with Full Functionality
     const Campaigns = () => {
+      const [campaigns, setCampaigns] = useState([]);
+      const [loading, setLoading] = useState(true);
       const [showModal, setShowModal] = useState(false);
+
+      useEffect(() => {
+        loadCampaigns();
+      }, []);
+
+      const loadCampaigns = async () => {
+        try {
+          setLoading(true);
+          const data = await api.getCampaigns();
+          setCampaigns(data);
+        } catch (err) {
+          console.error('Failed to load campaigns:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleCampaignCreated = () => {
+        loadCampaigns();
+        setShowModal(false);
+      };
+
       return h('div', { className: "space-y-8" },
         h('div', { className: "flex justify-between items-end" },
           h('div', null,
             h('h2', { className: "font-serif text-3xl text-jaguar-900" }, 'Campaigns'),
             h('p', { className: "text-stone-500 mt-2" }, 'Create and manage your email campaigns.')),
-          h('button', { onClick: () => setShowModal(true), className: "px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2" },
+          h('button', {
+            onClick: () => setShowModal(true),
+            className: "px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2"
+          },
             Icons.Plus({ size: 20 }), 'Create Campaign')),
-        h('div', { className: "text-center py-12" },
-          h('p', { className: "text-stone-400" }, 'No campaigns yet. Create your first campaign to get started!')),
-        showModal && h('div', { className: "fixed inset-0 bg-black/50 flex items-center justify-center z-50", onClick: () => setShowModal(false) },
-          h('div', { className: "bg-white rounded-2xl p-8 max-w-md w-full", onClick: e => e.stopPropagation() },
-            h('h3', { className: "text-2xl font-bold mb-4" }, 'Create Campaign'),
-            h('p', { className: "text-stone-600 mb-6" }, 'Campaign builder coming soon! You can create campaigns through the API.'),
-            h('button', { onClick: () => setShowModal(false), className: "w-full py-3 bg-jaguar-900 text-white rounded-lg" }, 'Close'))));
+        loading ? h('div', { className: "text-center py-12" },
+          h('div', { className: "inline-block animate-spin text-jaguar-900" }, Icons.Loader2({ size: 32 })),
+          h('p', { className: "text-stone-400 mt-4" }, 'Loading campaigns...')
+        ) : campaigns.length === 0 ? h('div', { className: "text-center py-12" },
+          h('p', { className: "text-stone-400" }, 'No campaigns yet. Create your first campaign to get started!')
+        ) : h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
+          ...campaigns.map(campaign =>
+            h('div', { key: campaign.id, className: "bg-white rounded-2xl p-6 border border-stone-200 shadow-sm hover:shadow-md transition-shadow" },
+              h('div', { className: "flex items-start justify-between mb-4" },
+                h('div', null,
+                  h('h3', { className: "font-medium text-jaguar-900 text-lg" }, campaign.name),
+                  h('p', { className: "text-xs text-stone-500 mt-1" },
+                    campaign.email_accounts?.email_address || 'No account')),
+                h('span', {
+                  className: `px-2 py-1 text-xs rounded-full ${
+                    campaign.status === 'running' ? 'bg-green-100 text-green-700' :
+                    campaign.status === 'paused' ? 'bg-yellow-100 text-yellow-700' :
+                    campaign.status === 'completed' ? 'bg-blue-100 text-blue-700' :
+                    'bg-stone-100 text-stone-700'
+                  }`
+                }, campaign.status)),
+              h('div', { className: "space-y-2 text-sm" },
+                h('div', { className: "flex justify-between" },
+                  h('span', { className: "text-stone-500" }, 'Contact List:'),
+                  h('span', { className: "font-medium text-jaguar-900" },
+                    campaign.contact_lists?.name || 'None')),
+                h('div', { className: "flex justify-between" },
+                  h('span', { className: "text-stone-500" }, 'Daily Limit:'),
+                  h('span', { className: "font-medium text-jaguar-900" }, campaign.daily_limit || 'N/A')),
+                campaign.started_at && h('div', { className: "flex justify-between" },
+                  h('span', { className: "text-stone-500" }, 'Started:'),
+                  h('span', { className: "text-xs text-stone-600" },
+                    new Date(campaign.started_at).toLocaleDateString()))))
+          )),
+        showModal && h(CreateCampaignModal, {
+          onClose: () => setShowModal(false),
+          onSuccess: handleCampaignCreated
+        })
+      );
     };
 
-    // Simple Contacts
+    // Create Campaign Modal
+    const CreateCampaignModal = ({ onClose, onSuccess }) => {
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [emailAccounts, setEmailAccounts] = useState([]);
+      const [contactLists, setContactLists] = useState([]);
+      const [formData, setFormData] = useState({
+        name: '',
+        email_account_id: '',
+        contact_list_id: '',
+        daily_limit: 500
+      });
+
+      useEffect(() => {
+        loadData();
+      }, []);
+
+      const loadData = async () => {
+        try {
+          const [accounts, lists] = await Promise.all([
+            api.getEmailAccounts(),
+            api.getContactLists()
+          ]);
+          setEmailAccounts(accounts);
+          setContactLists(lists);
+          if (accounts.length > 0) setFormData(prev => ({ ...prev, email_account_id: accounts[0].id }));
+          if (lists.length > 0) setFormData(prev => ({ ...prev, contact_list_id: lists[0].id }));
+        } catch (err) {
+          setError('Failed to load accounts and lists');
+        }
+      };
+
+      const updateField = (field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+      };
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!formData.email_account_id) {
+          setError('Please connect an email account first');
+          return;
+        }
+        if (!formData.contact_list_id) {
+          setError('Please create a contact list first');
+          return;
+        }
+
+        setLoading(true);
+        setError('');
+
+        try {
+          await api.createCampaign(formData);
+          onSuccess();
+        } catch (err) {
+          setError(err.message || 'Failed to create campaign');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return h('div', {
+        className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4",
+        onClick: onClose
+      },
+        h('div', {
+          className: "bg-white rounded-2xl max-w-lg w-full shadow-2xl",
+          onClick: e => e.stopPropagation()
+        },
+          h('div', { className: "sticky top-0 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 p-6 rounded-t-2xl" },
+            h('div', { className: "flex justify-between items-center" },
+              h('div', null,
+                h('h3', { className: "font-serif text-2xl" }, 'Create Campaign'),
+                h('p', { className: "text-jaguar-100 text-sm mt-1" }, 'Set up your email outreach campaign')),
+              h('button', {
+                onClick: onClose,
+                className: "w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all duration-300"
+              }, Icons.X({ size: 20 })))),
+          h('form', { onSubmit: handleSubmit, className: "p-6 space-y-6" },
+            error && h('div', { className: "p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2" },
+              Icons.AlertCircle({ size: 16 }), error),
+
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Campaign Name'),
+              h('input', {
+                type: "text",
+                required: true,
+                value: formData.name,
+                onChange: e => updateField('name', e.target.value),
+                className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
+                placeholder: "e.g., Q1 Outreach Campaign"
+              })),
+
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Email Account'),
+              emailAccounts.length === 0 ? h('div', { className: "p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-sm text-yellow-700" },
+                'No email accounts found. Please connect an account first.'
+              ) : h('select', {
+                required: true,
+                value: formData.email_account_id,
+                onChange: e => updateField('email_account_id', e.target.value),
+                className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all"
+              }, ...emailAccounts.map(account =>
+                h('option', { key: account.id, value: account.id }, account.email_address)))),
+
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Contact List'),
+              contactLists.length === 0 ? h('div', { className: "p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-sm text-yellow-700" },
+                'No contact lists found. Please import contacts first.'
+              ) : h('select', {
+                required: true,
+                value: formData.contact_list_id,
+                onChange: e => updateField('contact_list_id', e.target.value),
+                className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all"
+              }, ...contactLists.map(list =>
+                h('option', { key: list.id, value: list.id },
+                  `${list.name} (${list.total_contacts || 0} contacts)`)))),
+
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Daily Send Limit'),
+              h('input', {
+                type: "number",
+                required: true,
+                min: 1,
+                value: formData.daily_limit,
+                onChange: e => updateField('daily_limit', parseInt(e.target.value)),
+                className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all",
+                placeholder: "500"
+              }),
+              h('p', { className: "text-xs text-stone-500 mt-1" }, 'Recommended: Start with 50-100 for new accounts')),
+
+            h('div', { className: "flex gap-3 pt-4 border-t border-stone-200" },
+              h('button', {
+                type: "button",
+                onClick: onClose,
+                className: "flex-1 px-6 py-3 bg-white border-2 border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-all duration-300 font-medium"
+              }, 'Cancel'),
+              h('button', {
+                type: "submit",
+                disabled: loading || emailAccounts.length === 0 || contactLists.length === 0,
+                className: "flex-1 px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl hover:from-jaguar-800 hover:to-jaguar-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+              }, loading ? [Icons.Loader2({ size: 18 }), ' Creating...'] : 'Create Campaign'))))
+      );
+    };
+
+    // Contacts Component with Full Functionality
     const Contacts = () => {
+      const [contactLists, setContactLists] = useState([]);
+      const [loading, setLoading] = useState(true);
       const [showModal, setShowModal] = useState(false);
+
+      useEffect(() => {
+        loadContactLists();
+      }, []);
+
+      const loadContactLists = async () => {
+        try {
+          setLoading(true);
+          const data = await api.getContactLists();
+          setContactLists(data);
+        } catch (err) {
+          console.error('Failed to load contact lists:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleImportComplete = () => {
+        loadContactLists();
+        setShowModal(false);
+      };
+
       return h('div', { className: "space-y-8" },
         h('div', { className: "flex justify-between items-end" },
           h('div', null,
             h('h2', { className: "font-serif text-3xl text-jaguar-900" }, 'Contacts'),
             h('p', { className: "text-stone-500 mt-2" }, 'Manage your contact lists and import from CSV.')),
-          h('button', { onClick: () => setShowModal(true), className: "px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2" },
+          h('button', {
+            onClick: () => setShowModal(true),
+            className: "px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2"
+          },
             Icons.Upload({ size: 20 }), 'Import CSV')),
-        h('div', { className: "text-center py-12" },
-          h('p', { className: "text-stone-400" }, 'No contacts yet. Import a CSV file to get started!')),
-        showModal && h('div', { className: "fixed inset-0 bg-black/50 flex items-center justify-center z-50", onClick: () => setShowModal(false) },
-          h('div', { className: "bg-white rounded-2xl p-8 max-w-md w-full", onClick: e => e.stopPropagation() },
-            h('h3', { className: "text-2xl font-bold mb-4" }, 'Import Contacts'),
-            h('p', { className: "text-stone-600 mb-6" }, 'CSV import coming soon! You can import contacts through the API.'),
-            h('button', { onClick: () => setShowModal(false), className: "w-full py-3 bg-jaguar-900 text-white rounded-lg" }, 'Close'))));
+        loading ? h('div', { className: "text-center py-12" },
+          h('div', { className: "inline-block animate-spin text-jaguar-900" }, Icons.Loader2({ size: 32 })),
+          h('p', { className: "text-stone-400 mt-4" }, 'Loading contacts...')
+        ) : contactLists.length === 0 ? h('div', { className: "text-center py-12" },
+          h('p', { className: "text-stone-400" }, 'No contacts yet. Import a CSV file to get started!')
+        ) : h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
+          ...contactLists.map(list =>
+            h('div', { key: list.id, className: "bg-white rounded-2xl p-6 border border-stone-200 shadow-sm hover:shadow-md transition-shadow" },
+              h('div', { className: "flex items-start justify-between mb-4" },
+                h('div', { className: "flex items-center gap-3" },
+                  h('div', { className: "w-12 h-12 rounded-xl bg-gradient-to-br from-jaguar-900 to-jaguar-800 flex items-center justify-center shadow-lg" },
+                    Icons.Users({ size: 24, className: "text-cream-50" })),
+                  h('div', null,
+                    h('h3', { className: "font-medium text-jaguar-900" }, list.name),
+                    h('p', { className: "text-xs text-stone-500" }, list.description || 'No description'))),
+                h('span', { className: "px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-700 font-medium" },
+                  `${list.total_contacts || 0} contacts`)),
+              list.created_at && h('div', { className: "text-xs text-stone-500 mt-4" },
+                `Created ${new Date(list.created_at).toLocaleDateString()}`))
+          )),
+        showModal && h(ImportContactsModal, {
+          onClose: () => setShowModal(false),
+          onSuccess: handleImportComplete
+        })
+      );
     };
 
-    // Simple Email Accounts
+    // Import Contacts Modal
+    const ImportContactsModal = ({ onClose, onSuccess }) => {
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [step, setStep] = useState(1); // 1: list name, 2: file upload
+      const [listName, setListName] = useState('');
+      const [listDescription, setListDescription] = useState('');
+      const [csvFile, setCsvFile] = useState(null);
+      const [csvPreview, setCsvPreview] = useState(null);
+      const fileInputRef = { current: null };
+
+      const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!file.name.endsWith('.csv')) {
+          setError('Please select a CSV file');
+          return;
+        }
+
+        setCsvFile(file);
+        setError('');
+
+        // Preview first few lines
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const text = evt.target.result;
+          const lines = text.split('\\n').slice(0, 5);
+          setCsvPreview(lines.join('\\n'));
+        };
+        reader.readAsText(file);
+      };
+
+      const handleNext = () => {
+        if (!listName) {
+          setError('Please enter a list name');
+          return;
+        }
+        setError('');
+        setStep(2);
+      };
+
+      const handleSubmit = async () => {
+        if (!csvFile) {
+          setError('Please select a CSV file');
+          return;
+        }
+
+        setLoading(true);
+        setError('');
+
+        try {
+          // Create contact list first
+          const list = await api.createContactList(listName, listDescription);
+
+          // Parse CSV and import contacts
+          const reader = new FileReader();
+          reader.onload = async (evt) => {
+            try {
+              const text = evt.target.result;
+              const lines = text.split('\\n').filter(line => line.trim());
+              const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+
+              const contacts = [];
+              for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',').map(v => v.trim());
+                if (values.length === 0 || !values[0]) continue;
+
+                const contact = {
+                  email: '',
+                  first_name: '',
+                  last_name: '',
+                  company: '',
+                  custom_fields: {}
+                };
+
+                headers.forEach((header, idx) => {
+                  const value = values[idx] || '';
+                  if (header.includes('email')) contact.email = value;
+                  else if (header.includes('first') && header.includes('name')) contact.first_name = value;
+                  else if (header.includes('last') && header.includes('name')) contact.last_name = value;
+                  else if (header.includes('company')) contact.company = value;
+                  else contact.custom_fields[header] = value;
+                });
+
+                if (contact.email) contacts.push(contact);
+              }
+
+              // Import contacts to the list
+              await api.post(`/api/contact-lists/${list.id}/import`, { contacts });
+              onSuccess();
+            } catch (err) {
+              setError(err.message || 'Failed to import contacts');
+              setLoading(false);
+            }
+          };
+          reader.readAsText(csvFile);
+        } catch (err) {
+          setError(err.message || 'Failed to create contact list');
+          setLoading(false);
+        }
+      };
+
+      return h('div', {
+        className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4",
+        onClick: onClose
+      },
+        h('div', {
+          className: "bg-white rounded-2xl max-w-lg w-full shadow-2xl",
+          onClick: e => e.stopPropagation()
+        },
+          h('div', { className: "sticky top-0 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 p-6 rounded-t-2xl" },
+            h('div', { className: "flex justify-between items-center" },
+              h('div', null,
+                h('h3', { className: "font-serif text-2xl" }, 'Import Contacts'),
+                h('p', { className: "text-jaguar-100 text-sm mt-1" },
+                  step === 1 ? 'Create a contact list' : 'Upload your CSV file')),
+              h('button', {
+                onClick: onClose,
+                className: "w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all duration-300"
+              }, Icons.X({ size: 20 })))),
+          h('div', { className: "p-6 space-y-6" },
+            error && h('div', { className: "p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2" },
+              Icons.AlertCircle({ size: 16 }), error),
+
+            // Step 1: List Name
+            step === 1 && h('div', { className: "space-y-4" },
+              h('div', null,
+                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'List Name'),
+                h('input', {
+                  type: "text",
+                  required: true,
+                  value: listName,
+                  onChange: e => setListName(e.target.value),
+                  className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
+                  placeholder: "e.g., Q1 Prospects"
+                })),
+              h('div', null,
+                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Description (Optional)'),
+                h('textarea', {
+                  value: listDescription,
+                  onChange: e => setListDescription(e.target.value),
+                  rows: 3,
+                  className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all resize-none",
+                  placeholder: "Brief description of this list..."
+                })),
+              h('button', {
+                onClick: handleNext,
+                className: "w-full px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl hover:from-jaguar-800 hover:to-jaguar-700 transition-all duration-300 shadow-lg hover:shadow-xl font-medium"
+              }, 'Next: Upload CSV')),
+
+            // Step 2: File Upload
+            step === 2 && h('div', { className: "space-y-4" },
+              h('div', { className: "border-2 border-dashed border-stone-300 rounded-xl p-8 text-center hover:border-jaguar-900 transition-colors" },
+                h('input', {
+                  ref: r => fileInputRef.current = r,
+                  type: "file",
+                  accept: ".csv",
+                  onChange: handleFileChange,
+                  className: "hidden"
+                }),
+                h('div', { className: "space-y-3" },
+                  h('div', { className: "w-16 h-16 mx-auto rounded-full bg-jaguar-100 flex items-center justify-center" },
+                    Icons.Upload({ size: 28, className: "text-jaguar-900" })),
+                  csvFile ? h('div', null,
+                    h('p', { className: "font-medium text-jaguar-900" }, csvFile.name),
+                    h('p', { className: "text-xs text-stone-500 mt-1" },
+                      `${(csvFile.size / 1024).toFixed(1)} KB`)
+                  ) : h('div', null,
+                    h('p', { className: "font-medium text-stone-700" }, 'Click to upload CSV'),
+                    h('p', { className: "text-xs text-stone-500 mt-1" }, 'Supports: email, first_name, last_name, company')),
+                  h('button', {
+                    type: "button",
+                    onClick: () => fileInputRef.current?.click(),
+                    className: "px-4 py-2 bg-jaguar-900 text-cream-50 rounded-lg hover:bg-jaguar-800 transition-colors text-sm font-medium"
+                  }, csvFile ? 'Change File' : 'Select File'))),
+
+              csvPreview && h('div', { className: "p-3 bg-stone-50 rounded-xl border border-stone-200" },
+                h('p', { className: "text-xs font-medium text-stone-700 mb-2" }, 'Preview:'),
+                h('pre', { className: "text-xs text-stone-600 overflow-x-auto" }, csvPreview)),
+
+              h('div', { className: "flex gap-3" },
+                h('button', {
+                  type: "button",
+                  onClick: () => setStep(1),
+                  className: "flex-1 px-6 py-3 bg-white border-2 border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-all duration-300 font-medium"
+                }, 'Back'),
+                h('button', {
+                  onClick: handleSubmit,
+                  disabled: loading || !csvFile,
+                  className: "flex-1 px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl hover:from-jaguar-800 hover:to-jaguar-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+                }, loading ? [Icons.Loader2({ size: 18 }), ' Importing...'] : 'Import Contacts'))))
+        )
+      );
+    };
+
+    // Email Accounts Component with Full Functionality
     const EmailAccounts = () => {
+      const [accounts, setAccounts] = useState([]);
+      const [loading, setLoading] = useState(true);
       const [showModal, setShowModal] = useState(false);
+
+      useEffect(() => {
+        loadAccounts();
+      }, []);
+
+      const loadAccounts = async () => {
+        try {
+          setLoading(true);
+          const data = await api.getEmailAccounts();
+          setAccounts(data);
+        } catch (err) {
+          console.error('Failed to load accounts:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleAccountAdded = () => {
+        loadAccounts();
+        setShowModal(false);
+      };
+
       return h('div', { className: "space-y-8" },
         h('div', { className: "flex justify-between items-end" },
           h('div', null,
             h('h2', { className: "font-serif text-3xl text-jaguar-900" }, 'Infrastructure'),
             h('p', { className: "text-stone-500 mt-2" }, 'Connect and manage your sending accounts.')),
-          h('button', { onClick: () => setShowModal(true), className: "px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2" },
+          h('button', {
+            onClick: () => setShowModal(true),
+            className: "px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2"
+          },
             Icons.Plus({ size: 20 }), 'Connect Account')),
-        h('div', { className: "text-center py-12" },
-          h('p', { className: "text-stone-400" }, 'No email accounts yet. Connect your first account to get started!')),
-        showModal && h('div', { className: "fixed inset-0 bg-black/50 flex items-center justify-center z-50", onClick: () => setShowModal(false) },
-          h('div', { className: "bg-white rounded-2xl p-8 max-w-md w-full", onClick: e => e.stopPropagation() },
-            h('h3', { className: "text-2xl font-bold mb-4" }, 'Connect Email Account'),
-            h('p', { className: "text-stone-600 mb-6" }, 'Account setup coming soon! You can add accounts through the API.'),
-            h('button', { onClick: () => setShowModal(false), className: "w-full py-3 bg-jaguar-900 text-white rounded-lg" }, 'Close'))));
+        loading ? h('div', { className: "text-center py-12" },
+          h('div', { className: "inline-block animate-spin text-jaguar-900" }, Icons.Loader2({ size: 32 })),
+          h('p', { className: "text-stone-400 mt-4" }, 'Loading accounts...')
+        ) : accounts.length === 0 ? h('div', { className: "text-center py-12" },
+          h('p', { className: "text-stone-400" }, 'No email accounts yet. Connect your first account to get started!')
+        ) : h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
+          ...accounts.map(account =>
+            h('div', { key: account.id, className: "bg-white rounded-2xl p-6 border border-stone-200 shadow-sm hover:shadow-md transition-shadow" },
+              h('div', { className: "flex items-start justify-between mb-4" },
+                h('div', { className: "flex items-center gap-3" },
+                  h('div', { className: "w-12 h-12 rounded-xl bg-gradient-to-br from-jaguar-900 to-jaguar-800 flex items-center justify-center shadow-lg" },
+                    Icons.Mail({ size: 24, className: "text-cream-50" })),
+                  h('div', null,
+                    h('h3', { className: "font-medium text-jaguar-900" }, account.email_address),
+                    h('p', { className: "text-xs text-stone-500" }, account.account_type || 'Custom SMTP'))),
+                h('span', {
+                  className: `px-2 py-1 text-xs rounded-full ${account.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`
+                }, account.is_active ? 'Active' : 'Inactive')),
+              h('div', { className: "space-y-2 text-sm" },
+                h('div', { className: "flex justify-between" },
+                  h('span', { className: "text-stone-500" }, 'Daily Limit:'),
+                  h('span', { className: "font-medium text-jaguar-900" }, account.daily_send_limit || 'N/A')),
+                h('div', { className: "flex justify-between" },
+                  h('span', { className: "text-stone-500" }, 'Warming Up:'),
+                  h('span', { className: "font-medium" }, account.is_warming_up ? '🔥 Yes' : 'No')),
+                account.health_score && h('div', { className: "flex justify-between" },
+                  h('span', { className: "text-stone-500" }, 'Health:'),
+                  h('span', { className: `font-medium ${account.health_score > 80 ? 'text-green-600' : account.health_score > 50 ? 'text-yellow-600' : 'text-red-600'}` },
+                    `${account.health_score}%`))))
+          )),
+        showModal && h(AddEmailAccountModal, { onClose: () => setShowModal(false), onSuccess: handleAccountAdded })
+      );
+    };
+
+    // Add Email Account Modal Component
+    const AddEmailAccountModal = ({ onClose, onSuccess }) => {
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [formData, setFormData] = useState({
+        email_address: '',
+        account_type: 'stalwart',
+        imap_host: '',
+        imap_port: 993,
+        imap_username: '',
+        imap_password: '',
+        smtp_host: '',
+        smtp_port: 587,
+        smtp_username: '',
+        smtp_password: '',
+        daily_send_limit: 10000
+      });
+
+      const updateField = (field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+      };
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        try {
+          await api.createEmailAccount(formData);
+          onSuccess();
+        } catch (err) {
+          setError(err.message || 'Failed to add email account');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return h('div', {
+        className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4",
+        onClick: onClose
+      },
+        h('div', {
+          className: "bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl",
+          onClick: e => e.stopPropagation()
+        },
+          h('div', { className: "sticky top-0 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 p-6 rounded-t-2xl" },
+            h('div', { className: "flex justify-between items-center" },
+              h('div', null,
+                h('h3', { className: "font-serif text-2xl" }, 'Add Email Account'),
+                h('p', { className: "text-jaguar-100 text-sm mt-1" }, 'Connect your IMAP and SMTP servers')),
+              h('button', {
+                onClick: onClose,
+                className: "w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all duration-300"
+              }, Icons.X({ size: 20 })))),
+          h('form', { onSubmit: handleSubmit, className: "p-6 space-y-6" },
+            error && h('div', { className: "p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2" },
+              Icons.AlertCircle({ size: 16 }), error),
+
+            // Basic Info
+            h('div', { className: "space-y-4" },
+              h('h4', { className: "font-medium text-jaguar-900 flex items-center gap-2" },
+                Icons.Mail({ size: 18 }), 'Basic Information'),
+              h('div', { className: "grid grid-cols-2 gap-4" },
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Email Address'),
+                  h('input', {
+                    type: "email",
+                    required: true,
+                    value: formData.email_address,
+                    onChange: e => updateField('email_address', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
+                    placeholder: "your@email.com"
+                  })),
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Account Type'),
+                  h('select', {
+                    value: formData.account_type,
+                    onChange: e => updateField('account_type', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all"
+                  },
+                    h('option', { value: "stalwart" }, 'Stalwart SMTP'),
+                    h('option', { value: "aws_workmail" }, 'AWS WorkMail'),
+                    h('option', { value: "other" }, 'Other'))))),
+
+            // IMAP Settings
+            h('div', { className: "space-y-4 p-4 bg-cream-50 rounded-xl border border-stone-200" },
+              h('h4', { className: "font-medium text-jaguar-900 flex items-center gap-2" },
+                Icons.Download({ size: 18 }), 'IMAP Settings (Incoming)'),
+              h('div', { className: "grid grid-cols-3 gap-4" },
+                h('div', { className: "col-span-2" },
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'IMAP Host'),
+                  h('input', {
+                    type: "text",
+                    required: true,
+                    value: formData.imap_host,
+                    onChange: e => updateField('imap_host', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all",
+                    placeholder: "imap.yourserver.com"
+                  })),
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Port'),
+                  h('input', {
+                    type: "number",
+                    required: true,
+                    value: formData.imap_port,
+                    onChange: e => updateField('imap_port', parseInt(e.target.value)),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  }))),
+              h('div', { className: "grid grid-cols-2 gap-4" },
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Username'),
+                  h('input', {
+                    type: "text",
+                    required: true,
+                    value: formData.imap_username,
+                    onChange: e => updateField('imap_username', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  })),
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Password'),
+                  h('input', {
+                    type: "password",
+                    required: true,
+                    value: formData.imap_password,
+                    onChange: e => updateField('imap_password', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  })))),
+
+            // SMTP Settings
+            h('div', { className: "space-y-4 p-4 bg-cream-50 rounded-xl border border-stone-200" },
+              h('h4', { className: "font-medium text-jaguar-900 flex items-center gap-2" },
+                Icons.Upload({ size: 18 }), 'SMTP Settings (Outgoing)'),
+              h('div', { className: "grid grid-cols-3 gap-4" },
+                h('div', { className: "col-span-2" },
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'SMTP Host'),
+                  h('input', {
+                    type: "text",
+                    required: true,
+                    value: formData.smtp_host,
+                    onChange: e => updateField('smtp_host', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all",
+                    placeholder: "smtp.yourserver.com"
+                  })),
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Port'),
+                  h('input', {
+                    type: "number",
+                    required: true,
+                    value: formData.smtp_port,
+                    onChange: e => updateField('smtp_port', parseInt(e.target.value)),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  }))),
+              h('div', { className: "grid grid-cols-2 gap-4" },
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Username'),
+                  h('input', {
+                    type: "text",
+                    required: true,
+                    value: formData.smtp_username,
+                    onChange: e => updateField('smtp_username', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  })),
+                h('div', null,
+                  h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Password'),
+                  h('input', {
+                    type: "password",
+                    required: true,
+                    value: formData.smtp_password,
+                    onChange: e => updateField('smtp_password', e.target.value),
+                    className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
+                  })))),
+
+            // Daily Limit
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Daily Send Limit'),
+              h('input', {
+                type: "number",
+                value: formData.daily_send_limit,
+                onChange: e => updateField('daily_send_limit', parseInt(e.target.value)),
+                className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all",
+                placeholder: "10000"
+              })),
+
+            // Actions
+            h('div', { className: "flex gap-3 pt-4 border-t border-stone-200" },
+              h('button', {
+                type: "button",
+                onClick: onClose,
+                className: "flex-1 px-6 py-3 bg-white border-2 border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-all duration-300 font-medium"
+              }, 'Cancel'),
+              h('button', {
+                type: "submit",
+                disabled: loading,
+                className: "flex-1 px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl hover:from-jaguar-800 hover:to-jaguar-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+              }, loading ? [Icons.Loader2({ size: 18 }), ' Adding...'] : 'Add Account'))))
+      );
     };
 
     // Main App
