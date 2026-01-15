@@ -374,7 +374,7 @@ app.post('/api/contact-lists', authenticateUser, async (req, res) => {
 app.post('/api/contact-lists/:id/import', authenticateUser, async (req, res) => {
   try {
     const { contacts } = req.body;
-    
+
     if (!contacts || !Array.isArray(contacts)) {
       return res.status(400).json({ error: 'Contacts array is required' });
     }
@@ -391,7 +391,22 @@ app.post('/api/contact-lists/:id/import', authenticateUser, async (req, res) => 
       return res.status(404).json({ error: 'List not found' });
     }
 
-    const contactsToInsert = contacts.map(c => ({
+    // Get existing contacts in this list to avoid duplicates
+    const { data: existingContacts } = await supabase
+      .from('contacts')
+      .select('email')
+      .eq('list_id', req.params.id);
+
+    const existingEmails = new Set(existingContacts?.map(c => c.email.toLowerCase()) || []);
+
+    // Filter out duplicates
+    const newContacts = contacts.filter(c => !existingEmails.has(c.email.toLowerCase().trim()));
+
+    if (newContacts.length === 0) {
+      return res.json({ success: true, imported: 0, duplicates: contacts.length });
+    }
+
+    const contactsToInsert = newContacts.map(c => ({
       list_id: req.params.id,
       email: c.email.toLowerCase().trim(),
       first_name: c.first_name || '',
@@ -400,26 +415,28 @@ app.post('/api/contact-lists/:id/import', authenticateUser, async (req, res) => 
       custom_fields: c.custom_fields || {},
       status: 'active'
     }));
-    
+
     const { data, error } = await supabase
       .from('contacts')
-      .upsert(contactsToInsert, { 
-        onConflict: 'list_id,email',
-        ignoreDuplicates: true 
-      })
+      .insert(contactsToInsert)
       .select();
-    
+
     if (error) throw error;
 
     const imported = data?.length || 0;
 
     // Update list count
+    const { count } = await supabase
+      .from('contacts')
+      .select('*', { count: 'exact', head: true })
+      .eq('list_id', req.params.id);
+
     await supabase
       .from('contact_lists')
-      .update({ total_contacts: imported })
+      .update({ total_contacts: count || 0 })
       .eq('id', req.params.id);
 
-    res.json({ success: true, imported });
+    res.json({ success: true, imported, duplicates: contacts.length - newContacts.length });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
