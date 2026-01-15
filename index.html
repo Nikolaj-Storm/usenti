@@ -352,18 +352,25 @@
       );
     };
 
-    // Create Campaign Modal
+    // Campaign Sequence Builder - Full Featured
     const CreateCampaignModal = ({ onClose, onSuccess }) => {
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
       const [emailAccounts, setEmailAccounts] = useState([]);
       const [contactLists, setContactLists] = useState([]);
-      const [formData, setFormData] = useState({
-        name: '',
-        email_account_id: '',
-        contact_list_id: '',
-        daily_limit: 500
-      });
+      const [campaignName, setCampaignName] = useState('');
+      const [emailAccountId, setEmailAccountId] = useState('');
+      const [contactListId, setContactListId] = useState('');
+      const [dailyLimit, setDailyLimit] = useState(500);
+      const [steps, setSteps] = useState([{
+        id: 1,
+        type: 'email',
+        subject: 'Collaboration Opportunity',
+        body: 'Hi {{first_name}}, I saw your work at...',
+        order: 1
+      }]);
+      const [selectedStep, setSelectedStep] = useState(1);
+      const [showAddMenu, setShowAddMenu] = useState(false);
 
       useEffect(() => {
         loadData();
@@ -377,39 +384,90 @@
           ]);
           setEmailAccounts(accounts);
           setContactLists(lists);
-          if (accounts.length > 0) setFormData(prev => ({ ...prev, email_account_id: accounts[0].id }));
-          if (lists.length > 0) setFormData(prev => ({ ...prev, contact_list_id: lists[0].id }));
+          if (accounts.length > 0) setEmailAccountId(accounts[0].id);
+          if (lists.length > 0) setContactListId(lists[0].id);
         } catch (err) {
           setError('Failed to load accounts and lists');
         }
       };
 
-      const updateField = (field, value) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
+      const getCurrentStep = () => steps.find(s => s.id === selectedStep);
+
+      const updateStep = (id, updates) => {
+        setSteps(steps.map(s => s.id === id ? { ...s, ...updates } : s));
       };
 
-      const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!formData.email_account_id) {
-          setError('Please connect an email account first');
-          return;
-        }
-        if (!formData.contact_list_id) {
-          setError('Please create a contact list first');
-          return;
-        }
+      const addStep = (type) => {
+        const newId = Math.max(...steps.map(s => s.id)) + 1;
+        const newStep = {
+          id: newId,
+          order: steps.length + 1,
+          type,
+          subject: type === 'email' ? 'Follow Up' : '',
+          body: type === 'email' ? 'Hi {{first_name}},' : '',
+          wait_days: type === 'wait' ? 2 : null,
+          condition_type: type === 'condition' ? 'if_opened' : null,
+          next_step_if_true: null,
+          next_step_if_false: null
+        };
+        setSteps([...steps, newStep]);
+        setSelectedStep(newId);
+        setShowAddMenu(false);
+      };
 
+      const deleteStep = (id) => {
+        if (steps.length === 1) return;
+        setSteps(steps.filter(s => s.id !== id).map((s, idx) => ({ ...s, order: idx + 1 })));
+        setSelectedStep(steps[0].id);
+      };
+
+      const insertVariable = (variable) => {
+        const step = getCurrentStep();
+        if (step && step.type === 'email') {
+          updateStep(step.id, { body: (step.body || '') + `{{${variable}}}` });
+        }
+      };
+
+      const handleSaveDraft = async () => {
+        if (!campaignName) {
+          setError('Please enter a campaign name');
+          return;
+        }
         setLoading(true);
         setError('');
 
         try {
-          await api.createCampaign(formData);
+          const campaign = await api.createCampaign({
+            name: campaignName,
+            email_account_id: emailAccountId,
+            contact_list_id: contactListId,
+            daily_limit: dailyLimit
+          });
+
+          for (const step of steps) {
+            await api.post(`/api/campaigns/${campaign.id}/steps`, {
+              step_type: step.type,
+              step_order: step.order,
+              subject: step.subject,
+              body: step.body,
+              wait_days: step.wait_days,
+              condition_type: step.condition_type,
+              next_step_if_true: step.next_step_if_true,
+              next_step_if_false: step.next_step_if_false
+            });
+          }
+
           onSuccess();
         } catch (err) {
-          setError(err.message || 'Failed to create campaign');
+          setError(err.message || 'Failed to save campaign');
         } finally {
           setLoading(false);
         }
+      };
+
+      const handleLaunch = async () => {
+        await handleSaveDraft();
+        // TODO: Add campaign start logic
       };
 
       return h('div', {
@@ -560,37 +618,115 @@
       );
     };
 
-    // Import Contacts Modal
+    // Import Contacts Modal - Enhanced with drag-drop, Excel support, and column mapping
     const ImportContactsModal = ({ onClose, onSuccess }) => {
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
-      const [step, setStep] = useState(1); // 1: list name, 2: file upload
+      const [success, setSuccess] = useState('');
+      const [step, setStep] = useState(1); // 1: list name, 2: file upload, 3: column mapping
       const [listName, setListName] = useState('');
       const [listDescription, setListDescription] = useState('');
-      const [csvFile, setCsvFile] = useState(null);
-      const [csvPreview, setCsvPreview] = useState(null);
+      const [file, setFile] = useState(null);
+      const [parsedData, setParsedData] = useState(null);
+      const [columnMapping, setColumnMapping] = useState({});
+      const [dragActive, setDragActive] = useState(false);
       const fileInputRef = { current: null };
 
-      const handleFileChange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+      const parseFile = (file) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = e.target.result;
+            let workbook;
 
-        if (!file.name.endsWith('.csv')) {
-          setError('Please select a CSV file');
+            if (file.name.endsWith('.csv')) {
+              workbook = XLSX.read(data, { type: 'string' });
+            } else {
+              workbook = XLSX.read(data, { type: 'binary' });
+            }
+
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+
+            if (jsonData.length < 2) {
+              setError('File must contain at least a header row and one data row');
+              return;
+            }
+
+            const headers = jsonData[0];
+            const rows = jsonData.slice(1, 6); // Preview first 5 rows
+
+            setParsedData({ headers, rows, allData: jsonData });
+            setFile(file);
+            setError('');
+            setSuccess('');
+
+            // Auto-detect columns
+            const mapping = {};
+            headers.forEach((header, idx) => {
+              const lower = String(header).toLowerCase();
+              if (lower.includes('email') || lower.includes('e-mail')) mapping[idx] = 'email';
+              else if (lower.includes('first') && lower.includes('name')) mapping[idx] = 'first_name';
+              else if (lower.includes('last') && lower.includes('name')) mapping[idx] = 'last_name';
+              else if (lower.includes('name') && !mapping[idx]) mapping[idx] = 'first_name';
+              else if (lower.includes('company') || lower.includes('organization')) mapping[idx] = 'company';
+            });
+            setColumnMapping(mapping);
+            setStep(3);
+          } catch (err) {
+            setError('Failed to parse file: ' + err.message);
+          }
+        };
+
+        if (file.name.endsWith('.csv')) {
+          reader.readAsText(file);
+        } else {
+          reader.readAsBinaryString(file);
+        }
+      };
+
+      const handleFileChange = (e) => {
+        const selectedFile = e.target.files[0];
+        if (!selectedFile) return;
+
+        const validExtensions = ['.csv', '.xlsx', '.xls'];
+        const isValid = validExtensions.some(ext => selectedFile.name.toLowerCase().endsWith(ext));
+
+        if (!isValid) {
+          setError('Please select a CSV or Excel file (.csv, .xlsx, .xls)');
           return;
         }
 
-        setCsvFile(file);
-        setError('');
+        parseFile(selectedFile);
+      };
 
-        // Preview first few lines
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-          const text = evt.target.result;
-          const lines = text.split('\\n').slice(0, 5);
-          setCsvPreview(lines.join('\\n'));
-        };
-        reader.readAsText(file);
+      const handleDrag = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === 'dragenter' || e.type === 'dragover') {
+          setDragActive(true);
+        } else if (e.type === 'dragleave') {
+          setDragActive(false);
+        }
+      };
+
+      const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragActive(false);
+
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          const droppedFile = e.dataTransfer.files[0];
+          const validExtensions = ['.csv', '.xlsx', '.xls'];
+          const isValid = validExtensions.some(ext => droppedFile.name.toLowerCase().endsWith(ext));
+
+          if (!isValid) {
+            setError('Please drop a CSV or Excel file (.csv, .xlsx, .xls)');
+            return;
+          }
+
+          parseFile(droppedFile);
+        }
       };
 
       const handleNext = () => {
@@ -603,155 +739,220 @@
       };
 
       const handleSubmit = async () => {
-        if (!csvFile) {
-          setError('Please select a CSV file');
-          return;
-        }
-
         setLoading(true);
         setError('');
+        setSuccess('');
 
         try {
-          // Create contact list first
+          // Validate email column is mapped
+          const emailColumnIdx = Object.keys(columnMapping).find(idx => columnMapping[idx] === 'email');
+          if (!emailColumnIdx) {
+            setError('Please map at least one column to Email');
+            setLoading(false);
+            return;
+          }
+
+          // Create contact list
           const list = await api.createContactList(listName, listDescription);
 
-          // Parse CSV and import contacts
-          const reader = new FileReader();
-          reader.onload = async (evt) => {
-            try {
-              const text = evt.target.result;
-              const lines = text.split('\\n').filter(line => line.trim());
-              const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+          // Build contacts array
+          const contacts = [];
+          for (let i = 1; i < parsedData.allData.length; i++) {
+            const row = parsedData.allData[i];
+            const contact = {
+              email: '',
+              first_name: '',
+              last_name: '',
+              company: '',
+              custom_fields: {}
+            };
 
-              const contacts = [];
-              for (let i = 1; i < lines.length; i++) {
-                const values = lines[i].split(',').map(v => v.trim());
-                if (values.length === 0 || !values[0]) continue;
+            Object.keys(columnMapping).forEach(colIdx => {
+              const fieldType = columnMapping[colIdx];
+              const value = String(row[colIdx] || '').trim();
 
-                const contact = {
-                  email: '',
-                  first_name: '',
-                  last_name: '',
-                  company: '',
-                  custom_fields: {}
-                };
+              if (fieldType === 'email') contact.email = value;
+              else if (fieldType === 'first_name') contact.first_name = value;
+              else if (fieldType === 'last_name') contact.last_name = value;
+              else if (fieldType === 'company') contact.company = value;
+              else if (fieldType !== 'skip') contact.custom_fields[parsedData.headers[colIdx]] = value;
+            });
 
-                headers.forEach((header, idx) => {
-                  const value = values[idx] || '';
-                  if (header.includes('email')) contact.email = value;
-                  else if (header.includes('first') && header.includes('name')) contact.first_name = value;
-                  else if (header.includes('last') && header.includes('name')) contact.last_name = value;
-                  else if (header.includes('company')) contact.company = value;
-                  else contact.custom_fields[header] = value;
-                });
-
-                if (contact.email) contacts.push(contact);
-              }
-
-              // Import contacts to the list
-              await api.post(`/api/contact-lists/${list.id}/import`, { contacts });
-              onSuccess();
-            } catch (err) {
-              setError(err.message || 'Failed to import contacts');
-              setLoading(false);
+            if (contact.email && contact.email.includes('@')) {
+              contacts.push(contact);
             }
-          };
-          reader.readAsText(csvFile);
+          }
+
+          if (contacts.length === 0) {
+            setError('No valid contacts found. Please ensure email addresses are valid.');
+            setLoading(false);
+            return;
+          }
+
+          // Import contacts
+          const result = await api.post(`/api/contact-lists/${list.id}/import`, { contacts });
+          setSuccess(`Successfully imported ${result.imported} contacts!${result.duplicates > 0 ? ` (${result.duplicates} duplicates skipped)` : ''}`);
+          setTimeout(() => onSuccess(), 1500);
         } catch (err) {
-          setError(err.message || 'Failed to create contact list');
+          setError(err.message || 'Failed to import contacts');
+        } finally {
           setLoading(false);
         }
       };
+
+      const stepTitles = ['Contact List Info', 'Upload File', 'Map Columns'];
+      const stepDescriptions = ['Name your contact list', 'CSV, Excel (.xlsx, .xls)', 'Match columns to fields'];
 
       return h('div', {
         className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4",
         onClick: onClose
       },
         h('div', {
-          className: "bg-white rounded-2xl max-w-lg w-full shadow-2xl",
+          className: "bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl",
           onClick: e => e.stopPropagation()
         },
-          h('div', { className: "sticky top-0 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 p-6 rounded-t-2xl" },
-            h('div', { className: "flex justify-between items-center" },
+          h('div', { className: "sticky top-0 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 p-6 rounded-t-2xl z-10" },
+            h('div', { className: "flex justify-between items-center mb-4" },
               h('div', null,
                 h('h3', { className: "font-serif text-2xl" }, 'Import Contacts'),
-                h('p', { className: "text-jaguar-100 text-sm mt-1" },
-                  step === 1 ? 'Create a contact list' : 'Upload your CSV file')),
+                h('p', { className: "text-jaguar-100 text-sm mt-1" }, stepDescriptions[step - 1])),
               h('button', {
                 onClick: onClose,
                 className: "w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all duration-300"
-              }, Icons.X({ size: 20 })))),
-          h('div', { className: "p-6 space-y-6" },
-            error && h('div', { className: "p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2" },
+              }, Icons.X({ size: 20 }))),
+            h('div', { className: "flex gap-2" },
+              ...stepTitles.map((title, idx) =>
+                h('div', {
+                  key: idx,
+                  className: `flex-1 h-1 rounded-full transition-all ${idx < step ? 'bg-gold-500' : 'bg-white/20'}`
+                })))),
+
+          h('div', { className: "p-6" },
+            error && h('div', { className: "mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2" },
               Icons.AlertCircle({ size: 16 }), error),
+            success && h('div', { className: "mb-4 p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex items-center gap-2" },
+              h('svg', { className: "w-4 h-4", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" },
+                h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M5 13l4 4L19 7" })),
+              success),
 
             // Step 1: List Name
-            step === 1 && h('div', { className: "space-y-4" },
+            step === 1 && h('div', { className: "space-y-5" },
               h('div', null,
-                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'List Name'),
+                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'List Name *'),
                 h('input', {
                   type: "text",
                   required: true,
                   value: listName,
                   onChange: e => setListName(e.target.value),
                   className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
-                  placeholder: "e.g., Q1 Prospects"
+                  placeholder: "e.g., Q1 2024 Prospects"
                 })),
               h('div', null,
-                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Description (Optional)'),
+                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Description'),
                 h('textarea', {
                   value: listDescription,
                   onChange: e => setListDescription(e.target.value),
                   rows: 3,
                   className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all resize-none",
-                  placeholder: "Brief description of this list..."
+                  placeholder: "Brief description of this contact list..."
                 })),
               h('button', {
                 onClick: handleNext,
-                className: "w-full px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl hover:from-jaguar-800 hover:to-jaguar-700 transition-all duration-300 shadow-lg hover:shadow-xl font-medium"
-              }, 'Next: Upload CSV')),
+                disabled: !listName,
+                className: "w-full px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl hover:from-jaguar-800 hover:to-jaguar-700 transition-all duration-300 shadow-lg hover:shadow-xl font-medium disabled:opacity-50"
+              }, 'Next: Upload File →')),
 
-            // Step 2: File Upload
-            step === 2 && h('div', { className: "space-y-4" },
-              h('div', { className: "border-2 border-dashed border-stone-300 rounded-xl p-8 text-center hover:border-jaguar-900 transition-colors" },
+            // Step 2: File Upload with Drag-Drop
+            step === 2 && h('div', { className: "space-y-5" },
+              h('div', {
+                className: `border-2 border-dashed rounded-xl p-12 text-center transition-all ${dragActive ? 'border-jaguar-900 bg-jaguar-50' : file ? 'border-green-500 bg-green-50' : 'border-stone-300 hover:border-jaguar-900'}`,
+                onDragEnter: handleDrag,
+                onDragLeave: handleDrag,
+                onDragOver: handleDrag,
+                onDrop: handleDrop
+              },
                 h('input', {
                   ref: r => fileInputRef.current = r,
                   type: "file",
-                  accept: ".csv",
+                  accept: ".csv,.xlsx,.xls",
                   onChange: handleFileChange,
                   className: "hidden"
                 }),
-                h('div', { className: "space-y-3" },
-                  h('div', { className: "w-16 h-16 mx-auto rounded-full bg-jaguar-100 flex items-center justify-center" },
-                    Icons.Upload({ size: 28, className: "text-jaguar-900" })),
-                  csvFile ? h('div', null,
-                    h('p', { className: "font-medium text-jaguar-900" }, csvFile.name),
-                    h('p', { className: "text-xs text-stone-500 mt-1" },
-                      `${(csvFile.size / 1024).toFixed(1)} KB`)
-                  ) : h('div', null,
-                    h('p', { className: "font-medium text-stone-700" }, 'Click to upload CSV'),
-                    h('p', { className: "text-xs text-stone-500 mt-1" }, 'Supports: email, first_name, last_name, company')),
+                file ? h('div', { className: "space-y-3" },
+                  h('div', { className: "w-16 h-16 mx-auto rounded-full bg-green-100 flex items-center justify-center" },
+                    h('svg', { className: "w-8 h-8 text-green-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" },
+                      h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M5 13l4 4L19 7" }))),
+                  h('div', null,
+                    h('p', { className: "font-semibold text-green-900 text-lg" }, file.name),
+                    h('p', { className: "text-sm text-green-700 mt-1" },
+                      `${(file.size / 1024).toFixed(1)} KB • ${parsedData.allData.length - 1} rows detected`)),
                   h('button', {
                     type: "button",
                     onClick: () => fileInputRef.current?.click(),
-                    className: "px-4 py-2 bg-jaguar-900 text-cream-50 rounded-lg hover:bg-jaguar-800 transition-colors text-sm font-medium"
-                  }, csvFile ? 'Change File' : 'Select File'))),
+                    className: "mt-2 px-4 py-2 text-sm bg-white border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors font-medium"
+                  }, 'Choose Different File')
+                ) : h('div', { className: "space-y-4" },
+                  h('div', { className: "w-20 h-20 mx-auto rounded-full bg-jaguar-100 flex items-center justify-center" },
+                    Icons.Upload({ size: 32, className: "text-jaguar-900" })),
+                  h('div', null,
+                    h('p', { className: "text-lg font-semibold text-stone-700" }, 'Drag & drop your file here'),
+                    h('p', { className: "text-sm text-stone-500 mt-1" }, 'or click to browse')),
+                  h('div', { className: "flex items-center justify-center gap-2 mt-4" },
+                    h('span', { className: "px-3 py-1 bg-stone-100 text-stone-600 rounded-full text-xs font-medium" }, '.CSV'),
+                    h('span', { className: "px-3 py-1 bg-stone-100 text-stone-600 rounded-full text-xs font-medium" }, '.XLSX'),
+                    h('span', { className: "px-3 py-1 bg-stone-100 text-stone-600 rounded-full text-xs font-medium" }, '.XLS')),
+                  h('button', {
+                    type: "button",
+                    onClick: () => fileInputRef.current?.click(),
+                    className: "mt-4 px-6 py-3 bg-jaguar-900 text-cream-50 rounded-xl hover:bg-jaguar-800 transition-colors font-medium"
+                  }, 'Browse Files'))),
+              file && h('button', {
+                onClick: () => setStep(1),
+                className: "w-full px-6 py-3 bg-white border-2 border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-all font-medium"
+              }, '← Back')),
 
-              csvPreview && h('div', { className: "p-3 bg-stone-50 rounded-xl border border-stone-200" },
-                h('p', { className: "text-xs font-medium text-stone-700 mb-2" }, 'Preview:'),
-                h('pre', { className: "text-xs text-stone-600 overflow-x-auto" }, csvPreview)),
+            // Step 3: Column Mapping
+            step === 3 && parsedData && h('div', { className: "space-y-5" },
+              h('div', { className: "bg-blue-50 border border-blue-200 rounded-xl p-4" },
+                h('p', { className: "text-sm text-blue-800 font-medium" },
+                  `📊 ${parsedData.allData.length - 1} contacts detected. Map columns below:`)),
+
+              h('div', { className: "overflow-x-auto" },
+                h('table', { className: "w-full border-collapse" },
+                  h('thead', null,
+                    h('tr', { className: "border-b-2 border-stone-200" },
+                      h('th', { className: "text-left py-3 px-4 text-sm font-semibold text-stone-700" }, 'Column'),
+                      h('th', { className: "text-left py-3 px-4 text-sm font-semibold text-stone-700" }, 'Sample Data'),
+                      h('th', { className: "text-left py-3 px-4 text-sm font-semibold text-stone-700 w-48" }, 'Map To Field'))),
+                  h('tbody', null,
+                    ...parsedData.headers.map((header, idx) =>
+                      h('tr', { key: idx, className: "border-b border-stone-100 hover:bg-stone-50" },
+                        h('td', { className: "py-3 px-4 font-medium text-stone-900" }, header || `Column ${idx + 1}`),
+                        h('td', { className: "py-3 px-4 text-sm text-stone-600" },
+                          parsedData.rows[0]?.[idx] ? String(parsedData.rows[0][idx]).substring(0, 30) + (String(parsedData.rows[0][idx]).length > 30 ? '...' : '') : '—'),
+                        h('td', { className: "py-3 px-4" },
+                          h('select', {
+                            value: columnMapping[idx] || '',
+                            onChange: e => setColumnMapping({ ...columnMapping, [idx]: e.target.value }),
+                            className: "w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900"
+                          },
+                            h('option', { value: '' }, 'Skip'),
+                            h('option', { value: 'email' }, '📧 Email'),
+                            h('option', { value: 'first_name' }, '👤 First Name'),
+                            h('option', { value: 'last_name' }, '👤 Last Name'),
+                            h('option', { value: 'company' }, '🏢 Company')))))))),
 
               h('div', { className: "flex gap-3" },
                 h('button', {
-                  type: "button",
-                  onClick: () => setStep(1),
-                  className: "flex-1 px-6 py-3 bg-white border-2 border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-all duration-300 font-medium"
-                }, 'Back'),
+                  onClick: () => { setStep(2); setParsedData(null); setFile(null); },
+                  className: "flex-1 px-6 py-3 bg-white border-2 border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-all font-medium"
+                }, '← Back'),
                 h('button', {
                   onClick: handleSubmit,
-                  disabled: loading || !csvFile,
+                  disabled: loading || !Object.values(columnMapping).includes('email'),
                   className: "flex-1 px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl hover:from-jaguar-800 hover:to-jaguar-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 font-medium flex items-center justify-center gap-2"
-                }, loading ? [Icons.Loader2({ size: 18 }), ' Importing...'] : 'Import Contacts'))))
+                }, loading ? [Icons.Loader2({ size: 18 }), ' Importing...'] : 'Import Contacts')))
+          ))
         )
       );
     };
