@@ -104,18 +104,18 @@
         if (!response.ok) throw new Error(data.error || 'Upload failed');
         return data;
       },
-      async signup(email, password) {
-        const response = await this.post(APP_CONFIG.ENDPOINTS.AUTH_SIGNUP, { email, password }, { skipAuth: true });
-        if (response.token) {
-          localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, response.token);
+      async signup(email, password, name) {
+        const response = await this.post(APP_CONFIG.ENDPOINTS.AUTH_SIGNUP, { email, password, name }, { skipAuth: true });
+        if (response.session?.access_token) {
+          localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, response.session.access_token);
           localStorage.setItem(APP_CONFIG.STORAGE_KEYS.USER, JSON.stringify(response.user));
         }
         return response;
       },
       async login(email, password) {
         const response = await this.post(APP_CONFIG.ENDPOINTS.AUTH_LOGIN, { email, password }, { skipAuth: true });
-        if (response.token) {
-          localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, response.token);
+        if (response.session?.access_token) {
+          localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, response.session.access_token);
           localStorage.setItem(APP_CONFIG.STORAGE_KEYS.USER, JSON.stringify(response.user));
         }
         return response;
@@ -171,6 +171,7 @@
 
     // Auth Component
     const Auth = ({ view, onAuthenticate, onNavigate }) => {
+      const [name, setName] = useState('');
       const [email, setEmail] = useState('');
       const [password, setPassword] = useState('');
       const [confirmPassword, setConfirmPassword] = useState('');
@@ -182,11 +183,12 @@
         e.preventDefault();
         setError('');
         if (!email || !password) { setError('Please fill in all fields'); return; }
+        if (isSignup && !name) { setError('Please enter your name'); return; }
         if (isSignup && password !== confirmPassword) { setError('Passwords do not match'); return; }
         if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
         setLoading(true);
         try {
-          if (isSignup) await api.signup(email, password);
+          if (isSignup) await api.signup(email, password, name);
           else await api.login(email, password);
           onAuthenticate();
         } catch (err) {
@@ -212,6 +214,9 @@
             error && h('div', { className: "mb-4 p-4 bg-red-50 border border-red-200 rounded-lg" },
               h('p', { className: "text-sm text-red-600" }, error)),
             h('form', { onSubmit: handleSubmit, className: "space-y-4" },
+              isSignup && h('div', null,
+                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Full Name'),
+                h('input', { type: "text", value: name, onChange: (e) => setName(e.target.value), placeholder: "John Doe", className: "w-full px-4 py-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-gold-500 focus:border-transparent outline-none transition-all", disabled: loading })),
               h('div', null,
                 h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Email Address'),
                 h('input', { type: "email", value: email, onChange: (e) => setEmail(e.target.value), placeholder: "you@company.com", className: "w-full px-4 py-3 border border-stone-300 rounded-lg focus:ring-2 focus:ring-gold-500 focus:border-transparent outline-none transition-all", disabled: loading })),
@@ -1086,9 +1091,9 @@
             h('div', { className: "flex items-center justify-between px-4 py-3 bg-jaguar-800/50 rounded-xl" },
               h('div', { className: "flex items-center gap-3" },
                 h('div', { className: "w-10 h-10 rounded-full bg-gradient-to-br from-gold-500 to-gold-600 flex items-center justify-center font-serif text-lg text-jaguar-900" },
-                  user?.email?.[0].toUpperCase() || 'U'),
+                  (user?.user_metadata?.name?.[0] || user?.email?.[0])?.toUpperCase() || 'U'),
                 h('div', { className: "flex-1 min-w-0" },
-                  h('p', { className: "text-sm font-medium text-cream-50 truncate" }, user?.email?.split('@')[0] || 'User'))),
+                  h('p', { className: "text-sm font-medium text-cream-50 truncate" }, user?.user_metadata?.name || user?.email?.split('@')[0] || 'User'))),
               h('button', { onClick: handleLogout, className: "text-jaguar-100/40 hover:text-cream-50 transition-colors p-2 hover:bg-jaguar-700 rounded-lg", title: "Logout" },
                 Icons.LogOut({ size: 18 }))))),
         h('main', { className: "flex-1 flex flex-col overflow-hidden" },
