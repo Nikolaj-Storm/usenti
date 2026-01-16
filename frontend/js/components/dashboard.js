@@ -1,7 +1,5 @@
 // Mr. Snowman - Dashboard Component
 
-const h = React.createElement;
-
 const Card = ({ children, className = '', title, subtitle, action }) => {
   return h('div', { className: `bg-white border border-stone-200 shadow-sm rounded-lg overflow-hidden transition-all duration-300 hover:shadow-md ${className}` },
     (title || action) && h('div', { className: "px-6 py-5 border-b border-stone-100 flex justify-between items-center bg-cream-50" },

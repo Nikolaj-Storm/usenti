@@ -1,6 +1,5 @@
 // Mr. Snowman - Contacts Component
 
-const h = React.createElement;
 const { useState, useEffect, useRef } = React;
 
 const Contacts = () => {

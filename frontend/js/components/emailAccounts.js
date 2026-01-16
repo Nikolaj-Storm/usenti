@@ -1,6 +1,5 @@
 // Mr. Snowman - Email Accounts / Infrastructure Component
 
-const h = React.createElement;
 const { useState, useEffect } = React;
 
 const EmailAccounts = () => {

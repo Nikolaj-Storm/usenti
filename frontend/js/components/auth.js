@@ -1,7 +1,5 @@
 // Mr. Snowman - Authentication Component
 
-const h = React.createElement;
-
 const Auth = ({ view, onAuthenticate, onNavigate }) => {
   const { useState } = React;
   const [loading, setLoading] = useState(false);
