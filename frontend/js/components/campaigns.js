@@ -1,6 +1,5 @@
 // Mr. Snowman - Campaign Builder Component
 
-const h = React.createElement;
 const { useState, useEffect } = React;
 
 const CampaignBuilder = () => {

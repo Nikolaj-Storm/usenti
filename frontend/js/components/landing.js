@@ -1,7 +1,5 @@
 // Mr. Snowman - Landing Page Component
 
-const h = React.createElement;
-
 const LandingPage = ({ onNavigate }) => {
   return h('div', { className: "min-h-screen bg-[#FDFBF7] text-jaguar-900 font-sans selection:bg-gold-500 selection:text-white" },
     h('nav', { className: "px-6 py-6 border-b border-stone-100/50 backdrop-blur-sm sticky top-0 z-50 bg-[#FDFBF7]/90" },

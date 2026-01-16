@@ -1,6 +1,5 @@
 // Mr. Snowman - Main Application Orchestration
 
-const h = React.createElement;
 const { useState, useEffect } = React;
 
 const App = () => {

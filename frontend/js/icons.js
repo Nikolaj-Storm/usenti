@@ -1,7 +1,5 @@
 // Mr. Snowman - Icon Library (Pure React, no JSX)
 
-const h = React.createElement;
-
 const Icon = ({ path, size = 24, className = "" }) => {
   return h('svg', {
     xmlns: "http://www.w3.org/2000/svg",
