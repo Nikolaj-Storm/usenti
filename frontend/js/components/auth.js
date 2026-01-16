@@ -1,12 +1,11 @@
 // Mr. Snowman - Authentication Component
 
 const Auth = ({ view, onAuthenticate, onNavigate }) => {
-  const { useState } = React;
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [name, setName] = React.useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
