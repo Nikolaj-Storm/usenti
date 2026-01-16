@@ -1,9 +1,7 @@
 // Mr. Snowman - Configuration
 
 const APP_CONFIG = {
-  API_BASE_URL: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:3001'
-    : 'https://snowman-2-0.onrender.com',
+  API_BASE_URL: 'http://localhost:3000',
   STORAGE_KEYS: {
     TOKEN: 'mr_snowman_token',
     USER: 'mr_snowman_user'
@@ -16,9 +14,8 @@ const APP_CONFIG = {
     EMAIL_ACCOUNTS_TEST: '/api/email-accounts/test',
     CONTACT_LISTS: '/api/contact-lists',
     CONTACTS: '/api/contacts',
-    CONTACTS_IMPORT: '/api/contacts/import',
+    CONTACTS_IMPORT: '/api/contact-lists/:id/import',
     CAMPAIGNS: '/api/campaigns',
-    CAMPAIGN_STEPS: '/api/campaign-steps',
     DASHBOARD_STATS: '/api/dashboard/stats'
   }
 };

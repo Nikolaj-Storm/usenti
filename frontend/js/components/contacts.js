@@ -1,10 +1,14 @@
-// Mr. Snowman - Contacts Component with Import Modal
+// Mr. Snowman - Contacts Component
+
+const { useState, useEffect, useRef } = React;
 
 const Contacts = () => {
-  const { useState, useEffect, createElement: h } = React;
   const [contactLists, setContactLists] = useState([]);
+  const [selectedList, setSelectedList] = useState(null);
+  const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [showNewListModal, setShowNewListModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   useEffect(() => {
     loadContactLists();
@@ -12,140 +16,320 @@ const Contacts = () => {
 
   const loadContactLists = async () => {
     try {
-      setLoading(true);
       const data = await api.getContactLists();
       setContactLists(data);
-    } catch (err) {
-      console.error('Failed to load contact lists:', err);
+      if (data.length > 0 && !selectedList) {
+        setSelectedList(data[0]);
+        loadContacts(data[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load contact lists:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleImportComplete = () => {
-    loadContactLists();
-    setShowModal(false);
+  const loadContacts = async (listId) => {
+    try {
+      const data = await api.getContacts(listId);
+      setContacts(data);
+    } catch (error) {
+      console.error('Failed to load contacts:', error);
+    }
   };
 
-  return h('div', { className: "space-y-8" },
-    h('div', { className: "flex justify-between items-end" },
-      h('div', null,
-        h('h2', { className: "font-serif text-3xl text-jaguar-900" }, 'Contacts'),
-        h('p', { className: "text-stone-500 mt-2" }, 'Manage your contact lists and import from CSV.')),
-      h('button', {
-        onClick: () => setShowModal(true),
-        className: "px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2"
-      },
-        Icons.Upload({ size: 20 }), 'Import CSV')),
-    loading ? h('div', { className: "text-center py-12" },
-      h('div', { className: "inline-block animate-spin text-jaguar-900" }, Icons.Loader2({ size: 32 })),
-      h('p', { className: "text-stone-400 mt-4" }, 'Loading contacts...')
-    ) : contactLists.length === 0 ? h('div', { className: "text-center py-12" },
-      h('p', { className: "text-stone-400" }, 'No contacts yet. Import a CSV file to get started!')
-    ) : h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
-      ...contactLists.map(list =>
-        h('div', { key: list.id, className: "bg-white rounded-2xl p-6 border border-stone-200 shadow-sm hover:shadow-md transition-shadow" },
-          h('div', { className: "flex items-start justify-between mb-4" },
-            h('div', { className: "flex items-center gap-3" },
-              h('div', { className: "w-12 h-12 rounded-xl bg-gradient-to-br from-jaguar-900 to-jaguar-800 flex items-center justify-center shadow-lg" },
-                Icons.Users({ size: 24, className: "text-cream-50" })),
-              h('div', null,
-                h('h3', { className: "font-medium text-jaguar-900" }, list.name),
-                h('p', { className: "text-xs text-stone-500" }, list.description || 'No description'))),
-            h('span', { className: "px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-700 font-medium" },
-              `${list.total_contacts || 0} contacts`)),
-          list.created_at && h('div', { className: "text-xs text-stone-500 mt-4" },
-            `Created ${new Date(list.created_at).toLocaleDateString()}`))
-      )),
-    showModal && h(ImportContactsModal, {
-      onClose: () => setShowModal(false),
-      onSuccess: handleImportComplete
-    })
+  const handleCreateList = async (name, description) => {
+    try {
+      const newList = await api.createContactList(name, description);
+      setContactLists([...contactLists, newList]);
+      setSelectedList(newList);
+      setContacts([]);
+      setShowNewListModal(false);
+    } catch (error) {
+      console.error('Failed to create list:', error);
+      alert('Failed to create list: ' + error.message);
+    }
+  };
+
+  const handleImportComplete = (importedContacts) => {
+    setContacts([...contacts, ...importedContacts]);
+    setShowImportModal(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Icons.Loader2 size={48} className="text-jaguar-900" />
+      </div>
+    );
+  }
+
+  if (contactLists.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 text-center animate-fade-in">
+        <Icons.Users size={64} className="text-stone-300 mb-4" />
+        <h3 className="font-serif text-2xl text-jaguar-900 mb-2">No Contact Lists Yet</h3>
+        <p className="text-stone-500 mb-6 max-w-md">Create your first contact list to start organizing your prospects.</p>
+        <button
+          onClick={() => setShowNewListModal(true)}
+          className="px-6 py-3 bg-jaguar-900 text-cream-50 rounded-lg hover:bg-jaguar-800 flex items-center gap-2 transition-colors"
+        >
+          <Icons.Plus size={20} /> Create Your First List
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex justify-between items-end">
+        <div>
+          <h2 className="font-serif text-3xl text-jaguar-900">Contacts</h2>
+          <p className="text-stone-500 mt-2 font-light">Manage your contact lists and prospects.</p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowNewListModal(true)}
+            className="px-4 py-2 bg-white border border-stone-200 text-stone-700 rounded-md hover:bg-stone-50 font-medium flex items-center gap-2 transition-colors"
+          >
+            <Icons.Plus size={18} /> New List
+          </button>
+          {selectedList && (
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 font-medium flex items-center gap-2 transition-colors"
+            >
+              <Icons.Upload size={18} /> Import Contacts
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* List Selector */}
+      <div className="flex gap-2 overflow-x-auto pb-2">
+        {contactLists.map((list) => (
+          <button
+            key={list.id}
+            onClick={() => {
+              setSelectedList(list);
+              loadContacts(list.id);
+            }}
+            className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${
+              selectedList?.id === list.id
+                ? 'bg-jaguar-900 text-cream-50 shadow-lg'
+                : 'bg-white border border-stone-200 text-stone-700 hover:border-jaguar-900/30'
+            }`}
+          >
+            {list.name}
+            <span className={`ml-2 text-xs ${
+              selectedList?.id === list.id ? 'text-cream-200' : 'text-stone-400'
+            }`}>
+              ({list.contact_count || 0})
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Contacts Table */}
+      <div className="bg-white border border-stone-200 rounded-lg shadow-sm overflow-hidden">
+        {contacts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Icons.Users size={48} className="text-stone-300 mb-3" />
+            <h3 className="font-medium text-jaguar-900 mb-2">No Contacts Yet</h3>
+            <p className="text-stone-500 text-sm mb-4">Import contacts to get started</p>
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 flex items-center gap-2 transition-colors"
+            >
+              <Icons.Upload size={16} /> Import Contacts
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-cream-50 border-b border-stone-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 uppercase tracking-wider">
+                    Email
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 uppercase tracking-wider">
+                    Company
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-stone-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {contacts.map((contact) => (
+                  <tr key={contact.id} className="hover:bg-cream-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="w-8 h-8 rounded-full bg-jaguar-100 text-jaguar-900 flex items-center justify-center text-sm font-medium mr-3">
+                          {contact.first_name?.[0]?.toUpperCase() || contact.email?.[0]?.toUpperCase()}
+                        </div>
+                        <div className="font-medium text-jaguar-900">
+                          {contact.first_name} {contact.last_name}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-stone-600">
+                      {contact.email}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-stone-600">
+                      {contact.company || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        contact.status === 'active'
+                          ? 'bg-green-100 text-green-700'
+                          : contact.status === 'bounced'
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-stone-100 text-stone-600'
+                      }`}>
+                        {contact.status || 'active'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                      <button className="text-stone-400 hover:text-stone-600 transition-colors">
+                        <Icons.Edit3 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Stats */}
+      {selectedList && contacts.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white p-4 rounded-lg border border-stone-200">
+            <div className="text-sm text-stone-500 mb-1">Total Contacts</div>
+            <div className="text-2xl font-serif text-jaguar-900">{contacts.length}</div>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-stone-200">
+            <div className="text-sm text-stone-500 mb-1">Active</div>
+            <div className="text-2xl font-serif text-green-600">
+              {contacts.filter(c => c.status === 'active').length}
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-stone-200">
+            <div className="text-sm text-stone-500 mb-1">Bounced</div>
+            <div className="text-2xl font-serif text-red-600">
+              {contacts.filter(c => c.status === 'bounced').length}
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-stone-200">
+            <div className="text-sm text-stone-500 mb-1">Unsubscribed</div>
+            <div className="text-2xl font-serif text-stone-400">
+              {contacts.filter(c => c.status === 'unsubscribed').length}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modals */}
+      {showNewListModal && (
+        <NewListModal
+          onClose={() => setShowNewListModal(false)}
+          onCreate={handleCreateList}
+        />
+      )}
+
+      {showImportModal && (
+        <ImportModal
+          listId={selectedList.id}
+          onClose={() => setShowImportModal(false)}
+          onComplete={handleImportComplete}
+        />
+      )}
+    </div>
   );
 };
 
-// Import Contacts Modal - Enhanced with drag-drop, Excel support, and column mapping
-const ImportContactsModal = ({ onClose, onSuccess }) => {
-  const { useState, createElement: h } = React;
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [step, setStep] = useState(1);
-  const [listName, setListName] = useState('');
-  const [listDescription, setListDescription] = useState('');
+// New List Modal Component
+const NewListModal = ({ onClose, onCreate }) => {
+  const [formData, setFormData] = useState({ name: '', description: '' });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onCreate(formData.name, formData.description);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
+      <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-serif text-2xl text-jaguar-900 mb-6">Create New List</h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-stone-700 mb-2">List Name</label>
+            <input
+              type="text"
+              required
+              value={formData.name}
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              className="w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all"
+              placeholder="Enterprise Prospects"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-stone-700 mb-2">Description (Optional)</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({...formData, description: e.target.value})}
+              className="w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all resize-none"
+              rows={3}
+              placeholder="Describe this contact list..."
+            />
+          </div>
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="flex-1 px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 transition-colors"
+            >
+              Create
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Import Modal Component with CSV/Excel Support
+const ImportModal = ({ listId, onClose, onComplete }) => {
+  const [step, setStep] = useState('upload'); // 'upload', 'mapping', 'processing'
   const [file, setFile] = useState(null);
-  const [parsedData, setParsedData] = useState(null);
-  const [columnMapping, setColumnMapping] = useState({});
+  const [parsedData, setParsedData] = useState([]);
+  const [headers, setHeaders] = useState([]);
+  const [mapping, setMapping] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    company: '',
+    title: '',
+    phone: ''
+  });
   const [dragActive, setDragActive] = useState(false);
-  const fileInputRef = { current: null };
-
-  const parseFile = (file) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = e.target.result;
-        let workbook;
-
-        if (file.name.endsWith('.csv')) {
-          workbook = XLSX.read(data, { type: 'string' });
-        } else {
-          workbook = XLSX.read(data, { type: 'binary' });
-        }
-
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
-
-        if (jsonData.length < 2) {
-          setError('File must contain at least a header row and one data row');
-          return;
-        }
-
-        const headers = jsonData[0];
-        const rows = jsonData.slice(1, 6);
-
-        setParsedData({ headers, rows, allData: jsonData });
-        setFile(file);
-        setError('');
-        setSuccess('');
-
-        // Auto-detect columns
-        const mapping = {};
-        headers.forEach((header, idx) => {
-          const lower = String(header).toLowerCase();
-          if (lower.includes('email') || lower.includes('e-mail')) mapping[idx] = 'email';
-          else if (lower.includes('first') && lower.includes('name')) mapping[idx] = 'first_name';
-          else if (lower.includes('last') && lower.includes('name')) mapping[idx] = 'last_name';
-          else if (lower.includes('name') && !mapping[idx]) mapping[idx] = 'first_name';
-          else if (lower.includes('company') || lower.includes('organization')) mapping[idx] = 'company';
-        });
-        setColumnMapping(mapping);
-        setStep(3);
-      } catch (err) {
-        setError('Failed to parse file: ' + err.message);
-      }
-    };
-
-    if (file.name.endsWith('.csv')) {
-      reader.readAsText(file);
-    } else {
-      reader.readAsBinaryString(file);
-    }
-  };
-
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (!selectedFile) return;
-
-    const validExtensions = ['.csv', '.xlsx', '.xls'];
-    const isValid = validExtensions.some(ext => selectedFile.name.toLowerCase().endsWith(ext));
-
-    if (!isValid) {
-      setError('Please select a CSV or Excel file (.csv, .xlsx, .xls)');
-      return;
-    }
-
-    parseFile(selectedFile);
-  };
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -163,239 +347,268 @@ const ImportContactsModal = ({ onClose, onSuccess }) => {
     setDragActive(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const droppedFile = e.dataTransfer.files[0];
-      const validExtensions = ['.csv', '.xlsx', '.xls'];
-      const isValid = validExtensions.some(ext => droppedFile.name.toLowerCase().endsWith(ext));
-
-      if (!isValid) {
-        setError('Please drop a CSV or Excel file (.csv, .xlsx, .xls)');
-        return;
-      }
-
-      parseFile(droppedFile);
+      handleFile(e.dataTransfer.files[0]);
     }
   };
 
-  const handleNext = () => {
-    if (!listName) {
-      setError('Please enter a list name');
+  const handleFileInput = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      handleFile(e.target.files[0]);
+    }
+  };
+
+  const handleFile = async (file) => {
+    setFile(file);
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+
+    if (!['csv', 'xlsx', 'xls'].includes(fileExtension)) {
+      alert('Please upload a CSV or Excel file');
       return;
     }
-    setError('');
-    setStep(2);
-  };
-
-  const handleSubmit = async () => {
-    setLoading(true);
-    setError('');
-    setSuccess('');
 
     try {
-      const emailColumnIdx = Object.keys(columnMapping).find(idx => columnMapping[idx] === 'email');
-      if (!emailColumnIdx) {
-        setError('Please map at least one column to Email');
-        setLoading(false);
-        return;
-      }
+      const reader = new FileReader();
 
-      const list = await api.createContactList(listName, listDescription);
+      reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
 
-      const contacts = [];
-      for (let i = 1; i < parsedData.allData.length; i++) {
-        const row = parsedData.allData[i];
-        const contact = {
-          email: '',
-          first_name: '',
-          last_name: '',
-          company: '',
-          custom_fields: {}
-        };
-
-        Object.keys(columnMapping).forEach(colIdx => {
-          const fieldType = columnMapping[colIdx];
-          const value = String(row[colIdx] || '').trim();
-
-          if (fieldType === 'email') contact.email = value;
-          else if (fieldType === 'first_name') contact.first_name = value;
-          else if (fieldType === 'last_name') contact.last_name = value;
-          else if (fieldType === 'company') contact.company = value;
-          else if (fieldType !== 'skip') contact.custom_fields[parsedData.headers[colIdx]] = value;
-        });
-
-        if (contact.email && contact.email.includes('@')) {
-          contacts.push(contact);
+        if (jsonData.length === 0) {
+          alert('File is empty');
+          return;
         }
-      }
 
-      if (contacts.length === 0) {
-        setError('No valid contacts found. Please ensure email addresses are valid.');
-        setLoading(false);
-        return;
-      }
+        const headers = jsonData[0];
+        const rows = jsonData.slice(1).filter(row => row.some(cell => cell));
 
-      const result = await api.post(`/api/contact-lists/${list.id}/import`, { contacts });
-      setSuccess(`Successfully imported ${result.imported} contacts!${result.duplicates > 0 ? ` (${result.duplicates} duplicates skipped)` : ''}`);
-      setTimeout(() => onSuccess(), 1500);
-    } catch (err) {
-      setError(err.message || 'Failed to import contacts');
-    } finally {
-      setLoading(false);
+        setHeaders(headers);
+        setParsedData(rows);
+
+        // Auto-detect mappings
+        const autoMapping = {};
+        const lowerHeaders = headers.map(h => String(h).toLowerCase());
+
+        if (lowerHeaders.includes('first name') || lowerHeaders.includes('firstname')) {
+          autoMapping.first_name = headers[lowerHeaders.findIndex(h => h === 'first name' || h === 'firstname')];
+        }
+        if (lowerHeaders.includes('last name') || lowerHeaders.includes('lastname')) {
+          autoMapping.last_name = headers[lowerHeaders.findIndex(h => h === 'last name' || h === 'lastname')];
+        }
+        if (lowerHeaders.includes('email')) {
+          autoMapping.email = headers[lowerHeaders.findIndex(h => h === 'email')];
+        }
+        if (lowerHeaders.includes('company')) {
+          autoMapping.company = headers[lowerHeaders.findIndex(h => h === 'company')];
+        }
+        if (lowerHeaders.includes('title') || lowerHeaders.includes('job title')) {
+          autoMapping.title = headers[lowerHeaders.findIndex(h => h === 'title' || h === 'job title')];
+        }
+        if (lowerHeaders.includes('phone')) {
+          autoMapping.phone = headers[lowerHeaders.findIndex(h => h === 'phone')];
+        }
+
+        setMapping({ ...mapping, ...autoMapping });
+        setStep('mapping');
+      };
+
+      reader.readAsArrayBuffer(file);
+    } catch (error) {
+      console.error('Error parsing file:', error);
+      alert('Error parsing file: ' + error.message);
     }
   };
 
-  const stepTitles = ['Contact List Info', 'Upload File', 'Map Columns'];
-  const stepDescriptions = ['Name your contact list', 'CSV, Excel (.xlsx, .xls)', 'Match columns to fields'];
+  const handleImport = async () => {
+    if (!mapping.email) {
+      alert('Please map the email field');
+      return;
+    }
 
-  return h('div', {
-    className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4",
-    onClick: onClose
-  },
-    h('div', {
-      className: "bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl",
-      onClick: e => e.stopPropagation()
-    },
-      h('div', { className: "sticky top-0 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 p-6 rounded-t-2xl z-10" },
-        h('div', { className: "flex justify-between items-center mb-4" },
-          h('div', null,
-            h('h3', { className: "font-serif text-2xl" }, 'Import Contacts'),
-            h('p', { className: "text-jaguar-100 text-sm mt-1" }, stepDescriptions[step - 1])),
-          h('button', {
-            onClick: onClose,
-            className: "w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all duration-300"
-          }, Icons.X({ size: 20 }))),
-        h('div', { className: "flex gap-2" },
-          ...stepTitles.map((title, idx) =>
-            h('div', {
-              key: idx,
-              className: `flex-1 h-1 rounded-full transition-all ${idx < step ? 'bg-gold-500' : 'bg-white/20'}`
-            })))),
+    setStep('processing');
+    setUploading(true);
 
-      h('div', { className: "p-6" },
-        error && h('div', { className: "mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2" },
-          Icons.AlertCircle({ size: 16 }), error),
-        success && h('div', { className: "mb-4 p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex items-center gap-2" },
-          h('svg', { className: "w-4 h-4", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" },
-            h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M5 13l4 4L19 7" })),
-          success),
+    try {
+      // Transform data based on mapping
+      const contacts = parsedData.map(row => {
+        const contact = {};
+        Object.keys(mapping).forEach(field => {
+          if (mapping[field]) {
+            const colIndex = headers.indexOf(mapping[field]);
+            if (colIndex !== -1) {
+              contact[field] = row[colIndex];
+            }
+          }
+        });
+        return contact;
+      }).filter(c => c.email); // Only include contacts with email
 
-        // Step 1: List Name
-        step === 1 && h('div', { className: "space-y-5" },
-          h('div', null,
-            h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'List Name *'),
-            h('input', {
-              type: "text",
-              required: true,
-              value: listName,
-              onChange: e => setListName(e.target.value),
-              className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
-              placeholder: "e.g., Q1 2024 Prospects"
-            })),
-          h('div', null,
-            h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Description'),
-            h('textarea', {
-              value: listDescription,
-              onChange: e => setListDescription(e.target.value),
-              rows: 3,
-              className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all resize-none",
-              placeholder: "Brief description of this contact list..."
-            })),
-          h('button', {
-            onClick: handleNext,
-            disabled: !listName,
-            className: "w-full px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl hover:from-jaguar-800 hover:to-jaguar-700 transition-all duration-300 shadow-lg hover:shadow-xl font-medium disabled:opacity-50"
-          }, 'Next: Upload File →')),
+      // Import contacts via API
+      await api.importContacts(listId, contacts);
 
-        // Step 2: File Upload with Drag-Drop
-        step === 2 && h('div', { className: "space-y-5" },
-          h('div', {
-            className: `border-2 border-dashed rounded-xl p-12 text-center transition-all ${dragActive ? 'border-jaguar-900 bg-jaguar-50' : file ? 'border-green-500 bg-green-50' : 'border-stone-300 hover:border-jaguar-900'}`,
-            onDragEnter: handleDrag,
-            onDragLeave: handleDrag,
-            onDragOver: handleDrag,
-            onDrop: handleDrop
-          },
-            h('input', {
-              ref: r => fileInputRef.current = r,
-              type: "file",
-              accept: ".csv,.xlsx,.xls",
-              onChange: handleFileChange,
-              className: "hidden"
-            }),
-            file ? h('div', { className: "space-y-3" },
-              h('div', { className: "w-16 h-16 mx-auto rounded-full bg-green-100 flex items-center justify-center" },
-                h('svg', { className: "w-8 h-8 text-green-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" },
-                  h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M5 13l4 4L19 7" }))),
-              h('div', null,
-                h('p', { className: "font-semibold text-green-900 text-lg" }, file.name),
-                h('p', { className: "text-sm text-green-700 mt-1" },
-                  `${(file.size / 1024).toFixed(1)} KB • ${parsedData.allData.length - 1} rows detected`)),
-              h('button', {
-                type: "button",
-                onClick: () => fileInputRef.current?.click(),
-                className: "mt-2 px-4 py-2 text-sm bg-white border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors font-medium"
-              }, 'Choose Different File')
-            ) : h('div', { className: "space-y-4" },
-              h('div', { className: "w-20 h-20 mx-auto rounded-full bg-jaguar-100 flex items-center justify-center" },
-                Icons.Upload({ size: 32, className: "text-jaguar-900" })),
-              h('div', null,
-                h('p', { className: "text-lg font-semibold text-stone-700" }, 'Drag & drop your file here'),
-                h('p', { className: "text-sm text-stone-500 mt-1" }, 'or click to browse')),
-              h('div', { className: "flex items-center justify-center gap-2 mt-4" },
-                h('span', { className: "px-3 py-1 bg-stone-100 text-stone-600 rounded-full text-xs font-medium" }, '.CSV'),
-                h('span', { className: "px-3 py-1 bg-stone-100 text-stone-600 rounded-full text-xs font-medium" }, '.XLSX'),
-                h('span', { className: "px-3 py-1 bg-stone-100 text-stone-600 rounded-full text-xs font-medium" }, '.XLS')),
-              h('button', {
-                type: "button",
-                onClick: () => fileInputRef.current?.click(),
-                className: "mt-4 px-6 py-3 bg-jaguar-900 text-cream-50 rounded-xl hover:bg-jaguar-800 transition-colors font-medium"
-              }, 'Browse Files'))),
-          file && h('button', {
-            onClick: () => setStep(1),
-            className: "w-full px-6 py-3 bg-white border-2 border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-all font-medium"
-          }, '← Back')),
+      onComplete(contacts);
+      alert(`Successfully imported ${contacts.length} contacts!`);
+    } catch (error) {
+      console.error('Error importing contacts:', error);
+      alert('Error importing contacts: ' + error.message);
+      setStep('mapping');
+    } finally {
+      setUploading(false);
+    }
+  };
 
-        // Step 3: Column Mapping
-        step === 3 && parsedData && h('div', { className: "space-y-5" },
-          h('div', { className: "bg-blue-50 border border-blue-200 rounded-xl p-4" },
-            h('p', { className: "text-sm text-blue-800 font-medium" },
-              `📊 ${parsedData.allData.length - 1} contacts detected. Map columns below:`)),
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
+      <div className="bg-white rounded-lg p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="font-serif text-2xl text-jaguar-900">Import Contacts</h3>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-600 transition-colors">
+            <Icons.X size={24} />
+          </button>
+        </div>
 
-          h('div', { className: "overflow-x-auto" },
-            h('table', { className: "w-full border-collapse" },
-              h('thead', null,
-                h('tr', { className: "border-b-2 border-stone-200" },
-                  h('th', { className: "text-left py-3 px-4 text-sm font-semibold text-stone-700" }, 'Column'),
-                  h('th', { className: "text-left py-3 px-4 text-sm font-semibold text-stone-700" }, 'Sample Data'),
-                  h('th', { className: "text-left py-3 px-4 text-sm font-semibold text-stone-700 w-48" }, 'Map To Field'))),
-              h('tbody', null,
-                ...parsedData.headers.map((header, idx) =>
-                  h('tr', { key: idx, className: "border-b border-stone-100 hover:bg-stone-50" },
-                    h('td', { className: "py-3 px-4 font-medium text-stone-900" }, header || `Column ${idx + 1}`),
-                    h('td', { className: "py-3 px-4 text-sm text-stone-600" },
-                      parsedData.rows[0]?.[idx] ? String(parsedData.rows[0][idx]).substring(0, 30) + (String(parsedData.rows[0][idx]).length > 30 ? '...' : '') : '—'),
-                    h('td', { className: "py-3 px-4" },
-                      h('select', {
-                        value: columnMapping[idx] || '',
-                        onChange: e => setColumnMapping({ ...columnMapping, [idx]: e.target.value }),
-                        className: "w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900"
-                      },
-                        h('option', { value: '' }, 'Skip'),
-                        h('option', { value: 'email' }, '📧 Email'),
-                        h('option', { value: 'first_name' }, '👤 First Name'),
-                        h('option', { value: 'last_name' }, '👤 Last Name'),
-                        h('option', { value: 'company' }, '🏢 Company')))))))),
+        {step === 'upload' && (
+          <div className="space-y-6">
+            <div
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-lg p-12 text-center transition-all ${
+                dragActive
+                  ? 'border-jaguar-900 bg-jaguar-100/10'
+                  : 'border-stone-200 hover:border-stone-300'
+              }`}
+            >
+              <Icons.Upload size={48} className="text-stone-300 mx-auto mb-4" />
+              <h4 className="font-medium text-jaguar-900 mb-2">Drop your file here</h4>
+              <p className="text-sm text-stone-500 mb-4">
+                Supports CSV, XLS, and XLSX files
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={handleFileInput}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="px-6 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 transition-colors"
+              >
+                Choose File
+              </button>
+            </div>
 
-          h('div', { className: "flex gap-3" },
-            h('button', {
-              onClick: () => { setStep(2); setParsedData(null); setFile(null); },
-              className: "flex-1 px-6 py-3 bg-white border-2 border-stone-200 text-stone-700 rounded-xl hover:bg-stone-50 transition-all font-medium"
-            }, '← Back'),
-            h('button', {
-              onClick: handleSubmit,
-              disabled: loading || !Object.values(columnMapping).includes('email'),
-              className: "flex-1 px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl hover:from-jaguar-800 hover:to-jaguar-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 font-medium flex items-center justify-center gap-2"
-            }, loading ? [Icons.Loader2({ size: 18 }), ' Importing...'] : 'Import Contacts')))
-      ))
-    )
+            <div className="p-4 bg-cream-50 border border-stone-200 rounded-lg">
+              <h5 className="font-medium text-jaguar-900 mb-2 flex items-center gap-2">
+                <Icons.AlertCircle size={16} className="text-gold-600" />
+                File Requirements
+              </h5>
+              <ul className="text-sm text-stone-600 space-y-1 ml-6 list-disc">
+                <li>Must include an email column</li>
+                <li>First row should contain column headers</li>
+                <li>Supported formats: CSV, Excel (.xlsx, .xls)</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {step === 'mapping' && (
+          <div className="space-y-6">
+            <div className="p-4 bg-cream-50 border border-stone-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <Icons.Check size={16} className="text-green-600" />
+                <span className="font-medium text-jaguar-900">{file?.name}</span>
+              </div>
+              <p className="text-sm text-stone-600">
+                {parsedData.length} rows detected
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-medium text-jaguar-900 mb-4">Map Your Columns</h4>
+              <div className="space-y-3">
+                {Object.keys(mapping).map(field => (
+                  <div key={field} className="grid grid-cols-2 gap-4 items-center">
+                    <label className="text-sm font-medium text-stone-700 capitalize">
+                      {field.replace('_', ' ')}
+                      {field === 'email' && <span className="text-red-500 ml-1">*</span>}
+                    </label>
+                    <select
+                      value={mapping[field]}
+                      onChange={(e) => setMapping({ ...mapping, [field]: e.target.value })}
+                      className="px-3 py-2 border border-stone-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900"
+                    >
+                      <option value="">-- Skip --</option>
+                      {headers.map((header, idx) => (
+                        <option key={idx} value={header}>{header}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div>
+              <h4 className="font-medium text-jaguar-900 mb-3">Preview (First 3 Rows)</h4>
+              <div className="overflow-x-auto border border-stone-200 rounded-lg">
+                <table className="w-full text-sm">
+                  <thead className="bg-cream-50">
+                    <tr>
+                      {Object.keys(mapping).filter(k => mapping[k]).map(field => (
+                        <th key={field} className="px-3 py-2 text-left text-xs font-medium text-stone-500 uppercase">
+                          {field.replace('_', ' ')}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {parsedData.slice(0, 3).map((row, idx) => (
+                      <tr key={idx}>
+                        {Object.keys(mapping).filter(k => mapping[k]).map(field => {
+                          const colIndex = headers.indexOf(mapping[field]);
+                          return (
+                            <td key={field} className="px-3 py-2 text-stone-600">
+                              {row[colIndex] || '-'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep('upload')}
+                className="flex-1 px-4 py-2 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleImport}
+                disabled={!mapping.email}
+                className="flex-1 px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Import {parsedData.length} Contacts
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'processing' && (
+          <div className="flex flex-col items-center justify-center py-12">
+            <Icons.Loader2 size={48} className="text-jaguar-900 mb-4" />
+            <h4 className="font-medium text-jaguar-900 mb-2">Importing Contacts...</h4>
+            <p className="text-sm text-stone-500">Please wait while we process your file</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };

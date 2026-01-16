@@ -3,12 +3,12 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mr. Snowman - Email Outreach Automation</title>
+    <title>Mr. Snowman - Outreach Automation</title>
 
-    <!-- Google Fonts -->
+    <!-- External Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -17,24 +17,55 @@
         theme: {
           extend: {
             colors: {
-              jaguar: { 900: '#0B2B26', 800: '#16423C', 700: '#1F5750', 100: '#E8F5F3' },
-              cream: { 50: '#FDFBF7', 100: '#F7F4EB', 200: '#EBE6D9' },
-              gold: { 500: '#C5A065', 600: '#B08D55' },
-              stone: { 100: '#f5f5f4', 200: '#e7e5e4', 300: '#d6d3d1', 400: '#a8a29e', 500: '#78716c', 600: '#57534e', 700: '#44403c', 900: '#1c1917' }
+              jaguar: {
+                900: '#0B2B26',
+                800: '#16423C',
+                700: '#1F5750',
+                100: '#E8F5F3',
+              },
+              cream: {
+                50: '#FDFBF7',
+                100: '#F7F4EB',
+                200: '#EBE6D9',
+              },
+              gold: {
+                500: '#C5A065',
+                600: '#B08D55',
+              }
             },
-            fontFamily: { sans: ['Inter', 'sans-serif'], serif: ['Playfair Display', 'serif'] }
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              serif: ['Playfair Display', 'serif'],
+            },
+            animation: {
+                'fade-in': 'fadeIn 0.5s ease-out forwards',
+            },
+            keyframes: {
+                fadeIn: {
+                    '0%': { opacity: '0' },
+                    '100%': { opacity: '1' },
+                }
+            }
           }
         }
       }
     </script>
 
-    <!-- React -->
+    <!-- React Dependencies -->
     <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
 
-    <!-- Additional Libraries -->
-    <script src="https://unpkg.com/recharts@2.5.0/dist/Recharts.js"></script>
+    <!-- Prop Types -->
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+
+    <!-- Recharts (Charting Library) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+
+    <!-- SheetJS (Excel/CSV parsing) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
+    <!-- Babel Standalone (JSX transpilation) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <!-- Custom Styles -->
     <link rel="stylesheet" href="css/styles.css">
@@ -48,18 +79,18 @@
     <!-- API Service -->
     <script src="js/api.js"></script>
 
-    <!-- Icons -->
-    <script src="js/icons.js"></script>
+    <!-- Icon Library -->
+    <script type="text/babel" src="js/icons.js"></script>
 
     <!-- Components -->
-    <script src="js/components/auth.js"></script>
-    <script src="js/components/landing.js"></script>
-    <script src="js/components/dashboard.js"></script>
-    <script src="js/components/campaigns.js"></script>
-    <script src="js/components/contacts.js"></script>
-    <script src="js/components/emailAccounts.js"></script>
+    <script type="text/babel" src="js/components/landing.js"></script>
+    <script type="text/babel" src="js/components/auth.js"></script>
+    <script type="text/babel" src="js/components/dashboard.js"></script>
+    <script type="text/babel" src="js/components/campaigns.js"></script>
+    <script type="text/babel" src="js/components/contacts.js"></script>
+    <script type="text/babel" src="js/components/emailAccounts.js"></script>
 
     <!-- Main Application -->
-    <script src="js/app.js"></script>
+    <script type="text/babel" src="js/app.js"></script>
 </body>
 </html>

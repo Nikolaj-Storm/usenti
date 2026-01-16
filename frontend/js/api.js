@@ -1,25 +1,36 @@
-// Mr. Snowman - API Service
+// Mr. Snowman - API Service Layer
 
 const api = {
   async request(endpoint, options = {}) {
     const url = APP_CONFIG.API_BASE_URL + endpoint;
     const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+
     const config = {
-      headers: { 'Content-Type': 'application/json', ...options.headers },
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+      },
       ...options
     };
-    if (token && !options.skipAuth) config.headers['Authorization'] = `Bearer ${token}`;
+
+    if (token && !options.skipAuth) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+
     try {
       const response = await fetch(url, config);
       const data = await response.json();
+
       if (!response.ok) {
         if (response.status === 401) {
+          // Unauthorized - clear auth and reload
           localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
           localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
           window.location.reload();
         }
         throw new Error(data.error || data.message || 'Request failed');
       }
+
       return data;
     } catch (error) {
       console.error('API Error:', error);
@@ -32,43 +43,53 @@ const api = {
   },
 
   async post(endpoint, data, options = {}) {
-    return this.request(endpoint, { method: 'POST', body: JSON.stringify(data), ...options });
+    return this.request(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      ...options
+    });
   },
 
   async put(endpoint, data, options = {}) {
-    return this.request(endpoint, { method: 'PUT', body: JSON.stringify(data), ...options });
+    return this.request(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+      ...options
+    });
   },
 
   async delete(endpoint, options = {}) {
     return this.request(endpoint, { method: 'DELETE', ...options });
   },
 
-  async upload(endpoint, formData, options = {}) {
-    const url = APP_CONFIG.API_BASE_URL + endpoint;
-    const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
-    const config = { method: 'POST', body: formData, headers: {}, ...options };
-    if (token) config.headers['Authorization'] = `Bearer ${token}`;
-    const response = await fetch(url, config);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Upload failed');
-    return data;
-  },
-
+  // Authentication
   async signup(email, password, name) {
-    const response = await this.post(APP_CONFIG.ENDPOINTS.AUTH_SIGNUP, { email, password, name }, { skipAuth: true });
+    const response = await this.post(
+      APP_CONFIG.ENDPOINTS.AUTH_SIGNUP,
+      { email, password, name },
+      { skipAuth: true }
+    );
+
     if (response.session?.access_token) {
       localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, response.session.access_token);
       localStorage.setItem(APP_CONFIG.STORAGE_KEYS.USER, JSON.stringify(response.user));
     }
+
     return response;
   },
 
   async login(email, password) {
-    const response = await this.post(APP_CONFIG.ENDPOINTS.AUTH_LOGIN, { email, password }, { skipAuth: true });
+    const response = await this.post(
+      APP_CONFIG.ENDPOINTS.AUTH_LOGIN,
+      { email, password },
+      { skipAuth: true }
+    );
+
     if (response.session?.access_token) {
       localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, response.session.access_token);
       localStorage.setItem(APP_CONFIG.STORAGE_KEYS.USER, JSON.stringify(response.user));
     }
+
     return response;
   },
 
@@ -81,6 +102,7 @@ const api = {
     }
   },
 
+  // Email Accounts
   async getEmailAccounts() {
     return this.get(APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS);
   },
@@ -93,6 +115,7 @@ const api = {
     return this.post(APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS_TEST, accountData);
   },
 
+  // Contact Lists
   async getContactLists() {
     return this.get(APP_CONFIG.ENDPOINTS.CONTACT_LISTS);
   },
@@ -101,17 +124,19 @@ const api = {
     return this.post(APP_CONFIG.ENDPOINTS.CONTACT_LISTS, { name, description });
   },
 
+  // Contacts
   async getContacts(listId) {
     return this.get(`${APP_CONFIG.ENDPOINTS.CONTACTS}?listId=${listId}`);
   },
 
-  async importContacts(listId, csvFile) {
-    const formData = new FormData();
-    formData.append('csv', csvFile);
-    formData.append('listId', listId);
-    return this.upload(APP_CONFIG.ENDPOINTS.CONTACTS_IMPORT, formData);
+  async importContacts(listId, contacts) {
+    return this.post(
+      APP_CONFIG.ENDPOINTS.CONTACTS_IMPORT.replace(':id', listId),
+      { contacts }
+    );
   },
 
+  // Campaigns
   async getCampaigns() {
     return this.get(APP_CONFIG.ENDPOINTS.CAMPAIGNS);
   },
@@ -128,6 +153,7 @@ const api = {
     return this.get(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${id}/stats`);
   },
 
+  // Dashboard
   async getDashboardStats() {
     return this.get(APP_CONFIG.ENDPOINTS.DASHBOARD_STATS);
   }
