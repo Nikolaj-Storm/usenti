@@ -1,10 +1,15 @@
-// Mr. Snowman - Campaigns Component with Campaign Builder
+// Mr. Snowman - Campaign Builder Component
 
-const Campaigns = () => {
-  const { useState, useEffect, createElement: h } = React;
+const { useState, useEffect } = React;
+
+const CampaignBuilder = () => {
   const [campaigns, setCampaigns] = useState([]);
+  const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const [steps, setSteps] = useState([]);
+  const [activeStep, setActiveStep] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [showNewCampaignModal, setShowNewCampaignModal] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadCampaigns();
@@ -12,313 +17,642 @@ const Campaigns = () => {
 
   const loadCampaigns = async () => {
     try {
-      setLoading(true);
       const data = await api.getCampaigns();
       setCampaigns(data);
-    } catch (err) {
-      console.error('Failed to load campaigns:', err);
+      if (data.length > 0 && !selectedCampaign) {
+        setSelectedCampaign(data[0]);
+        loadCampaignSteps(data[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load campaigns:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCampaignCreated = () => {
-    loadCampaigns();
-    setShowModal(false);
+  const loadCampaignSteps = async (campaignId) => {
+    try {
+      const data = await api.get(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${campaignId}/steps`);
+      setSteps(data);
+      if (data.length > 0) {
+        setActiveStep(data[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load steps:', error);
+    }
   };
 
-  return h('div', { className: "space-y-8" },
-    h('div', { className: "flex justify-between items-end" },
-      h('div', null,
-        h('h2', { className: "font-serif text-3xl text-jaguar-900" }, 'Campaigns'),
-        h('p', { className: "text-stone-500 mt-2" }, 'Create and manage your email campaigns.')),
-      h('button', {
-        onClick: () => setShowModal(true),
-        className: "px-6 py-3 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-xl font-medium hover:shadow-xl transition-all duration-300 flex items-center gap-2"
-      },
-        Icons.Plus({ size: 20 }), 'Create Campaign')),
-    loading ? h('div', { className: "text-center py-12" },
-      h('div', { className: "inline-block animate-spin text-jaguar-900" }, Icons.Loader2({ size: 32 })),
-      h('p', { className: "text-stone-400 mt-4" }, 'Loading campaigns...')
-    ) : campaigns.length === 0 ? h('div', { className: "text-center py-12" },
-      h('p', { className: "text-stone-400" }, 'No campaigns yet. Create your first campaign to get started!')
-    ) : h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
-      ...campaigns.map(campaign =>
-        h('div', { key: campaign.id, className: "bg-white rounded-2xl p-6 border border-stone-200 shadow-sm hover:shadow-md transition-shadow" },
-          h('div', { className: "flex items-start justify-between mb-4" },
-            h('div', null,
-              h('h3', { className: "font-medium text-jaguar-900 text-lg" }, campaign.name),
-              h('p', { className: "text-xs text-stone-500 mt-1" },
-                campaign.email_accounts?.email_address || 'No account')),
-            h('span', {
-              className: `px-2 py-1 text-xs rounded-full ${
-                campaign.status === 'running' ? 'bg-green-100 text-green-700' :
-                campaign.status === 'paused' ? 'bg-yellow-100 text-yellow-700' :
-                campaign.status === 'completed' ? 'bg-blue-100 text-blue-700' :
-                'bg-stone-100 text-stone-700'
-              }`
-            }, campaign.status)),
-          h('div', { className: "space-y-2 text-sm" },
-            h('div', { className: "flex justify-between" },
-              h('span', { className: "text-stone-500" }, 'Contact List:'),
-              h('span', { className: "font-medium text-jaguar-900" },
-                campaign.contact_lists?.name || 'None')),
-            h('div', { className: "flex justify-between" },
-              h('span', { className: "text-stone-500" }, 'Daily Limit:'),
-              h('span', { className: "font-medium text-jaguar-900" }, campaign.daily_limit || 'N/A')),
-            campaign.started_at && h('div', { className: "flex justify-between" },
-              h('span', { className: "text-stone-500" }, 'Started:'),
-              h('span', { className: "text-xs text-stone-600" },
-                new Date(campaign.started_at).toLocaleDateString()))))
-      )),
-    showModal && h(CreateCampaignModal, {
-      onClose: () => setShowModal(false),
-      onSuccess: handleCampaignCreated
-    })
+  const handleCreateCampaign = async (campaignData) => {
+    try {
+      const newCampaign = await api.createCampaign(campaignData);
+      setCampaigns([...campaigns, newCampaign]);
+      setSelectedCampaign(newCampaign);
+      setSteps([]);
+      setShowNewCampaignModal(false);
+    } catch (error) {
+      console.error('Failed to create campaign:', error);
+      alert('Failed to create campaign: ' + error.message);
+    }
+  };
+
+  const handleAddStep = async (stepType) => {
+    if (!selectedCampaign) return;
+
+    const stepData = {
+      step_order: steps.length + 1,
+      step_type: stepType,
+      subject: stepType === 'email' ? 'New Email' : null,
+      body: stepType === 'email' ? 'Hi {{first_name}},\n\nI wanted to reach out...' : null,
+      wait_days: stepType === 'wait' ? 3 : null,
+      condition_type: stepType === 'condition' ? 'if_opened' : null
+    };
+
+    try {
+      const newStep = await api.post(
+        `${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps`,
+        stepData
+      );
+      const updatedSteps = [...steps, newStep];
+      setSteps(updatedSteps);
+      setActiveStep(newStep.id);
+    } catch (error) {
+      console.error('Failed to add step:', error);
+      alert('Failed to add step: ' + error.message);
+    }
+  };
+
+  const handleUpdateStep = async (stepId, updates) => {
+    setSaving(true);
+    try {
+      const updatedStep = await api.put(
+        `${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`,
+        updates
+      );
+      setSteps(steps.map(s => s.id === stepId ? updatedStep : s));
+    } catch (error) {
+      console.error('Failed to update step:', error);
+      alert('Failed to update step: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteStep = async (stepId) => {
+    if (!confirm('Are you sure you want to delete this step?')) return;
+
+    try {
+      await api.delete(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`);
+      const updatedSteps = steps.filter(s => s.id !== stepId);
+      setSteps(updatedSteps);
+      if (activeStep === stepId) {
+        setActiveStep(updatedSteps.length > 0 ? updatedSteps[0].id : null);
+      }
+    } catch (error) {
+      console.error('Failed to delete step:', error);
+      alert('Failed to delete step: ' + error.message);
+    }
+  };
+
+  const handleStartCampaign = async () => {
+    if (!selectedCampaign) return;
+    if (steps.length === 0) {
+      alert('Please add at least one step before launching the campaign.');
+      return;
+    }
+
+    try {
+      await api.startCampaign(selectedCampaign.id);
+      await loadCampaigns();
+      alert('Campaign launched successfully!');
+    } catch (error) {
+      console.error('Failed to start campaign:', error);
+      alert('Failed to start campaign: ' + error.message);
+    }
+  };
+
+  const handlePauseCampaign = async () => {
+    if (!selectedCampaign) return;
+
+    try {
+      await api.post(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/pause`);
+      await loadCampaigns();
+    } catch (error) {
+      console.error('Failed to pause campaign:', error);
+      alert('Failed to pause campaign: ' + error.message);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Icons.Loader2 size={48} className="text-jaguar-900" />
+      </div>
+    );
+  }
+
+  if (campaigns.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 text-center animate-fade-in">
+        <Icons.Send size={64} className="text-stone-300 mb-4" />
+        <h3 className="font-serif text-2xl text-jaguar-900 mb-2">No Campaigns Yet</h3>
+        <p className="text-stone-500 mb-6 max-w-md">Create your first email campaign to start reaching out to prospects.</p>
+        <button
+          onClick={() => setShowNewCampaignModal(true)}
+          className="px-6 py-3 bg-jaguar-900 text-cream-50 rounded-lg hover:bg-jaguar-800 flex items-center gap-2 transition-colors"
+        >
+          <Icons.Plus size={20} /> Create Your First Campaign
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-[calc(100vh-120px)] flex flex-col animate-fade-in">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="font-serif text-3xl text-jaguar-900">{selectedCampaign?.name || 'Campaign Builder'}</h2>
+          <div className="flex items-center gap-2 mt-2">
+            <span className={`w-2 h-2 rounded-full ${
+              selectedCampaign?.status === 'running' ? 'bg-green-500 animate-pulse' :
+              selectedCampaign?.status === 'paused' ? 'bg-amber-500' :
+              'bg-stone-300'
+            }`}></span>
+            <p className="text-stone-500 text-sm capitalize">{selectedCampaign?.status || 'draft'}</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <select
+            value={selectedCampaign?.id || ''}
+            onChange={(e) => {
+              const campaign = campaigns.find(c => c.id === e.target.value);
+              setSelectedCampaign(campaign);
+              loadCampaignSteps(campaign.id);
+            }}
+            className="px-4 py-2 bg-white border border-stone-200 rounded-md text-stone-700 focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+          >
+            {campaigns.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowNewCampaignModal(true)}
+            className="px-4 py-2 bg-white border border-stone-200 text-stone-700 rounded-md hover:bg-stone-50 font-medium flex items-center gap-2 transition-colors"
+          >
+            <Icons.Plus size={18} /> New Campaign
+          </button>
+          {selectedCampaign?.status === 'draft' && (
+            <button
+              onClick={handleStartCampaign}
+              className="px-6 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 font-medium flex items-center gap-2 shadow-lg transition-colors"
+            >
+              <Icons.Play size={18} /> Launch
+            </button>
+          )}
+          {selectedCampaign?.status === 'running' && (
+            <button
+              onClick={handlePauseCampaign}
+              className="px-6 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 font-medium transition-colors"
+            >
+              Pause
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex gap-6 flex-1 overflow-hidden">
+        {/* Timeline - Left Side */}
+        <div className="w-1/3 overflow-y-auto pr-2 pb-10">
+          <div className="relative">
+            {/* Vertical Line */}
+            <div className="absolute left-6 top-4 bottom-20 w-0.5 bg-stone-200"></div>
+
+            <div className="space-y-6">
+              {steps.map((step, index) => (
+                <div
+                  key={step.id}
+                  onClick={() => setActiveStep(step.id)}
+                  className={`relative pl-16 group cursor-pointer transition-all ${
+                    activeStep === step.id ? 'opacity-100 scale-[1.02]' : 'opacity-80 hover:opacity-100'
+                  }`}
+                >
+                  {/* Icon Circle */}
+                  <div className={`absolute left-0 top-0 w-12 h-12 rounded-full border-4 border-[#FDFBF7] flex items-center justify-center z-10 shadow-sm transition-all ${
+                    activeStep === step.id
+                      ? 'bg-jaguar-900 text-cream-50'
+                      : 'bg-white text-stone-400 group-hover:text-jaguar-900 group-hover:border-jaguar-900/20'
+                  }`}>
+                    {step.step_type === 'email' && <Icons.Mail size={18} />}
+                    {step.step_type === 'wait' && <Icons.Clock size={18} />}
+                    {step.step_type === 'condition' && <Icons.Split size={18} />}
+                  </div>
+
+                  {/* Step Card */}
+                  <div className={`p-4 rounded-lg border transition-all ${
+                    activeStep === step.id
+                      ? 'bg-white border-jaguar-900 shadow-md'
+                      : 'bg-white border-stone-200 hover:border-stone-300 hover:shadow-sm'
+                  }`}>
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-stone-400">Step {index + 1}</span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteStep(step.id);
+                          }}
+                          className="text-stone-300 hover:text-red-500 transition-colors"
+                        >
+                          <Icons.Trash2 size={14}/>
+                        </button>
+                      </div>
+                    </div>
+
+                    {step.step_type === 'email' && (
+                      <div>
+                        <h4 className="font-serif font-medium text-jaguar-900 mb-1">{step.subject || 'No Subject'}</h4>
+                        <p className="text-xs text-stone-500 line-clamp-2">{step.body}</p>
+                      </div>
+                    )}
+                    {step.step_type === 'wait' && (
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-stone-700">Wait {step.wait_days} Days</span>
+                      </div>
+                    )}
+                    {step.step_type === 'condition' && (
+                      <div className="bg-cream-50 p-2 rounded border border-stone-100">
+                        <span className="text-sm font-medium text-jaguar-900">Condition:</span>
+                        <span className="text-sm text-stone-600 ml-1">If {step.condition_type?.replace('if_', '')}...</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {/* Add Step Buttons */}
+              <div className="relative pl-16">
+                <div className="absolute left-0 top-0 w-12 h-12 rounded-full border-4 border-[#FDFBF7] bg-stone-100 text-stone-400 flex items-center justify-center z-10">
+                  <Icons.Plus size={20} />
+                </div>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => handleAddStep('email')}
+                    className="w-full p-3 border-2 border-dashed border-stone-200 rounded-lg text-stone-400 font-medium hover:border-jaguar-900 hover:text-jaguar-900 hover:bg-cream-50 transition-all text-left flex items-center gap-2"
+                  >
+                    <Icons.Mail size={16} /> Add Email
+                  </button>
+                  <button
+                    onClick={() => handleAddStep('wait')}
+                    className="w-full p-3 border-2 border-dashed border-stone-200 rounded-lg text-stone-400 font-medium hover:border-jaguar-900 hover:text-jaguar-900 hover:bg-cream-50 transition-all text-left flex items-center gap-2"
+                  >
+                    <Icons.Clock size={16} /> Add Wait
+                  </button>
+                  <button
+                    onClick={() => handleAddStep('condition')}
+                    className="w-full p-3 border-2 border-dashed border-stone-200 rounded-lg text-stone-400 font-medium hover:border-jaguar-900 hover:text-jaguar-900 hover:bg-cream-50 transition-all text-left flex items-center gap-2"
+                  >
+                    <Icons.Split size={16} /> Add Condition
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Editor Panel - Right Side */}
+        <div className="w-2/3 bg-white border border-stone-200 rounded-lg shadow-sm p-8 overflow-y-auto">
+          {activeStep ? (
+            <StepEditor
+              step={steps.find(s => s.id === activeStep)}
+              onUpdate={handleUpdateStep}
+              saving={saving}
+            />
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-stone-400">
+              <Icons.Edit3 size={48} className="mb-4 opacity-20" />
+              <p>Select a step from the timeline to edit</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* New Campaign Modal */}
+      {showNewCampaignModal && (
+        <NewCampaignModal
+          onClose={() => setShowNewCampaignModal(false)}
+          onCreate={handleCreateCampaign}
+        />
+      )}
+    </div>
   );
 };
 
-// Campaign Sequence Builder Modal - Full Featured
-const CreateCampaignModal = ({ onClose, onSuccess }) => {
-  const { useState, useEffect, createElement: h } = React;
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [emailAccounts, setEmailAccounts] = useState([]);
-  const [contactLists, setContactLists] = useState([]);
-  const [campaignName, setCampaignName] = useState('');
-  const [emailAccountId, setEmailAccountId] = useState('');
-  const [contactListId, setContactListId] = useState('');
-  const [dailyLimit, setDailyLimit] = useState(500);
-  const [steps, setSteps] = useState([{
-    id: 1,
-    type: 'email',
-    subject: 'Collaboration Opportunity',
-    body: 'Hi {{first_name}}, I saw your work at...',
-    order: 1
-  }]);
-  const [selectedStepId, setSelectedStepId] = useState(1);
-  const [showAddMenu, setShowAddMenu] = useState(false);
+// Step Editor Component
+const StepEditor = ({ step, onUpdate, saving }) => {
+  const [formData, setFormData] = useState({
+    subject: step?.subject || '',
+    body: step?.body || '',
+    wait_days: step?.wait_days || 3,
+    condition_type: step?.condition_type || 'if_opened'
+  });
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    setFormData({
+      subject: step?.subject || '',
+      body: step?.body || '',
+      wait_days: step?.wait_days || 3,
+      condition_type: step?.condition_type || 'if_opened'
+    });
+  }, [step?.id]);
 
-  const loadData = async () => {
-    try {
-      const [accounts, lists] = await Promise.all([api.getEmailAccounts(), api.getContactLists()]);
-      setEmailAccounts(accounts);
-      setContactLists(lists);
-      if (accounts.length > 0) setEmailAccountId(accounts[0].id);
-      if (lists.length > 0) setContactListId(lists[0].id);
-    } catch (err) {
-      setError('Failed to load accounts and lists');
-    }
-  };
-
-  const getCurrentStep = () => steps.find(s => s.id === selectedStepId);
-  const updateStep = (id, updates) => setSteps(steps.map(s => s.id === id ? { ...s, ...updates } : s));
-
-  const addStep = (type) => {
-    const newId = Math.max(...steps.map(s => s.id), 0) + 1;
-    const newStep = {
-      id: newId, order: steps.length + 1, type,
-      subject: type === 'email' ? 'Follow Up' : '',
-      body: type === 'email' ? 'Hi {{first_name}},' : '',
-      wait_days: type === 'wait' ? 2 : undefined,
-      condition_type: type === 'condition' ? 'if_opened' : undefined
-    };
-    setSteps([...steps, newStep]);
-    setSelectedStepId(newId);
-    setShowAddMenu(false);
-  };
-
-  const deleteStep = (id) => {
-    if (steps.length === 1) return;
-    const filtered = steps.filter(s => s.id !== id);
-    setSteps(filtered.map((s, idx) => ({ ...s, order: idx + 1 })));
-    setSelectedStepId(filtered[0]?.id || steps[0]?.id);
+  const handleSave = () => {
+    onUpdate(step.id, formData);
   };
 
   const insertVariable = (variable) => {
-    const step = getCurrentStep();
-    if (step && step.type === 'email') {
-      updateStep(step.id, { body: (step.body || '') + ` {{${variable}}}` });
+    const textarea = document.querySelector('textarea[name="body"]');
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = formData.body;
+      const before = text.substring(0, start);
+      const after = text.substring(end);
+      const newText = before + variable + after;
+      setFormData({ ...formData, body: newText });
+      setTimeout(() => {
+        textarea.focus();
+        textarea.selectionStart = textarea.selectionEnd = start + variable.length;
+      }, 0);
     }
   };
 
-  const handleSaveDraft = async () => {
-    if (!campaignName) { setError('Please enter a campaign name'); return; }
-    if (!emailAccountId) { setError('Please select an email account'); return; }
-    if (!contactListId) { setError('Please select a contact list'); return; }
-    setLoading(true);
-    setError('');
+  if (!step) return null;
+
+  return (
+    <div className="animate-fade-in">
+      {step.step_type === 'email' && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-serif text-2xl text-jaguar-900">Email Step</h3>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 disabled:opacity-50 flex items-center gap-2 transition-colors"
+            >
+              {saving ? <Icons.Loader2 size={16} /> : <Icons.Save size={16} />}
+              Save Changes
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-stone-700 mb-2">Subject Line</label>
+            <input
+              type="text"
+              value={formData.subject}
+              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+              onBlur={handleSave}
+              className="w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all font-serif"
+              placeholder="Enter email subject..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-stone-700 mb-2">Email Body</label>
+            <div className="border border-stone-200 rounded-md overflow-hidden">
+              <div className="bg-stone-50 px-3 py-2 border-b border-stone-200 flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => insertVariable('{{first_name}}')}
+                  className="px-2 py-1 bg-white border border-stone-200 rounded text-xs text-gold-600 hover:text-gold-500 hover:border-gold-500 transition-colors"
+                >
+                  {'{{first_name}}'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => insertVariable('{{last_name}}')}
+                  className="px-2 py-1 bg-white border border-stone-200 rounded text-xs text-gold-600 hover:text-gold-500 hover:border-gold-500 transition-colors"
+                >
+                  {'{{last_name}}'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => insertVariable('{{company}}')}
+                  className="px-2 py-1 bg-white border border-stone-200 rounded text-xs text-gold-600 hover:text-gold-500 hover:border-gold-500 transition-colors"
+                >
+                  {'{{company}}'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => insertVariable('{{email}}')}
+                  className="px-2 py-1 bg-white border border-stone-200 rounded text-xs text-gold-600 hover:text-gold-500 hover:border-gold-500 transition-colors"
+                >
+                  {'{{email}}'}
+                </button>
+              </div>
+              <textarea
+                name="body"
+                value={formData.body}
+                onChange={(e) => setFormData({ ...formData, body: e.target.value })}
+                onBlur={handleSave}
+                rows={12}
+                className="w-full p-4 focus:outline-none resize-none"
+                placeholder="Hi {{first_name}},&#10;&#10;I noticed..."
+              />
+            </div>
+          </div>
+
+          <div className="p-4 bg-cream-50 border border-stone-100 rounded-lg">
+            <h4 className="text-sm font-medium text-jaguar-900 mb-3">Tracking Options</h4>
+            <div className="flex gap-6">
+              <label className="flex items-center gap-2 text-sm text-stone-600 cursor-pointer">
+                <input type="checkbox" defaultChecked className="rounded" />
+                Track Opens
+              </label>
+              <label className="flex items-center gap-2 text-sm text-stone-600 cursor-pointer">
+                <input type="checkbox" defaultChecked className="rounded" />
+                Track Clicks
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {step.step_type === 'wait' && (
+        <div className="flex flex-col items-center justify-center h-full text-center">
+          <Icons.Clock size={48} className="text-gold-500 mb-4" />
+          <h3 className="text-xl font-serif text-jaguar-900 mb-6">Delay Duration</h3>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => {
+                const newDays = Math.max(1, formData.wait_days - 1);
+                setFormData({ ...formData, wait_days: newDays });
+                onUpdate(step.id, { wait_days: newDays });
+              }}
+              className="w-10 h-10 rounded-full border border-stone-200 flex items-center justify-center hover:bg-stone-50 hover:border-jaguar-900 transition-colors"
+            >
+              -
+            </button>
+            <div className="text-4xl font-serif text-jaguar-900 w-24">{formData.wait_days}</div>
+            <button
+              onClick={() => {
+                const newDays = formData.wait_days + 1;
+                setFormData({ ...formData, wait_days: newDays });
+                onUpdate(step.id, { wait_days: newDays });
+              }}
+              className="w-10 h-10 rounded-full border border-stone-200 flex items-center justify-center hover:bg-stone-50 hover:border-jaguar-900 transition-colors"
+            >
+              +
+            </button>
+          </div>
+          <p className="mt-4 text-stone-500 uppercase tracking-widest text-sm">Days</p>
+        </div>
+      )}
+
+      {step.step_type === 'condition' && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-serif text-2xl text-jaguar-900">Condition Step</h3>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving ? <Icons.Loader2 size={16} /> : <Icons.Save size={16} />}
+              Save Changes
+            </button>
+          </div>
+
+          <div className="p-6 bg-cream-50 rounded-lg border border-stone-200">
+            <Icons.Split size={32} className="text-gold-500 mb-4" />
+            <label className="block text-sm font-medium text-stone-700 mb-2">Condition Type</label>
+            <select
+              value={formData.condition_type}
+              onChange={(e) => {
+                setFormData({ ...formData, condition_type: e.target.value });
+                handleSave();
+              }}
+              className="w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+            >
+              <option value="if_opened">If Email Opened</option>
+              <option value="if_not_opened">If Email Not Opened</option>
+              <option value="if_clicked">If Link Clicked</option>
+              <option value="if_replied">If Replied</option>
+            </select>
+            <p className="text-xs text-stone-500 mt-2">Recipients will only continue if this condition is met</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// New Campaign Modal Component
+const NewCampaignModal = ({ onClose, onCreate }) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    email_account_id: '',
+    contact_list_id: ''
+  });
+  const [emailAccounts, setEmailAccounts] = useState([]);
+  const [contactLists, setContactLists] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
     try {
-      await api.createCampaign({ name: campaignName, email_account_id: emailAccountId, contact_list_id: contactListId, daily_limit: dailyLimit });
-      onSuccess();
-    } catch (err) {
-      setError(err.message || 'Failed to save campaign');
+      const [accounts, lists] = await Promise.all([
+        api.getEmailAccounts(),
+        api.getContactLists()
+      ]);
+      setEmailAccounts(accounts);
+      setContactLists(lists);
+    } catch (error) {
+      console.error('Failed to load data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const currentStep = getCurrentStep();
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onCreate(formData);
+  };
 
-  return h('div', { className: "fixed inset-0 bg-stone-50 z-50 flex flex-col" },
-    h('div', { className: "bg-white border-b border-stone-200 px-6 py-4 flex items-center justify-between" },
-      h('div', { className: "flex items-center gap-4" },
-        h('button', { onClick: onClose, className: "p-2 hover:bg-stone-100 rounded-lg transition-colors" }, Icons.X({ size: 20 })),
-        h('div', null,
-          h('input', {
-            type: "text", value: campaignName, onChange: e => setCampaignName(e.target.value),
-            placeholder: "Campaign Name",
-            className: "text-xl font-serif font-semibold text-jaguar-900 border-none outline-none focus:ring-0 bg-transparent"
-          }),
-          h('p', { className: "text-xs text-stone-500 mt-0.5" }, 'Draft • Last saved just now'))),
-      h('div', { className: "flex items-center gap-3" },
-        h('button', {
-          onClick: handleSaveDraft, disabled: loading,
-          className: "px-4 py-2 border-2 border-stone-300 text-stone-700 rounded-lg hover:bg-stone-50 transition-colors font-medium flex items-center gap-2"
-        }, loading ? Icons.Loader2({ size: 16 }) : Icons.Upload({ size: 16 }), 'Save Draft'),
-        h('button', {
-          onClick: handleSaveDraft, disabled: loading || !campaignName,
-          className: "px-5 py-2 bg-gradient-to-r from-jaguar-900 to-jaguar-800 text-cream-50 rounded-lg hover:shadow-lg transition-all font-medium flex items-center gap-2 disabled:opacity-50"
-        }, Icons.Send({ size: 16 }), 'Launch'))),
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
+      <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-serif text-2xl text-jaguar-900 mb-6">Create New Campaign</h3>
 
-    error && h('div', { className: "mx-6 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2" },
-      Icons.AlertCircle({ size: 16 }), error),
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <Icons.Loader2 size={32} className="text-jaguar-900" />
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-stone-700 mb-2">Campaign Name</label>
+              <input
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                className="w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all"
+                placeholder="Q1 Outreach"
+              />
+            </div>
 
-    h('div', { className: "flex-1 flex overflow-hidden" },
-      h('div', { className: "w-96 bg-cream-50 border-r border-stone-200 flex flex-col" },
-        h('div', { className: "p-4 space-y-3 flex-1 overflow-y-auto" },
-          ...steps.map((step, idx) =>
-            h('div', { key: step.id, className: "space-y-2" },
-              h('button', {
-                onClick: () => setSelectedStepId(step.id),
-                className: `w-full text-left p-4 rounded-xl transition-all ${selectedStepId === step.id ? 'bg-white shadow-md border-2 border-jaguar-900' : 'bg-white border border-stone-200 hover:border-jaguar-300'}`
-              },
-                h('div', { className: "flex items-start gap-3" },
-                  h('div', { className: `w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${step.type === 'email' ? 'bg-blue-100' : step.type === 'wait' ? 'bg-yellow-100' : 'bg-purple-100'}` },
-                    step.type === 'email' ? Icons.Mail({ size: 18, className: "text-blue-600" }) :
-                    step.type === 'wait' ? h('svg', { className: "w-5 h-5 text-yellow-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" })) :
-                    h('svg', { className: "w-5 h-5 text-purple-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M8 9l4-4 4 4m0 6l-4 4-4-4" }))),
-                  h('div', { className: "flex-1 min-w-0" },
-                    h('div', { className: "flex items-center justify-between mb-1" },
-                      h('span', { className: "text-xs font-semibold text-stone-500 uppercase tracking-wide" }, `Step ${idx + 1}`),
-                      selectedStepId === step.id && steps.length > 1 && h('button', {
-                        onClick: (e) => { e.stopPropagation(); deleteStep(step.id); },
-                        className: "text-red-500 hover:text-red-700 p-1"
-                      }, h('svg', { className: "w-4 h-4", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" })))),
-                    step.type === 'email' && h('div', null,
-                      h('p', { className: "font-semibold text-stone-900 truncate" }, step.subject || 'Untitled Email'),
-                      h('p', { className: "text-xs text-stone-500 truncate mt-0.5" }, step.body?.substring(0, 50) + '...' || 'No content')),
-                    step.type === 'wait' && h('div', null,
-                      h('p', { className: "font-semibold text-stone-900" }, `Wait ${step.wait_days || 2} Days`),
-                      h('p', { className: "text-xs text-stone-500 mt-0.5" }, 'Pause before next step')),
-                    step.type === 'condition' && h('div', null,
-                      h('p', { className: "font-semibold text-stone-900" }, `Condition: ${step.condition_type === 'if_opened' ? 'If opened...' : step.condition_type === 'if_clicked' ? 'If clicked...' : 'If replied...'}`),
-                      h('p', { className: "text-xs text-stone-500 mt-0.5" }, 'Branch based on action'))))),
-              idx < steps.length - 1 && h('div', { className: "flex justify-center" }, h('div', { className: "w-0.5 h-4 bg-stone-300" })))),
+            <div>
+              <label className="block text-sm font-medium text-stone-700 mb-2">Email Account</label>
+              <select
+                required
+                value={formData.email_account_id}
+                onChange={(e) => setFormData({...formData, email_account_id: e.target.value})}
+                className="w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all"
+              >
+                <option value="">Select account...</option>
+                {emailAccounts.map(acc => (
+                  <option key={acc.id} value={acc.id}>{acc.email_address}</option>
+                ))}
+              </select>
+            </div>
 
-        h('div', { className: "p-4 border-t border-stone-200 relative" },
-          h('button', {
-            onClick: () => setShowAddMenu(!showAddMenu),
-            className: "w-full py-3 border-2 border-dashed border-stone-300 rounded-xl hover:border-jaguar-900 hover:bg-jaguar-50 transition-all font-medium text-stone-600 hover:text-jaguar-900 flex items-center justify-center gap-2"
-          }, Icons.Plus({ size: 20 }), 'Add Next Step'),
-          showAddMenu && h('div', { className: "absolute bottom-full left-4 right-4 mb-2 bg-white rounded-xl shadow-xl border border-stone-200 overflow-hidden z-10" },
-            h('button', {
-              onClick: () => addStep('email'),
-              className: "w-full px-4 py-3 text-left hover:bg-stone-50 flex items-center gap-3 border-b border-stone-100"
-            },
-              h('div', { className: "w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center" }, Icons.Mail({ size: 16, className: "text-blue-600" })),
-              h('div', null, h('p', { className: "font-medium text-stone-900" }, 'Email'), h('p', { className: "text-xs text-stone-500" }, 'Send an email message'))),
-            h('button', {
-              onClick: () => addStep('wait'),
-              className: "w-full px-4 py-3 text-left hover:bg-stone-50 flex items-center gap-3 border-b border-stone-100"
-            },
-              h('div', { className: "w-8 h-8 rounded-lg bg-yellow-100 flex items-center justify-center" }, h('svg', { className: "w-4 h-4 text-yellow-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" }))),
-              h('div', null, h('p', { className: "font-medium text-stone-900" }, 'Wait'), h('p', { className: "text-xs text-stone-500" }, 'Delay before next step'))),
-            h('button', {
-              onClick: () => addStep('condition'),
-              className: "w-full px-4 py-3 text-left hover:bg-stone-50 flex items-center gap-3"
-            },
-              h('div', { className: "w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center" }, h('svg', { className: "w-4 h-4 text-purple-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M8 9l4-4 4 4m0 6l-4 4-4-4" }))),
-              h('div', null, h('p', { className: "font-medium text-stone-900" }, 'Condition'), h('p', { className: "text-xs text-stone-500" }, 'Branch based on action')))))),
+            <div>
+              <label className="block text-sm font-medium text-stone-700 mb-2">Contact List</label>
+              <select
+                required
+                value={formData.contact_list_id}
+                onChange={(e) => setFormData({...formData, contact_list_id: e.target.value})}
+                className="w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all"
+              >
+                <option value="">Select list...</option>
+                {contactLists.map(list => (
+                  <option key={list.id} value={list.id}>{list.name}</option>
+                ))}
+              </select>
+            </div>
 
-      h('div', { className: "flex-1 flex flex-col bg-white" },
-        !currentStep ? h('div', { className: "flex-1 flex items-center justify-center text-stone-400" },
-          h('div', { className: "text-center" }, h('p', { className: "text-lg font-medium" }, 'Select a step from the timeline'), h('p', { className: "text-sm mt-1" }, 'Choose a step to edit'))) :
-
-        currentStep.type === 'email' ? h('div', { className: "flex-1 flex flex-col p-6 overflow-y-auto" },
-          h('div', { className: "max-w-3xl mx-auto w-full space-y-6" },
-            h('div', null,
-              h('label', { className: "block text-sm font-semibold text-stone-700 mb-2" }, 'Subject Line'),
-              h('input', {
-                type: "text", value: currentStep.subject || '', onChange: e => updateStep(currentStep.id, { subject: e.target.value }),
-                className: "w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
-                placeholder: "e.g., Collaboration Opportunity"
-              }),
-              h('p', { className: "text-xs text-stone-500 mt-1" }, `${(currentStep.subject || '').length} / 60 characters`)),
-
-            h('div', null,
-              h('div', { className: "flex items-center justify-between mb-2" },
-                h('label', { className: "block text-sm font-semibold text-stone-700" }, 'Email Body'),
-                h('div', { className: "flex gap-1" },
-                  ['first_name', 'last_name', 'company', 'email'].map(v =>
-                    h('button', {
-                      key: v, onClick: () => insertVariable(v),
-                      className: "px-2 py-1 text-xs bg-stone-100 hover:bg-jaguar-100 text-stone-700 hover:text-jaguar-900 rounded border border-stone-200 hover:border-jaguar-300 transition-colors"
-                    }, `{{${v}}}`)))),
-              h('textarea', {
-                value: currentStep.body || '', onChange: e => updateStep(currentStep.id, { body: e.target.value }),
-                rows: 12,
-                className: "w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all resize-none font-mono text-sm",
-                placeholder: "Hi {{first_name}},\n\nI came across your work and..."
-              }),
-              h('p', { className: "text-xs text-stone-500 mt-1" }, 'Use {{variable}} for personalization')),
-
-            h('div', { className: "grid grid-cols-2 gap-4 pt-4 border-t border-stone-200" },
-              h('div', null,
-                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Email Account'),
-                h('select', {
-                  value: emailAccountId, onChange: e => setEmailAccountId(e.target.value),
-                  className: "w-full px-3 py-2 border border-stone-200 rounded-lg text-sm"
-                }, ...emailAccounts.map(acc => h('option', { key: acc.id, value: acc.id }, acc.email_address)))),
-              h('div', null,
-                h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Contact List'),
-                h('select', {
-                  value: contactListId, onChange: e => setContactListId(e.target.value),
-                  className: "w-full px-3 py-2 border border-stone-200 rounded-lg text-sm"
-                }, ...contactLists.map(list => h('option', { key: list.id, value: list.id }, `${list.name} (${list.total_contacts || 0})`))))))) :
-
-        currentStep.type === 'wait' ? h('div', { className: "flex-1 flex items-center justify-center p-6" },
-          h('div', { className: "max-w-md w-full space-y-6" },
-            h('div', { className: "text-center mb-6" },
-              h('div', { className: "w-16 h-16 mx-auto rounded-full bg-yellow-100 flex items-center justify-center mb-4" }, h('svg', { className: "w-8 h-8 text-yellow-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" }))),
-              h('h3', { className: "text-xl font-semibold text-stone-900" }, 'Wait Step')),
-            h('div', null,
-              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Wait Duration (Days)'),
-              h('input', {
-                type: "number", min: 1, max: 30, value: currentStep.wait_days || 2,
-                onChange: e => updateStep(currentStep.id, { wait_days: parseInt(e.target.value) }),
-                className: "w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all text-center text-2xl font-bold"
-              }),
-              h('p', { className: "text-sm text-stone-500 mt-2 text-center" }, 'Pause before sending the next message')))) :
-
-        h('div', { className: "flex-1 flex items-center justify-center p-6" },
-          h('div', { className: "max-w-md w-full space-y-6" },
-            h('div', { className: "text-center mb-6" },
-              h('div', { className: "w-16 h-16 mx-auto rounded-full bg-purple-100 flex items-center justify-center mb-4" }, h('svg', { className: "w-8 h-8 text-purple-600", fill: "none", stroke: "currentColor", viewBox: "0 0 24 24" }, h('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M8 9l4-4 4 4m0 6l-4 4-4-4" }))),
-              h('h3', { className: "text-xl font-semibold text-stone-900" }, 'Conditional Branch')),
-            h('div', null,
-              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Condition Type'),
-              h('select', {
-                value: currentStep.condition_type || 'if_opened',
-                onChange: e => updateStep(currentStep.id, { condition_type: e.target.value }),
-                className: "w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 transition-all"
-              },
-                h('option', { value: 'if_opened' }, 'If email was opened'),
-                h('option', { value: 'if_not_opened' }, 'If email was NOT opened'),
-                h('option', { value: 'if_clicked' }, 'If link was clicked'),
-                h('option', { value: 'if_replied' }, 'If contact replied')),
-              h('p', { className: "text-sm text-stone-500 mt-2" }, 'Branch to different steps based on contact behavior'))))))
+            <div className="flex gap-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-2 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 transition-colors"
+              >
+                Create
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
   );
 };

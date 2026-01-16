@@ -3,14 +3,9 @@
 body {
   background-color: #FDFBF7;
   color: #1F2937;
-  font-family: 'Inter', sans-serif;
 }
 
-.font-serif {
-  font-family: 'Playfair Display', serif;
-}
-
-/* Scrollbar Styles */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -29,18 +24,18 @@ body {
   background: #B08D55;
 }
 
-/* Animation */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.5s ease-out forwards;
+/* Selection */
+::selection {
+  background-color: #C5A065;
+  color: white;
+}
+
+::-moz-selection {
+  background-color: #C5A065;
+  color: white;
 }
