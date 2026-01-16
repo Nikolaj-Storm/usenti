@@ -1,14 +1,13 @@
 // Mr. Snowman - Main Application Orchestration
 
-const { useState, useEffect } = React;
 
 const App = () => {
-  const [authState, setAuthState] = useState('checking');
-  const [publicView, setPublicView] = useState('landing');
-  const [privateView, setPrivateView] = useState('dashboard');
-  const [user, setUser] = useState(null);
+  const [authState, setAuthState] = React.useState('checking');
+  const [publicView, setPublicView] = React.useState('landing');
+  const [privateView, setPrivateView] = React.useState('dashboard');
+  const [user, setUser] = React.useState(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
     const userData = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.USER);
 

@@ -1,16 +1,15 @@
 // Mr. Snowman - Contacts Component
 
-const { useState, useEffect, useRef } = React;
 
 const Contacts = () => {
-  const [contactLists, setContactLists] = useState([]);
-  const [selectedList, setSelectedList] = useState(null);
-  const [contacts, setContacts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showNewListModal, setShowNewListModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
+  const [contactLists, setContactLists] = React.useState([]);
+  const [selectedList, setSelectedList] = React.useState(null);
+  const [contacts, setContacts] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showNewListModal, setShowNewListModal] = React.useState(false);
+  const [showImportModal, setShowImportModal] = React.useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     loadContactLists();
   }, []);
 
@@ -222,7 +221,7 @@ const Contacts = () => {
 };
 
 const NewListModal = ({ onClose, onCreate }) => {
-  const [formData, setFormData] = useState({ name: '', description: '' });
+  const [formData, setFormData] = React.useState({ name: '', description: '' });
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -277,11 +276,11 @@ const NewListModal = ({ onClose, onCreate }) => {
 };
 
 const ImportModal = ({ listId, onClose, onComplete }) => {
-  const [step, setStep] = useState('upload');
-  const [file, setFile] = useState(null);
-  const [parsedData, setParsedData] = useState([]);
-  const [headers, setHeaders] = useState([]);
-  const [mapping, setMapping] = useState({
+  const [step, setStep] = React.useState('upload');
+  const [file, setFile] = React.useState(null);
+  const [parsedData, setParsedData] = React.useState([]);
+  const [headers, setHeaders] = React.useState([]);
+  const [mapping, setMapping] = React.useState({
     first_name: '',
     last_name: '',
     email: '',
@@ -289,8 +288,8 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
     title: '',
     phone: ''
   });
-  const [dragActive, setDragActive] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [dragActive, setDragActive] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
   const fileInputRef = useRef(null);
 
   const handleDrag = (e) => {

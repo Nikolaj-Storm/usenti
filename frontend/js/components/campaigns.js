@@ -1,17 +1,16 @@
 // Mr. Snowman - Campaign Builder Component
 
-const { useState, useEffect } = React;
 
 const CampaignBuilder = () => {
-  const [campaigns, setCampaigns] = useState([]);
-  const [selectedCampaign, setSelectedCampaign] = useState(null);
-  const [steps, setSteps] = useState([]);
-  const [activeStep, setActiveStep] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [showNewCampaignModal, setShowNewCampaignModal] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [campaigns, setCampaigns] = React.useState([]);
+  const [selectedCampaign, setSelectedCampaign] = React.useState(null);
+  const [steps, setSteps] = React.useState([]);
+  const [activeStep, setActiveStep] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [showNewCampaignModal, setShowNewCampaignModal] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     loadCampaigns();
   }, []);
 
@@ -321,14 +320,14 @@ const CampaignBuilder = () => {
 };
 
 const StepEditor = ({ step, onUpdate, saving }) => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = React.useState({
     subject: step?.subject || '',
     body: step?.body || '',
     wait_days: step?.wait_days || 3,
     condition_type: step?.condition_type || 'if_opened'
   });
 
-  useEffect(() => {
+  React.useEffect(() => {
     setFormData({
       subject: step?.subject || '',
       body: step?.body || '',
@@ -493,16 +492,16 @@ const StepEditor = ({ step, onUpdate, saving }) => {
 };
 
 const NewCampaignModal = ({ onClose, onCreate }) => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = React.useState({
     name: '',
     email_account_id: '',
     contact_list_id: ''
   });
-  const [emailAccounts, setEmailAccounts] = useState([]);
-  const [contactLists, setContactLists] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [emailAccounts, setEmailAccounts] = React.useState([]);
+  const [contactLists, setContactLists] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
 
-  useEffect(() => {
+  React.useEffect(() => {
     loadData();
   }, []);
 

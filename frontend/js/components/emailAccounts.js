@@ -1,14 +1,13 @@
 // Mr. Snowman - Email Accounts / Infrastructure Component
 
-const { useState, useEffect } = React;
 
 const EmailAccounts = () => {
-  const [activeTab, setActiveTab] = useState('accounts');
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showAddAccountModal, setShowAddAccountModal] = useState(false);
+  const [activeTab, setActiveTab] = React.useState('accounts');
+  const [accounts, setAccounts] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showAddAccountModal, setShowAddAccountModal] = React.useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     loadAccounts();
   }, []);
 
@@ -100,7 +99,7 @@ const AccountsTab = ({ accounts, onRefresh }) => {
 };
 
 const AccountCard = ({ account, onRefresh }) => {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = React.useState(false);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -400,9 +399,9 @@ const WarmupAccountRow = ({ account }) => {
 };
 
 const AddAccountModal = ({ onClose, onAdd }) => {
-  const [step, setStep] = useState('type');
-  const [accountType, setAccountType] = useState('');
-  const [formData, setFormData] = useState({
+  const [step, setStep] = React.useState('type');
+  const [accountType, setAccountType] = React.useState('');
+  const [formData, setFormData] = React.useState({
     email_address: '',
     smtp_host: '',
     smtp_port: '587',
@@ -415,8 +414,8 @@ const AddAccountModal = ({ onClose, onAdd }) => {
     daily_send_limit: '500',
     warmup_enabled: true
   });
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState(null);
+  const [testing, setTesting] = React.useState(false);
+  const [testResult, setTestResult] = React.useState(null);
 
   const handleTypeSelect = (type) => {
     setAccountType(type);
