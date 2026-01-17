@@ -157,9 +157,9 @@ app.get('/api/email-accounts', authenticateUser, async (req, res) => {
 
 app.post('/api/email-accounts', authenticateUser, async (req, res) => {
   try {
-    const { 
+    const {
       email_address, account_type, imap_host, imap_port, imap_username, imap_password,
-      smtp_host, smtp_port, smtp_username, smtp_password, daily_send_limit 
+      smtp_host, smtp_port, smtp_username, smtp_password, daily_send_limit, warmup_enabled
     } = req.body;
 
     if (!email_address || !account_type) {
@@ -193,6 +193,7 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
         smtp_username: smtp_username || email_address,
         smtp_password: encrypt(smtp_password),
         daily_send_limit: daily_send_limit || 10000,
+        warmup_enabled: warmup_enabled !== undefined ? warmup_enabled : false,
         is_active: true,
         health_score: 100
       })
@@ -204,6 +205,89 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
   } catch (error) {
     console.error('Error adding email account:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Test email account credentials (before creating)
+app.post('/api/email-accounts/test', async (req, res) => {
+  try {
+    const {
+      smtp_host, smtp_port, smtp_username, smtp_password,
+      imap_host, imap_port, imap_username, imap_password
+    } = req.body;
+
+    const results = {
+      smtp: null,
+      imap: null
+    };
+
+    // Test SMTP
+    if (smtp_host && smtp_username && smtp_password) {
+      try {
+        const transporter = nodemailer.createTransporter({
+          host: smtp_host,
+          port: smtp_port || 587,
+          secure: smtp_port === 465,
+          auth: {
+            user: smtp_username,
+            pass: smtp_password
+          },
+          tls: { rejectUnauthorized: false }
+        });
+
+        await transporter.verify();
+        results.smtp = { success: true, message: 'SMTP connection successful' };
+      } catch (error) {
+        results.smtp = { success: false, message: `SMTP failed: ${error.message}` };
+      }
+    }
+
+    // Test IMAP
+    if (imap_host && imap_username && imap_password) {
+      try {
+        const imap = new Imap({
+          user: imap_username,
+          password: imap_password,
+          host: imap_host,
+          port: imap_port || 993,
+          tls: true,
+          tlsOptions: { rejectUnauthorized: false }
+        });
+
+        results.imap = await new Promise((resolve) => {
+          let timeout = setTimeout(() => {
+            imap.end();
+            resolve({ success: false, message: 'IMAP connection timeout' });
+          }, 10000);
+
+          imap.once('ready', () => {
+            clearTimeout(timeout);
+            imap.end();
+            resolve({ success: true, message: 'IMAP connection successful' });
+          });
+
+          imap.once('error', (err) => {
+            clearTimeout(timeout);
+            resolve({ success: false, message: `IMAP failed: ${err.message}` });
+          });
+
+          imap.connect();
+        });
+      } catch (error) {
+        results.imap = { success: false, message: `IMAP failed: ${error.message}` };
+      }
+    }
+
+    const allSuccess = (!results.smtp || results.smtp.success) && (!results.imap || results.imap.success);
+
+    res.json({
+      success: allSuccess,
+      message: allSuccess ? 'All connections successful!' : 'Some connections failed',
+      results
+    });
+  } catch (error) {
+    console.error('Test connection error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
