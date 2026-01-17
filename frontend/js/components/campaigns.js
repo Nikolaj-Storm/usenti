@@ -9,6 +9,7 @@ const CampaignBuilder = () => {
   const [showNewCampaignModal, setShowNewCampaignModal] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [lastSaved, setLastSaved] = React.useState(null);
+  const [isDemo, setIsDemo] = React.useState(false); // New Demo State
 
   React.useEffect(() => {
     loadCampaigns();
@@ -18,7 +19,7 @@ const CampaignBuilder = () => {
     try {
       const data = await api.getCampaigns();
       setCampaigns(data);
-      // If we have campaigns, automatically select the most recent one to show the builder
+      // If we have campaigns, select the most recent one
       if (data.length > 0 && !selectedCampaign) {
         handleSelectCampaign(data[0]);
       }
@@ -32,15 +33,12 @@ const CampaignBuilder = () => {
   const handleSelectCampaign = async (campaign) => {
     setSelectedCampaign(campaign);
     setLoading(true);
+    setIsDemo(false);
     try {
       const stepsData = await api.get(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${campaign.id}/steps`);
       setSteps(stepsData);
-      // Automatically select the first step if available
-      if (stepsData.length > 0) {
-        setActiveStep(stepsData[0].id);
-      } else {
-        setActiveStep(null);
-      }
+      if (stepsData.length > 0) setActiveStep(stepsData[0].id);
+      else setActiveStep(null);
     } catch (error) {
       console.error('Failed to load steps:', error);
     } finally {
@@ -48,12 +46,26 @@ const CampaignBuilder = () => {
     }
   };
 
+  // --- NEW: Demo Mode to Visualize UI immediately ---
+  const loadDemoMode = () => {
+    const demoCampaign = { id: 'demo', name: 'Demo Campaign (Visual)', status: 'draft' };
+    const demoSteps = [
+        { id: 's1', step_type: 'email', subject: 'Partnership Opportunity', body: 'Hi {{first_name}},\n\nI noticed your work at {{company}}...', step_order: 1 },
+        { id: 's2', step_type: 'wait', wait_days: 2, step_order: 2 },
+        { id: 's3', step_type: 'condition', condition_type: 'if_opened', step_order: 3 }
+    ];
+    setIsDemo(true);
+    setSelectedCampaign(demoCampaign);
+    setSteps(demoSteps);
+    setActiveStep('s1');
+  };
+
   const handleCreateCampaign = async (campaignData) => {
     try {
       const newCampaign = await api.createCampaign(campaignData);
-      setCampaigns([newCampaign, ...campaigns]); // Add to top
+      setCampaigns([newCampaign, ...campaigns]);
       setShowNewCampaignModal(false);
-      handleSelectCampaign(newCampaign); // Switch to builder immediately
+      handleSelectCampaign(newCampaign);
     } catch (error) {
       console.error('Failed to create campaign:', error);
       alert('Failed to create campaign: ' + error.message);
@@ -61,9 +73,9 @@ const CampaignBuilder = () => {
   };
 
   const handleAddStep = async (stepType) => {
+    if (isDemo) { alert("This is a demo. Create a real campaign to save data."); return; }
     if (!selectedCampaign) return;
 
-    // Default values based on step type
     const stepData = {
       step_order: steps.length + 1,
       step_type: stepType,
@@ -74,10 +86,7 @@ const CampaignBuilder = () => {
     };
 
     try {
-      const newStep = await api.post(
-        `${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps`,
-        stepData
-      );
+      const newStep = await api.post(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps`, stepData);
       const updatedSteps = [...steps, newStep];
       setSteps(updatedSteps);
       setActiveStep(newStep.id);
@@ -87,12 +96,10 @@ const CampaignBuilder = () => {
   };
 
   const handleUpdateStep = async (stepId, updates) => {
+    if (isDemo) return; // Don't save in demo
     setSaving(true);
     try {
-      const updatedStep = await api.put(
-        `${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`,
-        updates
-      );
+      const updatedStep = await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, updates);
       setSteps(steps.map(s => s.id === stepId ? updatedStep : s));
       setLastSaved(new Date());
     } catch (error) {
@@ -103,16 +110,17 @@ const CampaignBuilder = () => {
   };
 
   const handleDeleteStep = async (stepId, e) => {
-    e.stopPropagation(); // Prevent triggering step selection
+    e.stopPropagation();
+    if (isDemo) {
+        setSteps(steps.filter(s => s.id !== stepId));
+        return;
+    }
     if (!confirm('Delete this step?')) return;
-
     try {
       await api.delete(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`);
       const updatedSteps = steps.filter(s => s.id !== stepId);
       setSteps(updatedSteps);
-      if (activeStep === stepId) {
-        setActiveStep(updatedSteps.length > 0 ? updatedSteps[0].id : null);
-      }
+      if (activeStep === stepId) setActiveStep(updatedSteps.length > 0 ? updatedSteps[0].id : null);
     } catch (error) {
       console.error('Failed to delete step:', error);
     }
@@ -120,8 +128,15 @@ const CampaignBuilder = () => {
 
   // --- Views ---
 
-  // 1. Empty State (No campaigns exists)
-  if (!loading && campaigns.length === 0) {
+  // 1. Loading State (Fixes the flash bug)
+  if (loading) {
+    return h('div', { className: "flex items-center justify-center h-[80vh] animate-fade-in" },
+      h(Icons.Loader2, { className: "animate-spin text-jaguar-900", size: 48 })
+    );
+  }
+
+  // 2. Empty State (No campaigns)
+  if (!selectedCampaign && campaigns.length === 0) {
     return h('div', { className: "flex flex-col items-center justify-center h-[80vh] text-center animate-fade-in" },
       h('div', { className: "w-20 h-20 bg-stone-100 rounded-full flex items-center justify-center mb-6" },
         h(Icons.Send, { size: 32, className: "text-stone-400 ml-1" })
@@ -130,12 +145,17 @@ const CampaignBuilder = () => {
       h('p', { className: "text-stone-500 mb-8 max-w-md text-lg font-light" }, 
         'Create your first email campaign to start reaching out to prospects.'
       ),
-      h('button', {
-        onClick: () => setShowNewCampaignModal(true),
-        className: "px-8 py-4 bg-jaguar-900 text-cream-50 rounded-lg hover:bg-jaguar-800 flex items-center gap-3 transition-all shadow-xl shadow-jaguar-900/10 hover:-translate-y-1"
-      },
-        h(Icons.Plus, { size: 20 }),
-        ' Create Your First Campaign'
+      h('div', { className: "flex gap-4" },
+        h('button', {
+          onClick: () => setShowNewCampaignModal(true),
+          className: "px-8 py-4 bg-jaguar-900 text-cream-50 rounded-lg hover:bg-jaguar-800 flex items-center gap-3 transition-all shadow-xl shadow-jaguar-900/10 hover:-translate-y-1"
+        }, h(Icons.Plus, { size: 20 }), 'Create Campaign'),
+        
+        // NEW: Preview Button to skip empty state
+        h('button', {
+            onClick: loadDemoMode,
+            className: "px-8 py-4 bg-white border border-stone-200 text-stone-600 rounded-lg hover:bg-stone-50 flex items-center gap-3 transition-all"
+          }, h(Icons.Eye, { size: 20 }), 'Preview UI')
       ),
       showNewCampaignModal && h(NewCampaignModal, {
         onClose: () => setShowNewCampaignModal(false),
@@ -144,7 +164,7 @@ const CampaignBuilder = () => {
     );
   }
 
-  // 2. Builder View (Campaign Selected)
+  // 3. Builder View
   return h('div', { className: "h-[calc(100vh-100px)] flex flex-col animate-fade-in" },
     // -- Header Toolbar --
     h('div', { className: "flex justify-between items-center mb-6 pb-6 border-b border-stone-200" },
@@ -156,11 +176,13 @@ const CampaignBuilder = () => {
             selectedCampaign?.status || 'Draft'
           ),
           h('span', null, '•'),
+          isDemo ? h('span', { className: "text-gold-500 font-medium" }, "Demo Mode (Not Saved)") :
           h('span', null, lastSaved ? `Last saved ${lastSaved.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'Unsaved changes')
         )
       ),
       h('div', { className: "flex gap-3" },
-        h('select', {
+        // Campaign Selector
+        !isDemo && h('select', {
           className: "px-4 py-2 bg-white border border-stone-200 rounded-lg text-sm focus:ring-2 focus:ring-jaguar-900/20",
           onChange: (e) => {
             const camp = campaigns.find(c => c.id === e.target.value);
@@ -209,14 +231,14 @@ const CampaignBuilder = () => {
             )
           ),
 
-          // Add Step Button (at the bottom of timeline)
+          // Add Step Button
           h('div', { className: "mt-8 pl-14" },
             h('div', { className: "relative group" },
                h('button', {
                  className: "flex items-center gap-2 px-4 py-3 bg-white border border-dashed border-stone-300 text-stone-500 rounded-lg hover:border-jaguar-900 hover:text-jaguar-900 transition-all w-full justify-center group-hover:shadow-md"
                }, h(Icons.Plus, { size: 18 }), 'Add Next Step'),
                
-               // Hover Menu for Add Step
+               // Hover Menu
                h('div', { className: "hidden group-hover:block absolute top-full left-0 w-full pt-2 z-20" },
                  h('div', { className: "bg-white border border-stone-200 shadow-xl rounded-lg overflow-hidden p-1" },
                    h('button', { onClick: () => handleAddStep('email'), className: "w-full text-left px-4 py-3 hover:bg-cream-50 flex items-center gap-3 text-sm text-jaguar-900" },
@@ -257,10 +279,9 @@ const CampaignBuilder = () => {
   );
 };
 
-// --- Sub-components for Clean Code ---
+// --- Sub-components (Same as before) ---
 
 const TimelineStep = ({ step, index, isActive, onClick, onDelete }) => {
-    // Icons based on type
     let StepIcon = Icons.Mail;
     let iconBg = "bg-white border-stone-200 text-jaguar-900";
     if (step.step_type === 'wait') { StepIcon = Icons.Clock; iconBg = "bg-cream-100 border-stone-200 text-stone-600"; }
@@ -270,12 +291,10 @@ const TimelineStep = ({ step, index, isActive, onClick, onDelete }) => {
       onClick: onClick,
       className: `relative pl-14 group cursor-pointer transition-all duration-200 ${isActive ? 'scale-[1.02]' : 'hover:scale-[1.01]'}`
     },
-      // Timeline Node Icon
       h('div', { 
         className: `absolute left-0 top-0 w-14 h-14 rounded-full border-4 border-[#FDFBF7] flex items-center justify-center z-10 ${iconBg} shadow-sm`
       }, h(StepIcon, { size: 20 })),
 
-      // Card Content
       h('div', { 
         className: `p-5 rounded-xl border transition-all ${
             isActive 
@@ -283,7 +302,6 @@ const TimelineStep = ({ step, index, isActive, onClick, onDelete }) => {
             : 'bg-white border-stone-200 hover:border-stone-300 hover:shadow-md'
         }`
       },
-        // Step Header
         h('div', { className: "flex justify-between items-start mb-2" },
           h('span', { className: "text-xs font-bold uppercase tracking-wider text-stone-400" }, `STEP ${index + 1}`),
           h('button', { 
@@ -292,7 +310,6 @@ const TimelineStep = ({ step, index, isActive, onClick, onDelete }) => {
           }, h(Icons.Trash2, { size: 14 }))
         ),
 
-        // Body Content based on Type
         step.step_type === 'email' && h('div', null,
           h('h4', { className: "font-serif text-lg text-jaguar-900 mb-1 leading-tight" }, step.subject || 'New Email'),
           h('p', { className: "text-sm text-stone-500 line-clamp-2" }, step.body || 'No content...')
@@ -316,10 +333,7 @@ const TimelineStep = ({ step, index, isActive, onClick, onDelete }) => {
 };
 
 const StepEditor = ({ step, onUpdate, saving }) => {
-  // Local state for immediate typing feedback
   const [data, setData] = React.useState(step);
-
-  // Sync when step changes
   React.useEffect(() => { setData(step); }, [step.id]);
 
   const handleChange = (field, value) => {
@@ -339,14 +353,13 @@ const StepEditor = ({ step, onUpdate, saving }) => {
         const newText = text.substring(0, start) + variable + text.substring(end);
         setData({ ...data, body: newText });
         setTimeout(() => {
-            textarea.focus(); // Re-focus logic would go here in a real app
+            textarea.focus(); // Re-focus logic
             onUpdate(step.id, { ...data, body: newText });
         }, 0);
     }
   };
 
   return h('div', { className: "flex flex-col h-full animate-fade-in" },
-    // Editor Header
     h('div', { className: "px-8 py-6 border-b border-stone-100 bg-cream-50/50 flex justify-between items-center" },
        h('h3', { className: "font-serif text-xl text-jaguar-900" }, 
          step.step_type === 'email' ? 'Edit Email Content' : 
@@ -357,10 +370,8 @@ const StepEditor = ({ step, onUpdate, saving }) => {
        )
     ),
 
-    // Editor Body
     h('div', { className: "p-8 overflow-y-auto flex-1" },
         
-        // --- EMAIL EDITOR ---
         step.step_type === 'email' && h('div', { className: "space-y-6 max-w-3xl" },
             h('div', null,
                 h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, "Subject Line"),
@@ -397,7 +408,6 @@ const StepEditor = ({ step, onUpdate, saving }) => {
             )
         ),
 
-        // --- WAIT EDITOR ---
         step.step_type === 'wait' && h('div', { className: "flex flex-col items-center justify-center h-full pb-20" },
             h(Icons.Clock, { size: 64, className: "text-stone-200 mb-6" }),
             h('h3', { className: "text-2xl font-serif text-jaguar-900 mb-8" }, "Wait Duration"),
@@ -425,7 +435,6 @@ const StepEditor = ({ step, onUpdate, saving }) => {
             )
         ),
 
-        // --- CONDITION EDITOR ---
         step.step_type === 'condition' && h('div', { className: "max-w-xl mx-auto pt-10" },
             h('div', { className: "bg-cream-50 border border-stone-200 rounded-xl p-8 text-center" },
                 h(Icons.Split, { size: 48, className: "mx-auto text-gold-600 mb-4" }),
