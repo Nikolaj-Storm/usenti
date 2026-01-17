@@ -1,4 +1,4 @@
-// Mr. Snowman - Contacts Component
+// Mr. Snowman - Contacts Component (FIXED VERSION)
 
 const Contacts = () => {
   const [contactLists, setContactLists] = React.useState([]);
@@ -15,13 +15,16 @@ const Contacts = () => {
   const loadContactLists = async () => {
     try {
       const data = await api.getContactLists();
-      // Safety check: ensure data is an array
       const listData = Array.isArray(data) ? data : [];
       setContactLists(listData);
       
-      if (listData.length > 0 && !selectedList) {
-        setSelectedList(listData[0]);
-        loadContacts(listData[0].id);
+      if (listData.length > 0) {
+        // If we have a selected list, keep it selected, otherwise select first
+        const listToSelect = selectedList 
+          ? listData.find(l => l.id === selectedList.id) || listData[0]
+          : listData[0];
+        setSelectedList(listToSelect);
+        await loadContacts(listToSelect.id);
       }
     } catch (error) {
       console.error('Failed to load contact lists:', error);
@@ -31,10 +34,15 @@ const Contacts = () => {
   };
 
   const loadContacts = async (listId) => {
+    console.log('Loading contacts for list:', listId); // Debug
     try {
-      const data = await api.getContacts(listId);
-      // Safety check: ensure data is an array or extract from { contacts: [] }
-      const contactData = Array.isArray(data) ? data : (data.contacts || []);
+      // FIXED: Use the correct endpoint structure from backend
+      const response = await api.get(`/api/contact-lists/${listId}/contacts`);
+      console.log('Contacts response:', response); // Debug
+      
+      // Handle the response format from backend
+      const contactData = response.contacts || [];
+      console.log('Parsed contacts:', contactData); // Debug
       setContacts(contactData);
     } catch (error) {
       console.error('Failed to load contacts:', error);
@@ -45,7 +53,8 @@ const Contacts = () => {
   const handleCreateList = async (name, description) => {
     try {
       const newList = await api.createContactList(name, description);
-      setContactLists([...contactLists, newList]);
+      const updatedLists = [...contactLists, newList];
+      setContactLists(updatedLists);
       setSelectedList(newList);
       setContacts([]);
       setShowNewListModal(false);
@@ -55,11 +64,36 @@ const Contacts = () => {
     }
   };
 
-  const handleImportComplete = (importedContacts) => {
-    setContacts([...contacts, ...importedContacts]);
+  const handleDeleteList = async (listId) => {
+    if (!confirm('Are you sure you want to delete this list? All contacts in this list will be removed.')) {
+      return;
+    }
+
+    try {
+      await api.delete(`/api/contact-lists/${listId}`);
+      const updatedLists = contactLists.filter(l => l.id !== listId);
+      setContactLists(updatedLists);
+      
+      // If we deleted the selected list, select another one
+      if (selectedList?.id === listId) {
+        if (updatedLists.length > 0) {
+          setSelectedList(updatedLists[0]);
+          await loadContacts(updatedLists[0].id);
+        } else {
+          setSelectedList(null);
+          setContacts([]);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to delete list:', error);
+      alert('Failed to delete list: ' + error.message);
+    }
+  };
+
+  const handleImportComplete = async () => {
     setShowImportModal(false);
-    // Refresh list to update counts
-    loadContactLists();
+    // Refresh both the list counts and the contacts
+    await loadContactLists();
   };
 
   if (loading) {
@@ -116,24 +150,34 @@ const Contacts = () => {
     // Tab Navigation for Lists
     h('div', { className: "flex gap-2 overflow-x-auto pb-2 custom-scrollbar" },
       ...contactLists.map((list) =>
-        h('button', {
-          key: list.id,
-          onClick: () => {
-            setSelectedList(list);
-            loadContacts(list.id);
-          },
-          className: `px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-all flex items-center gap-2 ${
-            selectedList?.id === list.id
-              ? 'bg-jaguar-900 text-cream-50 shadow-lg'
-              : 'bg-white border border-stone-200 text-stone-700 hover:border-jaguar-900/30'
-          }`
-        },
-          h('span', null, list.name),
-          h('span', {
-            className: `ml-2 text-xs px-1.5 py-0.5 rounded-full ${
-              selectedList?.id === list.id ? 'bg-white/20 text-cream-50' : 'bg-stone-100 text-stone-500'
+        h('div', { key: list.id, className: "relative group" },
+          h('button', {
+            onClick: () => {
+              setSelectedList(list);
+              loadContacts(list.id);
+            },
+            className: `px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-all flex items-center gap-2 ${
+              selectedList?.id === list.id
+                ? 'bg-jaguar-900 text-cream-50 shadow-lg'
+                : 'bg-white border border-stone-200 text-stone-700 hover:border-jaguar-900/30'
             }`
-          }, list.contact_count || 0) // Updated to match your API response
+          },
+            h('span', null, list.name),
+            h('span', {
+              className: `ml-2 text-xs px-1.5 py-0.5 rounded-full ${
+                selectedList?.id === list.id ? 'bg-white/20 text-cream-50' : 'bg-stone-100 text-stone-500'
+              }`
+            }, list.total_contacts || 0)
+          ),
+          // Delete button (shown on hover)
+          h('button', {
+            onClick: (e) => {
+              e.stopPropagation();
+              handleDeleteList(list.id);
+            },
+            className: "absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-600 shadow-lg z-10",
+            title: "Delete list"
+          }, h(Icons.X, { size: 14 }))
         )
       )
     ),
@@ -202,7 +246,7 @@ const Contacts = () => {
           )
     ),
 
-    // Stats Dashboard (Preserved from your code)
+    // Stats Dashboard
     selectedList && contacts.length > 0 && h('div', { className: "grid grid-cols-1 md:grid-cols-4 gap-4" },
       h('div', { className: "bg-white p-4 rounded-lg border border-stone-200" },
         h('div', { className: "text-sm text-stone-500 mb-1" }, 'Total Contacts'),
@@ -314,7 +358,6 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
   const [dragActive, setDragActive] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
   
-  // FIX IS HERE: Changed useRef(null) to React.useRef(null)
   const fileInputRef = React.useRef(null);
 
   const handleDrag = (e) => {
@@ -383,7 +426,6 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
 
         if (lowerHeaders.includes('email')) autoMapping.email = headers[lowerHeaders.indexOf('email')];
         
-        // Slightly smarter auto-mapping
         const firstName = findHeader(['first name', 'firstname', 'first']);
         if(firstName) autoMapping.first_name = firstName;
 
@@ -427,10 +469,14 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
         return contact;
       }).filter(c => c.email);
 
-      await api.importContacts(listId, contacts);
+      console.log('Importing contacts:', contacts); // Debug
 
-      onComplete(contacts);
-      alert(`Successfully imported ${contacts.length} contacts!`);
+      const result = await api.importContacts(listId, contacts);
+      console.log('Import result:', result); // Debug
+
+      // Close modal and trigger refresh
+      onComplete();
+      alert(`Successfully imported ${result.imported || contacts.length} contacts!`);
     } catch (error) {
       console.error('Error importing contacts:', error);
       alert('Error importing contacts: ' + error.message);
