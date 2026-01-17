@@ -1,4 +1,11 @@
-// frontend/js/components/campaigns.js
+// Mr. Snowman - Campaign Builder Component
+
+// Helper to prevent "Object invalid as React child" errors
+const safeRender = (value, fallback = '') => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'object') return ''; // Silently fail on objects
+  return String(value);
+};
 
 const CampaignBuilder = () => {
   const [campaigns, setCampaigns] = React.useState([]);
@@ -9,7 +16,7 @@ const CampaignBuilder = () => {
   const [showNewCampaignModal, setShowNewCampaignModal] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [lastSaved, setLastSaved] = React.useState(null);
-  const [isDemo, setIsDemo] = React.useState(false); // Preserved Demo State
+  const [isDemo, setIsDemo] = React.useState(false); // New Demo State
 
   React.useEffect(() => {
     loadCampaigns();
@@ -20,6 +27,8 @@ const CampaignBuilder = () => {
       const data = await api.getCampaigns();
       const campaignList = Array.isArray(data) ? data : [];
       setCampaigns(campaignList);
+      
+      // If we have campaigns, select the most recent one
       if (campaignList.length > 0 && !selectedCampaign) {
         handleSelectCampaign(campaignList[0]);
       }
@@ -48,7 +57,7 @@ const CampaignBuilder = () => {
     }
   };
 
-  // --- Demo Mode (Preserved) ---
+  // --- NEW: Demo Mode to Visualize UI immediately ---
   const loadDemoMode = () => {
     const demoCampaign = { id: 'demo', name: 'Demo Campaign (Visual)', status: 'draft' };
     const demoSteps = [
@@ -69,6 +78,7 @@ const CampaignBuilder = () => {
       setShowNewCampaignModal(false);
       handleSelectCampaign(newCampaign);
     } catch (error) {
+      console.error('Failed to create campaign:', error);
       alert('Failed to create campaign: ' + error.message);
     }
   };
@@ -97,7 +107,7 @@ const CampaignBuilder = () => {
   };
 
   const handleUpdateStep = async (stepId, updates) => {
-    if (isDemo) return;
+    if (isDemo) return; // Don't save in demo
     setSaving(true);
     try {
       const updatedStep = await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, updates);
@@ -127,22 +137,16 @@ const CampaignBuilder = () => {
     }
   };
 
-  // --- Helper: Prevents Object Rendering Crashes ---
-  const safeText = (text, fallback = '') => {
-    if (text === null || text === undefined) return fallback;
-    if (typeof text === 'object') return ''; // Silently swallow objects
-    return String(text);
-  };
-
   // --- Views ---
 
+  // 1. Loading State (Fixes the flash bug)
   if (loading) {
     return h('div', { className: "flex items-center justify-center h-[80vh] animate-fade-in" },
       h(Icons.Loader2, { className: "animate-spin text-jaguar-900", size: 48 })
     );
   }
 
-  // Empty State
+  // 2. Empty State (No campaigns)
   if (!selectedCampaign && campaigns.length === 0) {
     return h('div', { className: "flex flex-col items-center justify-center h-[80vh] text-center animate-fade-in" },
       h('div', { className: "w-20 h-20 bg-stone-100 rounded-full flex items-center justify-center mb-6" },
@@ -158,6 +162,7 @@ const CampaignBuilder = () => {
           className: "px-8 py-4 bg-jaguar-900 text-cream-50 rounded-lg hover:bg-jaguar-800 flex items-center gap-3 transition-all shadow-xl shadow-jaguar-900/10 hover:-translate-y-1"
         }, h(Icons.Plus, { size: 20 }), 'Create Campaign'),
         
+        // NEW: Preview Button to skip empty state
         h('button', {
             onClick: loadDemoMode,
             className: "px-8 py-4 bg-white border border-stone-200 text-stone-600 rounded-lg hover:bg-stone-50 flex items-center gap-3 transition-all"
@@ -170,16 +175,16 @@ const CampaignBuilder = () => {
     );
   }
 
-  // Builder View
+  // 3. Builder View
   return h('div', { className: "h-[calc(100vh-100px)] flex flex-col animate-fade-in" },
-    // Header
+    // -- Header Toolbar --
     h('div', { className: "flex justify-between items-center mb-6 pb-6 border-b border-stone-200" },
       h('div', null,
-        h('h1', { className: "font-serif text-3xl text-jaguar-900 mb-2" }, safeText(selectedCampaign?.name, 'Untitled Campaign')),
+        h('h1', { className: "font-serif text-3xl text-jaguar-900 mb-2" }, safeRender(selectedCampaign?.name, 'Campaign')),
         h('div', { className: "flex items-center gap-3 text-sm text-stone-500" },
           h('span', { className: "flex items-center gap-1.5" },
             h('span', { className: `w-2 h-2 rounded-full ${selectedCampaign?.status === 'running' ? 'bg-green-500 animate-pulse' : 'bg-stone-300'}` }),
-            safeText(selectedCampaign?.status, 'Draft')
+            safeRender(selectedCampaign?.status, 'Draft')
           ),
           h('span', null, '•'),
           isDemo ? h('span', { className: "text-gold-500 font-medium" }, "Demo Mode (Not Saved)") :
@@ -187,21 +192,22 @@ const CampaignBuilder = () => {
         )
       ),
       h('div', { className: "flex gap-3" },
+        // Campaign Selector
         !isDemo && h('select', {
           className: "px-4 py-2 bg-white border border-stone-200 rounded-lg text-sm focus:ring-2 focus:ring-jaguar-900/20",
           onChange: (e) => {
             const camp = campaigns.find(c => c.id === e.target.value);
             if(camp) handleSelectCampaign(camp);
           },
-          value: safeText(selectedCampaign?.id)
-        }, campaigns.map(c => h('option', { key: c.id, value: c.id }, safeText(c.name)))),
+          value: safeRender(selectedCampaign?.id)
+        }, campaigns.map(c => h('option', { key: c.id, value: c.id }, safeRender(c.name)))),
         
         h('button', {
             onClick: () => setShowNewCampaignModal(true),
             className: "p-2 text-stone-400 hover:text-jaguar-900 border border-stone-200 rounded-lg"
         }, h(Icons.Plus, { size: 20 })),
 
-        h('div', { className: "w-px h-10 bg-stone-200 mx-2" }),
+        h('div', { className: "w-px h-10 bg-stone-200 mx-2" }), // Separator
 
         h('button', {
           className: "px-6 py-2.5 bg-white border border-stone-200 text-jaguar-900 rounded-lg font-medium hover:bg-stone-50 transition-colors flex items-center gap-2"
@@ -213,15 +219,16 @@ const CampaignBuilder = () => {
       )
     ),
 
-    // Main Layout
+    // -- Main Builder Layout --
     h('div', { className: "flex gap-8 flex-1 overflow-hidden" },
       
-      // Timeline
+      // Left Column: Timeline
       h('div', { className: "w-1/3 overflow-y-auto pr-4 pb-20 custom-scrollbar" },
         h('div', { className: "relative min-h-[500px]" },
+          // Vertical Connector Line
           h('div', { className: "absolute left-[26px] top-6 bottom-0 w-0.5 bg-stone-200 -z-10" }),
 
-          // Steps List (Passed as Array child, not spread)
+          // Steps List
           h('div', { className: "space-y-8" },
             steps.map((step, index) => 
               h(TimelineStep, {
@@ -235,13 +242,14 @@ const CampaignBuilder = () => {
             )
           ),
 
-          // Add Step
+          // Add Step Button
           h('div', { className: "mt-8 pl-14" },
             h('div', { className: "relative group" },
                h('button', {
                  className: "flex items-center gap-2 px-4 py-3 bg-white border border-dashed border-stone-300 text-stone-500 rounded-lg hover:border-jaguar-900 hover:text-jaguar-900 transition-all w-full justify-center group-hover:shadow-md"
                }, h(Icons.Plus, { size: 18 }), 'Add Next Step'),
                
+               // Hover Menu
                h('div', { className: "hidden group-hover:block absolute top-full left-0 w-full pt-2 z-20" },
                  h('div', { className: "bg-white border border-stone-200 shadow-xl rounded-lg overflow-hidden p-1" },
                    h('button', { onClick: () => handleAddStep('email'), className: "w-full text-left px-4 py-3 hover:bg-cream-50 flex items-center gap-3 text-sm text-jaguar-900" },
@@ -260,7 +268,7 @@ const CampaignBuilder = () => {
         )
       ),
 
-      // Editor
+      // Right Column: Editor Canvas
       h('div', { className: "flex-1 bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden flex flex-col" },
         activeStep 
           ? h(StepEditor, {
@@ -282,20 +290,13 @@ const CampaignBuilder = () => {
   );
 };
 
-// --- Sub-components ---
+// --- Sub-components (Same as before) ---
 
 const TimelineStep = ({ step, index, isActive, onClick, onDelete }) => {
-    if (!step) return null; // Safety check
-    
     let StepIcon = Icons.Mail;
     let iconBg = "bg-white border-stone-200 text-jaguar-900";
     if (step.step_type === 'wait') { StepIcon = Icons.Clock; iconBg = "bg-cream-100 border-stone-200 text-stone-600"; }
     if (step.step_type === 'condition') { StepIcon = Icons.Split; iconBg = "bg-jaguar-900 border-jaguar-900 text-cream-50"; }
-
-    // Safe Text Helpers
-    const safeSubject = step.subject ? String(step.subject) : 'New Email';
-    const safeBody = step.body ? String(step.body) : '';
-    const safeCondition = step.condition_type ? String(step.condition_type).replace('if_', '').replace('_', ' ') : '';
 
     return h('div', { 
       onClick: onClick,
@@ -321,16 +322,18 @@ const TimelineStep = ({ step, index, isActive, onClick, onDelete }) => {
         ),
 
         step.step_type === 'email' && h('div', null,
-          h('h4', { className: "font-serif text-lg text-jaguar-900 mb-1 leading-tight" }, safeSubject),
-          h('p', { className: "text-sm text-stone-500 line-clamp-2" }, safeBody || 'No content...')
+          h('h4', { className: "font-serif text-lg text-jaguar-900 mb-1 leading-tight" }, safeRender(step.subject, 'New Email')),
+          h('p', { className: "text-sm text-stone-500 line-clamp-2" }, safeRender(step.body) || 'No content...')
         ),
         
         step.step_type === 'wait' && h('div', null,
-            h('h4', { className: "font-medium text-lg text-stone-700" }, `Wait ${step.wait_days || 1} Days`)
+            h('h4', { className: "font-medium text-lg text-stone-700" }, `Wait ${safeRender(step.wait_days, '1')} Days`)
         ),
 
         step.step_type === 'condition' && h('div', null,
-            h('h4', { className: "font-medium text-base text-jaguar-900 mb-2" }, `Condition: ${safeCondition}`),
+            h('h4', { className: "font-medium text-base text-jaguar-900 mb-2" }, 
+                `Condition: ${safeRender(step.condition_type).replace('if_', '').replace('_', ' ')}`
+            ),
             h('div', { className: "flex gap-2 text-xs" },
                 h('span', { className: "px-2 py-1 bg-green-50 text-green-700 rounded border border-green-100" }, "Yes → Next"),
                 h('span', { className: "px-2 py-1 bg-red-50 text-red-700 rounded border border-red-100" }, "No → Exit")
@@ -341,9 +344,14 @@ const TimelineStep = ({ step, index, isActive, onClick, onDelete }) => {
 };
 
 const StepEditor = ({ step, onUpdate, saving }) => {
+  // GUARD CLAUSE: Prevents "data.subject" crash if step is undefined
   if (!step) return null;
+
   const [data, setData] = React.useState(step);
-  React.useEffect(() => { setData(step); }, [step.id]);
+  
+  React.useEffect(() => { 
+    if (step) setData(step); 
+  }, [step?.id]); // Use optional chaining just in case
 
   const handleChange = (field, value) => {
     setData({ ...data, [field]: value });
@@ -362,13 +370,11 @@ const StepEditor = ({ step, onUpdate, saving }) => {
         const newText = text.substring(0, start) + variable + text.substring(end);
         setData({ ...data, body: newText });
         setTimeout(() => {
-            textarea.focus();
+            textarea.focus(); // Re-focus logic
             onUpdate(step.id, { ...data, body: newText });
         }, 0);
     }
   };
-
-  const safeVal = (v) => v === null || v === undefined ? '' : String(v);
 
   return h('div', { className: "flex flex-col h-full animate-fade-in" },
     h('div', { className: "px-8 py-6 border-b border-stone-100 bg-cream-50/50 flex justify-between items-center" },
@@ -388,7 +394,7 @@ const StepEditor = ({ step, onUpdate, saving }) => {
                 h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, "Subject Line"),
                 h('input', {
                     type: "text",
-                    value: safeVal(data.subject),
+                    value: safeRender(data.subject),
                     onChange: (e) => handleChange('subject', e.target.value),
                     onBlur: handleBlur,
                     className: "w-full px-4 py-3 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 font-medium",
@@ -410,7 +416,7 @@ const StepEditor = ({ step, onUpdate, saving }) => {
                 ),
                 h('textarea', {
                     id: "emailBody",
-                    value: safeVal(data.body),
+                    value: safeRender(data.body),
                     onChange: (e) => handleChange('body', e.target.value),
                     onBlur: handleBlur,
                     className: "w-full h-96 p-6 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 leading-relaxed resize-none",
@@ -432,7 +438,7 @@ const StepEditor = ({ step, onUpdate, saving }) => {
                     className: "w-12 h-12 rounded-full border border-stone-200 flex items-center justify-center hover:bg-stone-100 text-xl"
                 }, "-"),
                 h('div', { className: "text-center" },
-                    h('span', { className: "text-6xl font-serif text-jaguar-900 block" }, data.wait_days || 1),
+                    h('span', { className: "text-6xl font-serif text-jaguar-900 block" }, safeRender(data.wait_days, '1')),
                     h('span', { className: "text-stone-500 uppercase tracking-widest text-sm" }, "Days")
                 ),
                 h('button', { 
@@ -451,7 +457,7 @@ const StepEditor = ({ step, onUpdate, saving }) => {
                 h(Icons.Split, { size: 48, className: "mx-auto text-gold-600 mb-4" }),
                 h('h3', { className: "text-xl font-serif text-jaguar-900 mb-6" }, "Condition Logic"),
                 h('select', {
-                    value: data.condition_type || 'if_opened',
+                    value: safeRender(data.condition_type, 'if_opened'),
                     onChange: (e) => {
                         handleChange('condition_type', e.target.value);
                         onUpdate(step.id, { condition_type: e.target.value });
@@ -469,6 +475,7 @@ const StepEditor = ({ step, onUpdate, saving }) => {
   );
 };
 
+// Modal for creating new campaign
 const NewCampaignModal = ({ onClose, onCreate }) => {
   const [formData, setFormData] = React.useState({ name: '', email_account_id: '', contact_list_id: '' });
   const [emailAccounts, setEmailAccounts] = React.useState([]);
@@ -488,8 +495,6 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
     e.preventDefault();
     onCreate(formData);
   };
-
-  const safeName = (obj) => obj && obj.name ? String(obj.name) : 'Unknown';
 
   return h('div', { className: "fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in", onClick: onClose },
     h('div', { className: "bg-white rounded-xl p-8 max-w-md w-full mx-4 shadow-2xl", onClick: e => e.stopPropagation() },
@@ -515,7 +520,7 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
                 onChange: e => setFormData({...formData, email_account_id: e.target.value})
             },
                 h('option', { value: "" }, "Select email account..."),
-                emailAccounts.map(a => h('option', { key: a.id, value: a.id }, String(a.email_address)))
+                ...emailAccounts.map(a => h('option', { key: a.id, value: a.id }, safeRender(a.email_address)))
             )
         ),
         h('div', null,
@@ -527,7 +532,7 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
                 onChange: e => setFormData({...formData, contact_list_id: e.target.value})
             },
                 h('option', { value: "" }, "Select contact list..."),
-                contactLists.map(l => h('option', { key: l.id, value: l.id }, safeName(l)))
+                ...contactLists.map(l => h('option', { key: l.id, value: l.id }, safeRender(l.name)))
             )
         ),
         h('div', { className: "flex gap-3 pt-4" },
