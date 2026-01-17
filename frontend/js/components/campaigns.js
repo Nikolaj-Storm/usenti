@@ -162,11 +162,28 @@ const CampaignBuilder = () => {
     );
   }
 
+  const getLastSavedText = () => {
+    if (!selectedCampaign?.updated_at) return 'Not saved yet';
+    const now = new Date();
+    const updated = new Date(selectedCampaign.updated_at);
+    const diffMinutes = Math.floor((now - updated) / (1000 * 60));
+    if (diffMinutes < 1) return 'Last saved just now';
+    if (diffMinutes === 1) return 'Last saved 1 min ago';
+    if (diffMinutes < 60) return `Last saved ${diffMinutes} mins ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours === 1) return 'Last saved 1 hour ago';
+    return `Last saved ${diffHours} hours ago`;
+  };
+
   return h('div', { className: "h-[calc(100vh-120px)] flex flex-col animate-fade-in" },
-    h('div', { className: "flex justify-between items-center mb-6" },
+    h('div', { className: "flex justify-between items-start mb-8" },
       h('div', null,
-        h('h2', { className: "font-serif text-3xl text-jaguar-900" }, selectedCampaign?.name || 'Campaign Builder'),
-        h('div', { className: "flex items-center gap-2 mt-2" },
+        h('div', { className: "flex items-center gap-3 mb-3" },
+          h('h2', { className: "text-xs font-bold uppercase tracking-[0.15em] text-stone-400 letterspacing-widest" }, 'CAMPAIGN MANAGEMENT'),
+          h(Icons.Mail, { size: 16, className: "text-stone-300" })
+        ),
+        h('h1', { className: "font-serif text-4xl text-jaguar-900 mb-2" }, selectedCampaign?.name || 'Campaign Builder'),
+        h('div', { className: "flex items-center gap-2 text-sm text-stone-500" },
           h('span', {
             className: `w-2 h-2 rounded-full ${
               selectedCampaign?.status === 'running' ? 'bg-green-500 animate-pulse' :
@@ -174,10 +191,12 @@ const CampaignBuilder = () => {
               'bg-stone-300'
             }`
           }),
-          h('p', { className: "text-stone-500 text-sm capitalize" }, selectedCampaign?.status || 'draft')
+          h('span', { className: "capitalize" }, selectedCampaign?.status || 'Draft'),
+          h('span', null, '•'),
+          h('span', null, getLastSavedText())
         )
       ),
-      h('div', { className: "flex gap-3" },
+      h('div', { className: "flex gap-3 items-center" },
         h('select', {
           value: selectedCampaign?.id || '',
           onChange: (e) => {
@@ -185,7 +204,7 @@ const CampaignBuilder = () => {
             setSelectedCampaign(campaign);
             loadCampaignSteps(campaign.id);
           },
-          className: "px-4 py-2 bg-white border border-stone-200 rounded-md text-stone-700 focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+          className: "px-4 py-2.5 bg-white border border-stone-200 rounded-lg text-stone-700 focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
         },
           ...campaigns.map(c =>
             h('option', { key: c.id, value: c.id }, c.name)
@@ -193,21 +212,32 @@ const CampaignBuilder = () => {
         ),
         h('button', {
           onClick: () => setShowNewCampaignModal(true),
-          className: "px-4 py-2 bg-white border border-stone-200 text-stone-700 rounded-md hover:bg-stone-50 font-medium flex items-center gap-2 transition-colors"
+          className: "px-4 py-2.5 bg-white border border-stone-200 text-stone-700 rounded-lg hover:bg-stone-50 font-medium flex items-center gap-2 transition-colors"
         },
           h(Icons.Plus, { size: 18 }),
-          ' New Campaign'
+          ' New'
+        ),
+        h('button', {
+          onClick: () => {
+            setSaving(true);
+            setTimeout(() => setSaving(false), 1000);
+          },
+          disabled: saving,
+          className: "px-5 py-2.5 bg-white border border-stone-200 text-jaguar-900 rounded-lg hover:bg-stone-50 font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
+        },
+          h(Icons.Save, { size: 18 }),
+          ' Save Draft'
         ),
         selectedCampaign?.status === 'draft' && h('button', {
           onClick: handleStartCampaign,
-          className: "px-6 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 font-medium flex items-center gap-2 shadow-lg transition-colors"
+          className: "px-6 py-2.5 bg-jaguar-900 text-cream-50 rounded-lg hover:bg-jaguar-800 font-medium flex items-center gap-2 shadow-lg transition-colors"
         },
           h(Icons.Play, { size: 18 }),
           ' Launch'
         ),
         selectedCampaign?.status === 'running' && h('button', {
           onClick: handlePauseCampaign,
-          className: "px-6 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 font-medium transition-colors"
+          className: "px-6 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium transition-colors"
         }, 'Pause')
       )
     ),
@@ -221,30 +251,35 @@ const CampaignBuilder = () => {
                 key: step.id,
                 onClick: () => setActiveStep(step.id),
                 className: `relative pl-16 group cursor-pointer transition-all ${
-                  activeStep === step.id ? 'opacity-100 scale-[1.02]' : 'opacity-80 hover:opacity-100'
+                  activeStep === step.id ? 'opacity-100' : 'opacity-80 hover:opacity-100'
                 }`
               },
                 h('div', {
                   className: `absolute left-0 top-0 w-12 h-12 rounded-full border-4 border-[#FDFBF7] flex items-center justify-center z-10 shadow-sm transition-all ${
-                    activeStep === step.id
-                      ? 'bg-jaguar-900 text-cream-50'
-                      : 'bg-white text-stone-400 group-hover:text-jaguar-900 group-hover:border-jaguar-900/20'
+                    step.step_type === 'email' ? 'bg-white text-jaguar-900' :
+                    step.step_type === 'wait' ? 'bg-white text-jaguar-900' :
+                    'bg-white text-jaguar-900'
                   }`
                 },
-                  step.step_type === 'email' && h(Icons.Mail, { size: 18 }),
-                  step.step_type === 'wait' && h(Icons.Clock, { size: 18 }),
-                  step.step_type === 'condition' && h(Icons.Split, { size: 18 })
+                  step.step_type === 'email' && h(Icons.Mail, { size: 20 }),
+                  step.step_type === 'wait' && h(Icons.Clock, { size: 20 }),
+                  step.step_type === 'condition' && h(Icons.Split, { size: 20 })
                 ),
                 h('div', {
-                  className: `p-4 rounded-lg border transition-all ${
-                    activeStep === step.id
-                      ? 'bg-white border-jaguar-900 shadow-md'
-                      : 'bg-white border-stone-200 hover:border-stone-300 hover:shadow-sm'
+                  className: `p-5 rounded-lg bg-cream-50 border border-stone-200 transition-all ${
+                    activeStep === step.id ? 'ring-2 ring-jaguar-900/20 border-jaguar-900' : ''
                   }`
                 },
-                  h('div', { className: "flex justify-between items-start mb-2" },
-                    h('span', { className: "text-xs font-bold uppercase tracking-wider text-stone-400" }, `Step ${index + 1}`),
+                  h('div', { className: "flex justify-between items-start mb-3" },
+                    h('span', { className: "text-xs font-bold uppercase tracking-wider text-stone-400" }, `STEP ${index + 1}`),
                     h('div', { className: "flex gap-2" },
+                      h('button', {
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          setActiveStep(step.id);
+                        },
+                        className: "text-stone-300 hover:text-jaguar-900 transition-colors"
+                      }, h(Icons.Edit, { size: 14 })),
                       h('button', {
                         onClick: (e) => {
                           e.stopPropagation();
@@ -255,60 +290,91 @@ const CampaignBuilder = () => {
                     )
                   ),
                   step.step_type === 'email' && h('div', null,
-                    h('h4', { className: "font-serif font-medium text-jaguar-900 mb-1" }, step.subject || 'No Subject'),
-                    h('p', { className: "text-xs text-stone-500 line-clamp-2" }, step.body)
+                    h('h4', { className: "font-serif font-semibold text-base text-jaguar-900 mb-1.5" }, step.subject || 'No Subject'),
+                    h('p', { className: "text-sm text-stone-500 line-clamp-2" }, step.body?.substring(0, 50) + '...' || 'No content')
                   ),
-                  step.step_type === 'wait' && h('div', { className: "flex items-center gap-2" },
-                    h('span', { className: "font-medium text-stone-700" }, `Wait ${step.wait_days} Days`)
+                  step.step_type === 'wait' && h('div', null,
+                    h('h4', { className: "font-semibold text-base text-jaguar-900" }, `Wait ${step.wait_days} Days`)
                   ),
-                  step.step_type === 'condition' && h('div', { className: "bg-cream-50 p-2 rounded border border-stone-100" },
-                    h('span', { className: "text-sm font-medium text-jaguar-900" }, 'Condition:'),
-                    h('span', { className: "text-sm text-stone-600 ml-1" }, `If ${step.condition_type?.replace('if_', '')}...`)
+                  step.step_type === 'condition' && h('div', null,
+                    h('div', { className: "mb-3" },
+                      h('span', { className: "text-sm font-semibold text-jaguar-900 block mb-1" }, 'Condition:'),
+                      h('span', { className: "text-sm text-stone-600" }, `If ${step.condition_type?.replace('if_', '').replace('_', ' ')}...`)
+                    ),
+                    h('div', { className: "flex flex-col gap-1.5 text-sm" },
+                      h('div', { className: "flex items-center gap-2" },
+                        h('span', { className: "text-green-600 font-medium" }, 'Yes'),
+                        h('span', { className: "text-stone-400" }, '→'),
+                        h('span', { className: "text-stone-600" }, `Step ${index + 2}`)
+                      ),
+                      h('div', { className: "flex items-center gap-2" },
+                        h('span', { className: "text-red-600 font-medium" }, 'No'),
+                        h('span', { className: "text-stone-400" }, '→'),
+                        h('span', { className: "text-stone-600" }, `Step ${index + 3}`)
+                      )
+                    )
                   )
                 )
               )
             ),
-            h('div', { className: "relative pl-16" },
-              h('div', { className: "absolute left-0 top-0 w-12 h-12 rounded-full border-4 border-[#FDFBF7] bg-stone-100 text-stone-400 flex items-center justify-center z-10" },
-                h(Icons.Plus, { size: 20 })
-              ),
-              h('div', { className: "space-y-2" },
-                h('button', {
-                  onClick: () => handleAddStep('email'),
-                  className: "w-full p-3 border-2 border-dashed border-stone-200 rounded-lg text-stone-400 font-medium hover:border-jaguar-900 hover:text-jaguar-900 hover:bg-cream-50 transition-all text-left flex items-center gap-2"
+            h('div', { className: "relative pl-16 mt-2" },
+              h('button', {
+                onClick: () => {
+                  const menu = document.getElementById('add-step-menu');
+                  menu.classList.toggle('hidden');
                 },
-                  h(Icons.Mail, { size: 16 }),
-                  ' Add Email'
+                className: "w-full p-4 border-2 border-dashed border-stone-300 rounded-lg text-stone-500 font-medium hover:border-jaguar-900 hover:text-jaguar-900 hover:bg-cream-50 transition-all text-center"
+              }, 'Add Next Step'),
+              h('div', { id: 'add-step-menu', className: "hidden mt-2 space-y-2 bg-white border border-stone-200 rounded-lg p-3 shadow-lg" },
+                h('button', {
+                  onClick: () => {
+                    handleAddStep('email');
+                    document.getElementById('add-step-menu').classList.add('hidden');
+                  },
+                  className: "w-full p-3 text-left rounded-md hover:bg-cream-50 transition-colors flex items-center gap-3 text-jaguar-900"
+                },
+                  h(Icons.Mail, { size: 18 }),
+                  h('span', null, 'Email')
                 ),
                 h('button', {
-                  onClick: () => handleAddStep('wait'),
-                  className: "w-full p-3 border-2 border-dashed border-stone-200 rounded-lg text-stone-400 font-medium hover:border-jaguar-900 hover:text-jaguar-900 hover:bg-cream-50 transition-all text-left flex items-center gap-2"
+                  onClick: () => {
+                    handleAddStep('wait');
+                    document.getElementById('add-step-menu').classList.add('hidden');
+                  },
+                  className: "w-full p-3 text-left rounded-md hover:bg-cream-50 transition-colors flex items-center gap-3 text-jaguar-900"
                 },
-                  h(Icons.Clock, { size: 16 }),
-                  ' Add Wait'
+                  h(Icons.Clock, { size: 18 }),
+                  h('span', null, 'Wait')
                 ),
                 h('button', {
-                  onClick: () => handleAddStep('condition'),
-                  className: "w-full p-3 border-2 border-dashed border-stone-200 rounded-lg text-stone-400 font-medium hover:border-jaguar-900 hover:text-jaguar-900 hover:bg-cream-50 transition-all text-left flex items-center gap-2"
+                  onClick: () => {
+                    handleAddStep('condition');
+                    document.getElementById('add-step-menu').classList.add('hidden');
+                  },
+                  className: "w-full p-3 text-left rounded-md hover:bg-cream-50 transition-colors flex items-center gap-3 text-jaguar-900"
                 },
-                  h(Icons.Split, { size: 16 }),
-                  ' Add Condition'
+                  h(Icons.Split, { size: 18 }),
+                  h('span', null, 'Condition')
                 )
               )
             )
           )
         )
       ),
-      h('div', { className: "w-2/3 bg-white border border-stone-200 rounded-lg shadow-sm p-8 overflow-y-auto" },
+      h('div', { className: "w-2/3 bg-white border border-stone-200 rounded-lg shadow-sm overflow-hidden" },
         activeStep
-          ? h(StepEditor, {
-              step: steps.find(s => s.id === activeStep),
-              onUpdate: handleUpdateStep,
-              saving: saving
-            })
-          : h('div', { className: "h-full flex flex-col items-center justify-center text-stone-400" },
-              h(Icons.Edit3, { size: 48, className: "mb-4 opacity-20" }),
-              h('p', null, 'Select a step from the timeline to edit')
+          ? h('div', { className: "p-8 h-full overflow-y-auto" },
+              h(StepEditor, {
+                step: steps.find(s => s.id === activeStep),
+                onUpdate: handleUpdateStep,
+                saving: saving
+              })
+            )
+          : h('div', { className: "h-full flex flex-col items-center justify-center text-stone-400 p-8" },
+              h('div', { className: "w-20 h-20 mb-6 opacity-10" },
+                h(Icons.Edit3, { size: 80 })
+              ),
+              h('p', { className: "text-lg text-stone-400" }, 'Select a step from the timeline to edit')
             )
       )
     ),
