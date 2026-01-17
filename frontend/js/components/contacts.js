@@ -44,13 +44,27 @@ const Contacts = () => {
       // CORRECT endpoint structure from backend: /api/contacts/lists/:listId/contacts
       const response = await api.get(`/api/contacts/lists/${listId}/contacts`);
       console.log('Raw contacts response:', response);
+      console.log('Response type:', typeof response);
+      console.log('Response keys:', Object.keys(response || {}));
       
       // The backend returns { contacts: [...], total: N, limit: N, offset: N }
-      const contactData = response.contacts || [];
-      console.log('Parsed contacts:', contactData);
+      let contactData = [];
+      if (Array.isArray(response)) {
+        contactData = response;
+        console.log('Response was an array');
+      } else if (response && response.contacts) {
+        contactData = response.contacts;
+        console.log('Extracted contacts from response.contacts');
+      } else {
+        console.warn('Unexpected response format:', response);
+      }
+      
+      console.log('Final parsed contacts:', contactData);
+      console.log('Number of contacts:', contactData.length);
       setContacts(contactData);
     } catch (error) {
       console.error('Failed to load contacts:', error);
+      console.error('Error details:', error.message);
       setContacts([]);
     }
   };
@@ -76,7 +90,8 @@ const Contacts = () => {
 
     try {
       console.log('Deleting list:', listId);
-      await api.delete(`/api/contact-lists/${listId}`);
+      // FIXED: Correct backend endpoint is /api/contacts/lists/:listId
+      await api.delete(`/api/contacts/lists/${listId}`);
       
       const updatedLists = contactLists.filter(l => l.id !== listId);
       console.log('Updated lists after delete:', updatedLists);
