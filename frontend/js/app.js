@@ -1,5 +1,4 @@
-// Mr. Snowman - Main Application Orchestration
-
+// frontend/js/app.js
 
 const App = () => {
   const [authState, setAuthState] = React.useState('checking');
@@ -8,33 +7,47 @@ const App = () => {
   const [user, setUser] = React.useState(null);
 
   React.useEffect(() => {
-    const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
-    const userData = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.USER);
-
-    if (token && userData) {
-      try {
-        setUser(JSON.parse(userData));
-        setAuthState('authenticated');
-      } catch (error) {
-        console.error('Failed to parse user data:', error);
-        localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
-        localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
-        setAuthState('unauthenticated');
-      }
-    } else {
-      setAuthState('unauthenticated');
-    }
+    verifySession();
   }, []);
 
-  const handleLogin = () => {
-    const userData = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.USER);
-    if (userData) {
-      try {
-        setUser(JSON.parse(userData));
-        setAuthState('authenticated');
-      } catch (error) {
-        console.error('Failed to parse user data:', error);
-      }
+  const verifySession = async () => {
+    const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+    
+    // 1. No token? Show Landing Page immediately.
+    if (!token) {
+      setAuthState('unauthenticated');
+      return;
+    }
+
+    // 2. Token exists? Verify it with the backend.
+    try {
+      // Note: We use the endpoint we added to config.js
+      // If backend is offline or token is invalid, this throws.
+      const userData = await api.get(APP_CONFIG.ENDPOINTS.AUTH_ME);
+      
+      setUser(userData);
+      setAuthState('authenticated');
+    } catch (error) {
+      console.warn('Session verification failed (token invalid or backend offline):', error);
+      
+      // Clear invalid credentials
+      localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+      localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
+      
+      setAuthState('unauthenticated');
+    }
+  };
+
+  const handleLogin = async (email, password) => {
+    try {
+      // The api.login function handles the API call and LocalStorage setting
+      const response = await api.login(email, password);
+      setUser(response.user);
+      setAuthState('authenticated');
+      setPrivateView('dashboard');
+    } catch (error) {
+      console.error('Login failed:', error);
+      alert('Login failed: ' + error.message);
     }
   };
 
@@ -44,14 +57,21 @@ const App = () => {
     } catch (error) {
       console.error('Logout error:', error);
     }
+    // Clear state
     setUser(null);
     setAuthState('unauthenticated');
     setPublicView('landing');
+    
+    // Double check LocalStorage is clean
+    localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+    localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
   };
 
   const handlePublicNavigate = (view) => {
     setPublicView(view);
   };
+
+  // --- Views ---
 
   if (authState === 'checking') {
     return h('div', { className: "min-h-screen bg-[#FDFBF7] flex items-center justify-center" },
@@ -59,7 +79,7 @@ const App = () => {
         h('div', { className: "w-16 h-16 bg-gold-600 rounded-xl rotate-45 mx-auto flex items-center justify-center shadow-2xl animate-pulse" },
           h('div', { className: "w-8 h-8 bg-jaguar-900 -rotate-45 rounded-lg" })
         ),
-        h('p', { className: "text-stone-500 font-medium" }, 'Loading Mr. Snowman...')
+        h('p', { className: "text-stone-500 font-medium" }, 'Verifying Security...')
       )
     );
   }
@@ -70,6 +90,8 @@ const App = () => {
     }
     return h(Auth, { view: publicView, onAuthenticate: handleLogin, onNavigate: handlePublicNavigate });
   }
+
+  // --- Private Dashboard View ---
 
   const NavItem = ({ view, icon: IconComponent, label }) =>
     h('button', {
@@ -87,6 +109,7 @@ const App = () => {
     );
 
   return h('div', { className: "flex h-screen bg-[#FDFBF7] font-sans text-stone-800 overflow-hidden animate-fade-in" },
+    // Sidebar
     h('aside', { className: "w-72 bg-jaguar-900 text-white flex flex-col shadow-2xl z-20" },
       h('div', { className: "p-8 pb-10" },
         h('div', { className: "flex items-center gap-3" },
@@ -128,6 +151,7 @@ const App = () => {
         )
       )
     ),
+    // Main Content
     h('main', { className: "flex-1 flex flex-col h-screen overflow-hidden" },
       h('header', { className: "h-20 border-b border-stone-200 bg-white/50 backdrop-blur-sm flex items-center justify-between px-8 z-10 sticky top-0" },
         h('h2', { className: "text-stone-400 font-light text-sm uppercase tracking-widest" },
