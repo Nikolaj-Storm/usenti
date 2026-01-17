@@ -13,20 +13,33 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
     setError('');
 
     try {
+      let response;
+      
+      // Handle API calls locally to catch specific errors
       if (view === 'signup') {
-        await api.signup(email, password, name);
+        response = await api.signup(email, password, name);
       } else {
-        await api.login(email, password);
+        response = await api.login(email, password);
       }
-      onAuthenticate();
+
+      // CRITICAL: Pass the user object directly to App.js
+      // This prevents App.js from trying to login again
+      if (response && response.user) {
+        onAuthenticate(response.user);
+      } else {
+        throw new Error('No user data received');
+      }
+
     } catch (err) {
-      setError(err.message || 'Authentication failed');
+      console.error(err);
+      setError(err.message || 'Authentication failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
   };
 
   return h('div', { className: "min-h-screen flex bg-[#FDFBF7]" },
+    // Left Side - Brand
     h('div', { className: "hidden lg:flex w-1/2 bg-jaguar-900 relative overflow-hidden flex-col justify-between p-12 text-cream-50" },
       h('div', {
         className: "absolute inset-0 opacity-10",
@@ -60,6 +73,7 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
         'Secure Encryption • SOC2 Compliant • 99.9% Uptime'
       )
     ),
+    // Right Side - Form
     h('div', { className: "w-full lg:w-1/2 flex flex-col justify-center items-center p-8 sm:p-16 relative" },
       h('button', {
         onClick: () => onNavigate('landing'),
@@ -126,14 +140,17 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
             className: "w-full py-3 bg-jaguar-900 text-cream-50 rounded-lg font-medium hover:bg-jaguar-800 transition-all shadow-lg shadow-jaguar-900/10 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
           },
             loading
-              ? h(Icons.Loader2, { size: 20 })
+              ? h(Icons.Loader2, { size: 20, className: "animate-spin" })
               : (view === 'login' ? 'Sign In' : 'Create Account')
           )
         ),
         h('div', { className: "text-center text-sm text-stone-500" },
           view === 'login' ? "Don't have an account? " : "Already have an account? ",
           h('button', {
-            onClick: () => onNavigate(view === 'login' ? 'signup' : 'login'),
+            onClick: () => {
+                setError('');
+                onNavigate(view === 'login' ? 'signup' : 'login');
+            },
             className: "font-medium text-gold-600 hover:text-gold-700 underline underline-offset-2"
           },
             view === 'login' ? 'Sign up' : 'Log in'
