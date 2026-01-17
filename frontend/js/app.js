@@ -6,6 +6,7 @@ const App = () => {
   const [privateView, setPrivateView] = React.useState('dashboard');
   const [user, setUser] = React.useState(null);
 
+  // 1. Verify Session on Load
   React.useEffect(() => {
     verifySession();
   }, []);
@@ -13,41 +14,42 @@ const App = () => {
   const verifySession = async () => {
     const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
     
-    // 1. No token? Show Landing Page immediately.
+    // If no token, show Landing Page immediately
     if (!token) {
       setAuthState('unauthenticated');
       return;
     }
 
-    // 2. Token exists? Verify it with the backend.
+    // If token exists, verify it with the backend
     try {
-      // Note: We use the endpoint we added to config.js
-      // If backend is offline or token is invalid, this throws.
+      // This calls GET /api/auth/me
       const userData = await api.get(APP_CONFIG.ENDPOINTS.AUTH_ME);
       
       setUser(userData);
       setAuthState('authenticated');
     } catch (error) {
-      console.warn('Session verification failed (token invalid or backend offline):', error);
-      
-      // Clear invalid credentials
+      console.warn('Session verification failed:', error);
+      // Security: Clear invalid credentials immediately
       localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
       localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
-      
       setAuthState('unauthenticated');
     }
   };
 
   const handleLogin = async (email, password) => {
     try {
-      // The api.login function handles the API call and LocalStorage setting
       const response = await api.login(email, password);
-      setUser(response.user);
-      setAuthState('authenticated');
-      setPrivateView('dashboard');
+      // Verify the user object exists before proceeding
+      if (response && response.user) {
+        setUser(response.user);
+        setAuthState('authenticated');
+        setPrivateView('dashboard');
+      } else {
+        throw new Error('Invalid server response');
+      }
     } catch (error) {
       console.error('Login failed:', error);
-      alert('Login failed: ' + error.message);
+      alert('Login failed: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -57,12 +59,9 @@ const App = () => {
     } catch (error) {
       console.error('Logout error:', error);
     }
-    // Clear state
     setUser(null);
     setAuthState('unauthenticated');
     setPublicView('landing');
-    
-    // Double check LocalStorage is clean
     localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
     localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
   };
@@ -79,7 +78,7 @@ const App = () => {
         h('div', { className: "w-16 h-16 bg-gold-600 rounded-xl rotate-45 mx-auto flex items-center justify-center shadow-2xl animate-pulse" },
           h('div', { className: "w-8 h-8 bg-jaguar-900 -rotate-45 rounded-lg" })
         ),
-        h('p', { className: "text-stone-500 font-medium" }, 'Verifying Security...')
+        h('p', { className: "text-stone-500 font-medium" }, 'Connecting to Server...')
       )
     );
   }
