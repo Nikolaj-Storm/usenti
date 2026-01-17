@@ -1,6 +1,5 @@
 // Mr. Snowman - Contacts Component
 
-
 const Contacts = () => {
   const [contactLists, setContactLists] = React.useState([]);
   const [selectedList, setSelectedList] = React.useState(null);
@@ -16,10 +15,13 @@ const Contacts = () => {
   const loadContactLists = async () => {
     try {
       const data = await api.getContactLists();
-      setContactLists(data);
-      if (data.length > 0 && !selectedList) {
-        setSelectedList(data[0]);
-        loadContacts(data[0].id);
+      // Safety check: ensure data is an array
+      const listData = Array.isArray(data) ? data : [];
+      setContactLists(listData);
+      
+      if (listData.length > 0 && !selectedList) {
+        setSelectedList(listData[0]);
+        loadContacts(listData[0].id);
       }
     } catch (error) {
       console.error('Failed to load contact lists:', error);
@@ -31,9 +33,12 @@ const Contacts = () => {
   const loadContacts = async (listId) => {
     try {
       const data = await api.getContacts(listId);
-      setContacts(data);
+      // Safety check: ensure data is an array or extract from { contacts: [] }
+      const contactData = Array.isArray(data) ? data : (data.contacts || []);
+      setContacts(contactData);
     } catch (error) {
       console.error('Failed to load contacts:', error);
+      setContacts([]);
     }
   };
 
@@ -53,14 +58,17 @@ const Contacts = () => {
   const handleImportComplete = (importedContacts) => {
     setContacts([...contacts, ...importedContacts]);
     setShowImportModal(false);
+    // Refresh list to update counts
+    loadContactLists();
   };
 
   if (loading) {
     return h('div', { className: "flex items-center justify-center h-96" },
-      h(Icons.Loader2, { size: 48, className: "text-jaguar-900" })
+      h(Icons.Loader2, { size: 48, className: "text-jaguar-900 animate-spin" })
     );
   }
 
+  // --- 1. Empty State (No Lists) ---
   if (contactLists.length === 0) {
     return h('div', { className: "flex flex-col items-center justify-center h-96 text-center animate-fade-in" },
       h(Icons.Users, { size: 64, className: "text-stone-300 mb-4" }),
@@ -72,10 +80,15 @@ const Contacts = () => {
       },
         h(Icons.Plus, { size: 20 }),
         ' Create Your First List'
-      )
+      ),
+      showNewListModal && h(NewListModal, {
+        onClose: () => setShowNewListModal(false),
+        onCreate: handleCreateList
+      })
     );
   }
 
+  // --- 2. Main Dashboard View ---
   return h('div', { className: "space-y-6 animate-fade-in" },
     h('div', { className: "flex justify-between items-end" },
       h('div', null,
@@ -99,7 +112,9 @@ const Contacts = () => {
         )
       )
     ),
-    h('div', { className: "flex gap-2 overflow-x-auto pb-2" },
+    
+    // Tab Navigation for Lists
+    h('div', { className: "flex gap-2 overflow-x-auto pb-2 custom-scrollbar" },
       ...contactLists.map((list) =>
         h('button', {
           key: list.id,
@@ -107,24 +122,26 @@ const Contacts = () => {
             setSelectedList(list);
             loadContacts(list.id);
           },
-          className: `px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-all ${
+          className: `px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-all flex items-center gap-2 ${
             selectedList?.id === list.id
               ? 'bg-jaguar-900 text-cream-50 shadow-lg'
               : 'bg-white border border-stone-200 text-stone-700 hover:border-jaguar-900/30'
           }`
         },
-          list.name,
+          h('span', null, list.name),
           h('span', {
-            className: `ml-2 text-xs ${
-              selectedList?.id === list.id ? 'text-cream-200' : 'text-stone-400'
+            className: `ml-2 text-xs px-1.5 py-0.5 rounded-full ${
+              selectedList?.id === list.id ? 'bg-white/20 text-cream-50' : 'bg-stone-100 text-stone-500'
             }`
-          }, `(${list.contact_count || 0})`)
+          }, list.contact_count || 0) // Updated to match your API response
         )
       )
     ),
-    h('div', { className: "bg-white border border-stone-200 rounded-lg shadow-sm overflow-hidden" },
+
+    // Contacts Table Container
+    h('div', { className: "bg-white border border-stone-200 rounded-lg shadow-sm overflow-hidden min-h-[400px]" },
       contacts.length === 0
-        ? h('div', { className: "flex flex-col items-center justify-center py-16 text-center" },
+        ? h('div', { className: "flex flex-col items-center justify-center py-20 text-center h-full" },
             h(Icons.Users, { size: 48, className: "text-stone-300 mb-3" }),
             h('h3', { className: "font-medium text-jaguar-900 mb-2" }, 'No Contacts Yet'),
             h('p', { className: "text-stone-500 text-sm mb-4" }, 'Import contacts to get started'),
@@ -153,10 +170,10 @@ const Contacts = () => {
                     h('td', { className: "px-6 py-4 whitespace-nowrap" },
                       h('div', { className: "flex items-center" },
                         h('div', { className: "w-8 h-8 rounded-full bg-jaguar-100 text-jaguar-900 flex items-center justify-center text-sm font-medium mr-3" },
-                          (contact.first_name?.[0]?.toUpperCase() || contact.email?.[0]?.toUpperCase())
+                          (contact.first_name?.[0]?.toUpperCase() || contact.email?.[0]?.toUpperCase() || '?')
                         ),
                         h('div', { className: "font-medium text-jaguar-900" },
-                          `${contact.first_name} ${contact.last_name}`
+                          `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown'
                         )
                       )
                     ),
@@ -184,6 +201,8 @@ const Contacts = () => {
             )
           )
     ),
+
+    // Stats Dashboard (Preserved from your code)
     selectedList && contacts.length > 0 && h('div', { className: "grid grid-cols-1 md:grid-cols-4 gap-4" },
       h('div', { className: "bg-white p-4 rounded-lg border border-stone-200" },
         h('div', { className: "text-sm text-stone-500 mb-1" }, 'Total Contacts'),
@@ -208,6 +227,8 @@ const Contacts = () => {
         )
       )
     ),
+    
+    // Modals
     showNewListModal && h(NewListModal, {
       onClose: () => setShowNewListModal(false),
       onCreate: handleCreateList
@@ -219,6 +240,8 @@ const Contacts = () => {
     })
   );
 };
+
+// --- Modal Components ---
 
 const NewListModal = ({ onClose, onCreate }) => {
   const [formData, setFormData] = React.useState({ name: '', description: '' });
@@ -290,7 +313,9 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
   });
   const [dragActive, setDragActive] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
-  const fileInputRef = useRef(null);
+  
+  // FIX IS HERE: Changed useRef(null) to React.useRef(null)
+  const fileInputRef = React.useRef(null);
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -347,27 +372,26 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
         setHeaders(headers);
         setParsedData(rows);
 
+        // Auto-mapping logic
         const autoMapping = {};
         const lowerHeaders = headers.map(h => String(h).toLowerCase());
 
-        if (lowerHeaders.includes('first name') || lowerHeaders.includes('firstname')) {
-          autoMapping.first_name = headers[lowerHeaders.findIndex(h => h === 'first name' || h === 'firstname')];
-        }
-        if (lowerHeaders.includes('last name') || lowerHeaders.includes('lastname')) {
-          autoMapping.last_name = headers[lowerHeaders.findIndex(h => h === 'last name' || h === 'lastname')];
-        }
-        if (lowerHeaders.includes('email')) {
-          autoMapping.email = headers[lowerHeaders.findIndex(h => h === 'email')];
-        }
-        if (lowerHeaders.includes('company')) {
-          autoMapping.company = headers[lowerHeaders.findIndex(h => h === 'company')];
-        }
-        if (lowerHeaders.includes('title') || lowerHeaders.includes('job title')) {
-          autoMapping.title = headers[lowerHeaders.findIndex(h => h === 'title' || h === 'job title')];
-        }
-        if (lowerHeaders.includes('phone')) {
-          autoMapping.phone = headers[lowerHeaders.findIndex(h => h === 'phone')];
-        }
+        const findHeader = (terms) => {
+             const idx = lowerHeaders.findIndex(h => terms.some(t => h === t || h.includes(t)));
+             return idx !== -1 ? headers[idx] : null;
+        };
+
+        if (lowerHeaders.includes('email')) autoMapping.email = headers[lowerHeaders.indexOf('email')];
+        
+        // Slightly smarter auto-mapping
+        const firstName = findHeader(['first name', 'firstname', 'first']);
+        if(firstName) autoMapping.first_name = firstName;
+
+        const lastName = findHeader(['last name', 'lastname', 'last']);
+        if(lastName) autoMapping.last_name = lastName;
+
+        const company = findHeader(['company', 'organization', 'business']);
+        if(company) autoMapping.company = company;
 
         setMapping({ ...mapping, ...autoMapping });
         setStep('mapping');
@@ -542,7 +566,7 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
         )
       ),
       step === 'processing' && h('div', { className: "flex flex-col items-center justify-center py-12" },
-        h(Icons.Loader2, { size: 48, className: "text-jaguar-900 mb-4" }),
+        h(Icons.Loader2, { size: 48, className: "text-jaguar-900 animate-spin mb-4" }),
         h('h4', { className: "font-medium text-jaguar-900 mb-2" }, 'Importing Contacts...'),
         h('p', { className: "text-sm text-stone-500" }, 'Please wait while we process your file')
       )
