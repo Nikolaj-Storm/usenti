@@ -1,7 +1,18 @@
 // Mr. Snowman - Configuration
 
+// Auto-detect environment and set API URL
+const getApiBaseUrl = () => {
+  // If running on GitHub Pages
+  if (window.location.hostname.includes('github.io')) {
+    return 'https://snowman-2-0.onrender.com';
+  }
+
+  // Local development
+  return 'http://localhost:3000';
+};
+
 const APP_CONFIG = {
-  API_BASE_URL: 'http://localhost:3000',
+  API_BASE_URL: getApiBaseUrl(),
   STORAGE_KEYS: {
     TOKEN: 'mr_snowman_token',
     USER: 'mr_snowman_user'
