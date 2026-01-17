@@ -1,4 +1,4 @@
-// Mr. Snowman - Contacts Component (FIXED VERSION)
+// Mr. Snowman - Contacts Component (COMPLETE FIX)
 
 const Contacts = () => {
   const [contactLists, setContactLists] = React.useState([]);
@@ -7,6 +7,7 @@ const Contacts = () => {
   const [loading, setLoading] = React.useState(true);
   const [showNewListModal, setShowNewListModal] = React.useState(false);
   const [showImportModal, setShowImportModal] = React.useState(false);
+  const [editingContact, setEditingContact] = React.useState(null);
 
   React.useEffect(() => {
     loadContactLists();
@@ -16,6 +17,7 @@ const Contacts = () => {
     try {
       const data = await api.getContactLists();
       const listData = Array.isArray(data) ? data : [];
+      console.log('Loaded contact lists:', listData);
       setContactLists(listData);
       
       if (listData.length > 0) {
@@ -25,6 +27,9 @@ const Contacts = () => {
           : listData[0];
         setSelectedList(listToSelect);
         await loadContacts(listToSelect.id);
+      } else {
+        setSelectedList(null);
+        setContacts([]);
       }
     } catch (error) {
       console.error('Failed to load contact lists:', error);
@@ -34,15 +39,15 @@ const Contacts = () => {
   };
 
   const loadContacts = async (listId) => {
-    console.log('Loading contacts for list:', listId); // Debug
+    console.log('Loading contacts for list:', listId);
     try {
-      // FIXED: Use the correct endpoint structure from backend
-      const response = await api.get(`/api/contact-lists/${listId}/contacts`);
-      console.log('Contacts response:', response); // Debug
+      // CORRECT endpoint structure from backend: /api/contacts/lists/:listId/contacts
+      const response = await api.get(`/api/contacts/lists/${listId}/contacts`);
+      console.log('Raw contacts response:', response);
       
-      // Handle the response format from backend
+      // The backend returns { contacts: [...], total: N, limit: N, offset: N }
       const contactData = response.contacts || [];
-      console.log('Parsed contacts:', contactData); // Debug
+      console.log('Parsed contacts:', contactData);
       setContacts(contactData);
     } catch (error) {
       console.error('Failed to load contacts:', error);
@@ -70,8 +75,11 @@ const Contacts = () => {
     }
 
     try {
+      console.log('Deleting list:', listId);
       await api.delete(`/api/contact-lists/${listId}`);
+      
       const updatedLists = contactLists.filter(l => l.id !== listId);
+      console.log('Updated lists after delete:', updatedLists);
       setContactLists(updatedLists);
       
       // If we deleted the selected list, select another one
@@ -87,6 +95,37 @@ const Contacts = () => {
     } catch (error) {
       console.error('Failed to delete list:', error);
       alert('Failed to delete list: ' + error.message);
+    }
+  };
+
+  const handleUpdateContact = async (contactId, updates) => {
+    try {
+      console.log('Updating contact:', contactId, updates);
+      const updated = await api.put(`/api/contacts/${contactId}`, updates);
+      
+      // Update the contact in the list
+      setContacts(contacts.map(c => c.id === contactId ? updated : c));
+      setEditingContact(null);
+      alert('Contact updated successfully!');
+    } catch (error) {
+      console.error('Failed to update contact:', error);
+      alert('Failed to update contact: ' + error.message);
+    }
+  };
+
+  const handleDeleteContact = async (contactId) => {
+    if (!confirm('Are you sure you want to delete this contact?')) {
+      return;
+    }
+
+    try {
+      await api.delete(`/api/contacts/${contactId}`);
+      setContacts(contacts.filter(c => c.id !== contactId));
+      // Refresh list counts
+      await loadContactLists();
+    } catch (error) {
+      console.error('Failed to delete contact:', error);
+      alert('Failed to delete contact: ' + error.message);
     }
   };
 
@@ -148,11 +187,12 @@ const Contacts = () => {
     ),
     
     // Tab Navigation for Lists
-    h('div', { className: "flex gap-2 overflow-x-auto pb-2 custom-scrollbar" },
+    h('div', { className: "flex gap-2 overflow-x-auto pb-2" },
       ...contactLists.map((list) =>
         h('div', { key: list.id, className: "relative group" },
           h('button', {
             onClick: () => {
+              console.log('Selecting list:', list);
               setSelectedList(list);
               loadContacts(list.id);
             },
@@ -210,7 +250,11 @@ const Contacts = () => {
               ),
               h('tbody', { className: "divide-y divide-stone-100" },
                 ...contacts.map((contact) =>
-                  h('tr', { key: contact.id, className: "hover:bg-cream-50 transition-colors" },
+                  h('tr', { 
+                    key: contact.id, 
+                    className: "hover:bg-cream-50 transition-colors cursor-pointer",
+                    onClick: () => setEditingContact(contact)
+                  },
                     h('td', { className: "px-6 py-4 whitespace-nowrap" },
                       h('div', { className: "flex items-center" },
                         h('div', { className: "w-8 h-8 rounded-full bg-jaguar-100 text-jaguar-900 flex items-center justify-center text-sm font-medium mr-3" },
@@ -235,8 +279,23 @@ const Contacts = () => {
                       }, contact.status || 'active')
                     ),
                     h('td', { className: "px-6 py-4 whitespace-nowrap text-right text-sm" },
-                      h('button', { className: "text-stone-400 hover:text-stone-600 transition-colors" },
-                        h(Icons.Edit3, { size: 16 })
+                      h('div', { className: "flex gap-2 justify-end" },
+                        h('button', { 
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            setEditingContact(contact);
+                          },
+                          className: "text-stone-400 hover:text-jaguar-900 transition-colors",
+                          title: "Edit contact"
+                        }, h(Icons.Edit3, { size: 16 })),
+                        h('button', { 
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            handleDeleteContact(contact.id);
+                          },
+                          className: "text-stone-400 hover:text-red-600 transition-colors",
+                          title: "Delete contact"
+                        }, h(Icons.Trash2, { size: 16 }))
                       )
                     )
                   )
@@ -281,6 +340,11 @@ const Contacts = () => {
       listId: selectedList.id,
       onClose: () => setShowImportModal(false),
       onComplete: handleImportComplete
+    }),
+    editingContact && h(EditContactModal, {
+      contact: editingContact,
+      onClose: () => setEditingContact(null),
+      onSave: handleUpdateContact
     })
   );
 };
@@ -336,6 +400,102 @@ const NewListModal = ({ onClose, onCreate }) => {
             type: "submit",
             className: "flex-1 px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 transition-colors"
           }, 'Create')
+        )
+      )
+    )
+  );
+};
+
+const EditContactModal = ({ contact, onClose, onSave }) => {
+  const [formData, setFormData] = React.useState({
+    first_name: contact.first_name || '',
+    last_name: contact.last_name || '',
+    email: contact.email || '',
+    company: contact.company || '',
+    status: contact.status || 'active'
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSave(contact.id, formData);
+  };
+
+  return h('div', {
+    className: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in",
+    onClick: onClose
+  },
+    h('div', {
+      className: "bg-white rounded-lg p-8 max-w-md w-full mx-4",
+      onClick: (e) => e.stopPropagation()
+    },
+      h('h3', { className: "font-serif text-2xl text-jaguar-900 mb-6" }, 'Edit Contact'),
+      h('form', { onSubmit: handleSubmit, className: "space-y-4" },
+        h('div', { className: "grid grid-cols-2 gap-4" },
+          h('div', null,
+            h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'First Name'),
+            h('input', {
+              type: "text",
+              value: formData.first_name,
+              onChange: (e) => setFormData({...formData, first_name: e.target.value}),
+              className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
+              placeholder: "John"
+            })
+          ),
+          h('div', null,
+            h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Last Name'),
+            h('input', {
+              type: "text",
+              value: formData.last_name,
+              onChange: (e) => setFormData({...formData, last_name: e.target.value}),
+              className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
+              placeholder: "Doe"
+            })
+          )
+        ),
+        h('div', null,
+          h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Email'),
+          h('input', {
+            type: "email",
+            required: true,
+            value: formData.email,
+            onChange: (e) => setFormData({...formData, email: e.target.value}),
+            className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
+            placeholder: "john@company.com"
+          })
+        ),
+        h('div', null,
+          h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Company'),
+          h('input', {
+            type: "text",
+            value: formData.company,
+            onChange: (e) => setFormData({...formData, company: e.target.value}),
+            className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all",
+            placeholder: "Acme Corp"
+          })
+        ),
+        h('div', null,
+          h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Status'),
+          h('select', {
+            value: formData.status,
+            onChange: (e) => setFormData({...formData, status: e.target.value}),
+            className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900 transition-all"
+          },
+            h('option', { value: "active" }, 'Active'),
+            h('option', { value: "bounced" }, 'Bounced'),
+            h('option', { value: "unsubscribed" }, 'Unsubscribed'),
+            h('option', { value: "invalid" }, 'Invalid')
+          )
+        ),
+        h('div', { className: "flex gap-3 pt-4" },
+          h('button', {
+            type: "button",
+            onClick: onClose,
+            className: "flex-1 px-4 py-2 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors"
+          }, 'Cancel'),
+          h('button', {
+            type: "submit",
+            className: "flex-1 px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 transition-colors"
+          }, 'Save Changes')
         )
       )
     )
@@ -469,10 +629,10 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
         return contact;
       }).filter(c => c.email);
 
-      console.log('Importing contacts:', contacts); // Debug
+      console.log('Importing contacts:', contacts);
 
       const result = await api.importContacts(listId, contacts);
-      console.log('Import result:', result); // Debug
+      console.log('Import result:', result);
 
       // Close modal and trigger refresh
       onComplete();
