@@ -16,21 +16,51 @@ const Card = ({ children, className = '', title, subtitle, action }) => {
 const Dashboard = () => {
   const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip: RechartsTooltip, ResponsiveContainer } = window.Recharts;
 
-  const data = [
-    { name: 'Mon', sent: 400, opened: 240, replied: 80 },
-    { name: 'Tue', sent: 300, opened: 139, replied: 50 },
-    { name: 'Wed', sent: 200, opened: 980, replied: 200 },
-    { name: 'Thu', sent: 278, opened: 390, replied: 110 },
-    { name: 'Fri', sent: 189, opened: 480, replied: 140 },
-    { name: 'Sat', sent: 239, opened: 380, replied: 130 },
-    { name: 'Sun', sent: 349, opened: 430, replied: 120 },
-  ];
+  const [dashboardData, setDashboardData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
 
-  const metrics = [
-    { label: 'Total Sent', value: '12,450', change: '+12.5%', icon: Icons.Mail, color: 'text-blue-600' },
-    { label: 'Open Rate', value: '68.2%', change: '+4.1%', icon: Icons.ArrowUpRight, color: 'text-emerald-600' },
-    { label: 'Click Rate', value: '12.5%', change: '-0.4%', icon: Icons.MousePointer2, color: 'text-amber-600' },
-    { label: 'Reply Rate', value: '8.4%', change: '+2.1%', icon: Icons.MessageSquare, color: 'text-jaguar-900' },
+  React.useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      const data = await api.getDashboardStats();
+      setDashboardData(data);
+    } catch (err) {
+      console.error('Failed to load dashboard data:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return h('div', { className: "flex items-center justify-center h-96 animate-fade-in" },
+      h(Icons.Loader2, { size: 48, className: "text-jaguar-900 animate-spin" })
+    );
+  }
+
+  if (error) {
+    return h('div', { className: "flex flex-col items-center justify-center h-96 text-center animate-fade-in" },
+      h(Icons.AlertCircle, { size: 64, className: "text-red-300 mb-4" }),
+      h('h3', { className: "font-serif text-2xl text-jaguar-900 mb-2" }, 'Failed to Load Dashboard'),
+      h('p', { className: "text-stone-500 mb-6" }, error),
+      h('button', {
+        onClick: loadDashboardData,
+        className: "px-6 py-3 bg-jaguar-900 text-cream-50 rounded-lg hover:bg-jaguar-800 transition-colors"
+      }, 'Retry')
+    );
+  }
+
+  // Use actual data or fallback to empty arrays
+  const data = dashboardData?.activity || [];
+  const metrics = dashboardData?.metrics || [
+    { label: 'Total Sent', value: '0', change: '+0%', icon: Icons.Mail, color: 'text-blue-600' },
+    { label: 'Open Rate', value: '0%', change: '+0%', icon: Icons.ArrowUpRight, color: 'text-emerald-600' },
+    { label: 'Click Rate', value: '0%', change: '+0%', icon: Icons.MousePointer2, color: 'text-amber-600' },
+    { label: 'Reply Rate', value: '0%', change: '+0%', icon: Icons.MessageSquare, color: 'text-jaguar-900' },
   ];
 
   return h('div', { className: "space-y-8 animate-fade-in" },
