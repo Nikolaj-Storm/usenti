@@ -13,6 +13,7 @@ const App = () => {
 
   const verifySession = async () => {
     const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+    const storedUser = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.USER);
     
     // If no token, show Landing Page immediately
     if (!token) {
@@ -20,36 +21,42 @@ const App = () => {
       return;
     }
 
-    // If token exists, verify it with the backend
+    // Quick load from local storage to prevent flickering
+    if (storedUser) {
+        try {
+            setUser(JSON.parse(storedUser));
+            setAuthState('authenticated');
+        } catch (e) {
+            console.error("Error parsing stored user", e);
+        }
+    }
+
+    // Verify it with the backend in the background
     try {
-      // This calls GET /api/auth/me
-      const userData = await api.get(APP_CONFIG.ENDPOINTS.AUTH_ME);
-      
-      setUser(userData);
-      setAuthState('authenticated');
+      const userData = await api.get('/api/auth/me');
+      if (userData && userData.user) {
+          setUser(userData.user);
+          setAuthState('authenticated');
+      }
     } catch (error) {
       console.warn('Session verification failed:', error);
-      // Security: Clear invalid credentials immediately
-      localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
-      localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
-      setAuthState('unauthenticated');
+      // Only clear if the server explicitly rejects the token
+      if (error.message.includes('401') || error.message.includes('Invalid')) {
+          localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+          localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
+          setAuthState('unauthenticated');
+      }
     }
   };
 
-  const handleLogin = async (email, password) => {
-    try {
-      const response = await api.login(email, password);
-      // Verify the user object exists before proceeding
-      if (response && response.user) {
-        setUser(response.user);
-        setAuthState('authenticated');
-        setPrivateView('dashboard');
-      } else {
-        throw new Error('Invalid server response');
-      }
-    } catch (error) {
-      console.error('Login failed:', error);
-      alert('Login failed: ' + (error.message || 'Unknown error'));
+  // --- FIX IS HERE: Simplified handleLogin ---
+  const handleLogin = (userData) => {
+    // Auth.js has already called the API and verified credentials.
+    // We just need to update the app state with the user object it passed us.
+    if (userData) {
+      setUser(userData);
+      setAuthState('authenticated');
+      setPrivateView('dashboard');
     }
   };
 
@@ -78,7 +85,7 @@ const App = () => {
         h('div', { className: "w-16 h-16 bg-gold-600 rounded-xl rotate-45 mx-auto flex items-center justify-center shadow-2xl animate-pulse" },
           h('div', { className: "w-8 h-8 bg-jaguar-900 -rotate-45 rounded-lg" })
         ),
-        h('p', { className: "text-stone-500 font-medium" }, 'Connecting to Server...')
+        h('p', { className: "text-stone-500 font-medium" }, 'Connecting to Snowman...')
       )
     );
   }
