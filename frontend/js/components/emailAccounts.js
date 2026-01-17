@@ -122,6 +122,8 @@ const AccountCard = ({ account, onRefresh }) => {
         return 'bg-orange-100 text-orange-700';
       case 'gmail':
         return 'bg-red-100 text-red-700';
+      case 'outlook':
+        return 'bg-blue-100 text-blue-700';
       default:
         return 'bg-stone-100 text-stone-600';
     }
@@ -428,6 +430,14 @@ const AddAccountModal = ({ onClose, onAdd }) => {
         imap_host: 'imap.gmail.com',
         imap_port: '993'
       });
+    } else if (type === 'outlook') {
+      setFormData({
+        ...formData,
+        smtp_host: 'smtp.office365.com',
+        smtp_port: '587',
+        imap_host: 'outlook.office365.com',
+        imap_port: '993'
+      });
     }
 
     setStep('details');
@@ -513,6 +523,18 @@ const AddAccountModal = ({ onClose, onAdd }) => {
             h('div', null,
               h('h4', { className: "font-medium text-jaguar-900 mb-1" }, 'Gmail / Google Workspace'),
               h('p', { className: "text-sm text-stone-500" }, 'Connect your Gmail or Google Workspace account')
+            )
+          )
+        ),
+        h('button', {
+          onClick: () => handleTypeSelect('outlook'),
+          className: "w-full p-6 border-2 border-stone-200 rounded-lg hover:border-jaguar-900 hover:bg-cream-50 transition-all text-left group"
+        },
+          h('div', { className: "flex items-center gap-4" },
+            h('div', { className: "w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xl group-hover:scale-110 transition-transform" }, 'M'),
+            h('div', null,
+              h('h4', { className: "font-medium text-jaguar-900 mb-1" }, 'Microsoft Outlook / Office 365'),
+              h('p', { className: "text-sm text-stone-500" }, 'Connect your Outlook or Microsoft 365 account')
             )
           )
         )
