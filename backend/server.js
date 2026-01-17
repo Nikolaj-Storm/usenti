@@ -526,6 +526,185 @@ app.post('/api/contact-lists/:id/import', authenticateUser, async (req, res) => 
   }
 });
 
+// Get contacts in a specific list
+app.get('/api/contacts/lists/:listId/contacts', authenticateUser, async (req, res) => {
+  try {
+    const { listId } = req.params;
+    const { search, status, limit = 100, offset = 0 } = req.query;
+
+    console.log(`[CONTACTS] Fetching contacts for list ${listId}, user ${req.user.id}`);
+
+    // Verify list belongs to user
+    const { data: list, error: listError } = await supabase
+      .from('contact_lists')
+      .select('id')
+      .eq('id', listId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (listError || !list) {
+      console.error('[CONTACTS] List not found or unauthorized:', listError);
+      return res.status(404).json({ error: 'List not found' });
+    }
+
+    let query = supabase
+      .from('contacts')
+      .select('*', { count: 'exact' })
+      .eq('list_id', listId)
+      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1)
+      .order('created_at', { ascending: false });
+
+    if (search) {
+      query = query.or(`email.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%,company.ilike.%${search}%`);
+    }
+
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error('[CONTACTS] Error fetching contacts:', error);
+      throw error;
+    }
+
+    console.log(`[CONTACTS] Found ${data?.length || 0} contacts (total: ${count})`);
+
+    res.json({
+      contacts: data || [],
+      total: count || 0,
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+  } catch (error) {
+    console.error('[CONTACTS] Error in route:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete a contact list
+app.delete('/api/contacts/lists/:listId', authenticateUser, async (req, res) => {
+  try {
+    const { listId } = req.params;
+
+    console.log(`[CONTACTS] Deleting list ${listId} for user ${req.user.id}`);
+
+    // Verify list belongs to user
+    const { data: list } = await supabase
+      .from('contact_lists')
+      .select('id')
+      .eq('id', listId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!list) {
+      return res.status(404).json({ error: 'List not found' });
+    }
+
+    const { error } = await supabase
+      .from('contact_lists')
+      .delete()
+      .eq('id', listId);
+
+    if (error) throw error;
+
+    console.log(`[CONTACTS] Successfully deleted list ${listId}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[CONTACTS] Error deleting list:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update a contact
+app.put('/api/contacts/:contactId', authenticateUser, async (req, res) => {
+  try {
+    const { contactId } = req.params;
+    const { email, first_name, last_name, company, custom_fields, status } = req.body;
+
+    console.log(`[CONTACTS] Updating contact ${contactId}`);
+
+    // Verify contact belongs to user's list
+    const { data: contact, error: fetchError } = await supabase
+      .from('contacts')
+      .select('list_id, contact_lists!inner(user_id)')
+      .eq('id', contactId)
+      .single();
+
+    if (fetchError || !contact) {
+      console.error('[CONTACTS] Contact not found:', fetchError);
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    // Verify user owns the list
+    if (contact.contact_lists.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const updates = {};
+    if (email !== undefined) updates.email = email.toLowerCase().trim();
+    if (first_name !== undefined) updates.first_name = first_name;
+    if (last_name !== undefined) updates.last_name = last_name;
+    if (company !== undefined) updates.company = company;
+    if (custom_fields !== undefined) updates.custom_fields = custom_fields;
+    if (status !== undefined) updates.status = status;
+
+    const { data, error } = await supabase
+      .from('contacts')
+      .update(updates)
+      .eq('id', contactId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    console.log(`[CONTACTS] Successfully updated contact ${contactId}`);
+    res.json(data);
+  } catch (error) {
+    console.error('[CONTACTS] Error updating contact:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete a contact
+app.delete('/api/contacts/:contactId', authenticateUser, async (req, res) => {
+  try {
+    const { contactId } = req.params;
+
+    console.log(`[CONTACTS] Deleting contact ${contactId}`);
+
+    // Get contact to verify ownership
+    const { data: contact, error: fetchError } = await supabase
+      .from('contacts')
+      .select('list_id, contact_lists!inner(user_id)')
+      .eq('id', contactId)
+      .single();
+
+    if (fetchError || !contact) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    // Verify user owns the list
+    if (contact.contact_lists.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const { error } = await supabase
+      .from('contacts')
+      .delete()
+      .eq('id', contactId);
+
+    if (error) throw error;
+
+    console.log(`[CONTACTS] Successfully deleted contact ${contactId}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[CONTACTS] Error deleting contact:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============================================================================
 // DASHBOARD ROUTES
 // ============================================================================
