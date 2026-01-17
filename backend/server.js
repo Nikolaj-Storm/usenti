@@ -527,6 +527,120 @@ app.post('/api/contact-lists/:id/import', authenticateUser, async (req, res) => 
 });
 
 // ============================================================================
+// DASHBOARD ROUTES
+// ============================================================================
+
+app.get('/api/dashboard/stats', authenticateUser, async (req, res) => {
+  try {
+    // Get user's campaigns
+    const { data: campaigns, error: campaignsError } = await supabase
+      .from('campaigns')
+      .select('id, status')
+      .eq('user_id', req.user.id);
+
+    if (campaignsError) throw campaignsError;
+
+    const campaignIds = campaigns.map(c => c.id);
+
+    // Get email events for user's campaigns
+    let totalSent = 0;
+    let totalOpened = 0;
+    let totalClicked = 0;
+    let totalReplied = 0;
+    let activityData = [];
+
+    if (campaignIds.length > 0) {
+      // Get total counts
+      const { data: events, error: eventsError } = await supabase
+        .from('email_events')
+        .select('event_type, created_at')
+        .in('campaign_id', campaignIds);
+
+      if (!eventsError && events) {
+        totalSent = events.filter(e => e.event_type === 'sent').length;
+        totalOpened = events.filter(e => e.event_type === 'opened').length;
+        totalClicked = events.filter(e => e.event_type === 'clicked').length;
+        totalReplied = events.filter(e => e.event_type === 'replied').length;
+
+        // Get activity data for the last 7 days
+        const last7Days = new Date();
+        last7Days.setDate(last7Days.getDate() - 7);
+
+        const recentEvents = events.filter(e => new Date(e.created_at) >= last7Days);
+
+        // Group by day
+        const dayMap = {};
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date();
+          date.setDate(date.getDate() - i);
+          const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+          const dateKey = date.toISOString().split('T')[0];
+          dayMap[dateKey] = {
+            name: dayName,
+            sent: 0,
+            opened: 0,
+            replied: 0
+          };
+        }
+
+        recentEvents.forEach(event => {
+          const dateKey = event.created_at.split('T')[0];
+          if (dayMap[dateKey]) {
+            if (event.event_type === 'sent') dayMap[dateKey].sent++;
+            if (event.event_type === 'opened') dayMap[dateKey].opened++;
+            if (event.event_type === 'replied') dayMap[dateKey].replied++;
+          }
+        });
+
+        activityData = Object.values(dayMap);
+      }
+    }
+
+    // Calculate rates
+    const openRate = totalSent > 0 ? ((totalOpened / totalSent) * 100).toFixed(1) : '0.0';
+    const clickRate = totalSent > 0 ? ((totalClicked / totalSent) * 100).toFixed(1) : '0.0';
+    const replyRate = totalSent > 0 ? ((totalReplied / totalSent) * 100).toFixed(1) : '0.0';
+
+    res.json({
+      metrics: [
+        {
+          label: 'Total Sent',
+          value: totalSent.toLocaleString(),
+          change: '+0%',
+          icon: 'Mail',
+          color: 'text-blue-600'
+        },
+        {
+          label: 'Open Rate',
+          value: `${openRate}%`,
+          change: '+0%',
+          icon: 'ArrowUpRight',
+          color: 'text-emerald-600'
+        },
+        {
+          label: 'Click Rate',
+          value: `${clickRate}%`,
+          change: '+0%',
+          icon: 'MousePointer2',
+          color: 'text-amber-600'
+        },
+        {
+          label: 'Reply Rate',
+          value: `${replyRate}%`,
+          change: '+0%',
+          icon: 'MessageSquare',
+          color: 'text-jaguar-900'
+        }
+      ],
+      activity: activityData
+    });
+  } catch (error) {
+    console.error('Dashboard stats error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
 // CAMPAIGNS ROUTES
 // ============================================================================
 
