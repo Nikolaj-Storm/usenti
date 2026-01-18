@@ -108,7 +108,24 @@ const api = {
   },
 
   async createEmailAccount(accountData) {
-    return this.post(APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS, accountData);
+    const requestId = `API-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    console.log(`\n[${requestId}] API.createEmailAccount called`);
+    console.log(`[${requestId}] Endpoint: ${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}`);
+    console.log(`[${requestId}] Account data (redacted):`, {
+      ...accountData,
+      smtp_password: '[REDACTED]',
+      imap_password: '[REDACTED]'
+    });
+
+    try {
+      const result = await this.post(APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS, accountData);
+      console.log(`[${requestId}] ✅ API call successful:`, result);
+      return result;
+    } catch (error) {
+      console.log(`[${requestId}] ❌ API call failed:`, error);
+      throw error;
+    }
   },
 
   async testEmailAccount(accountData) {
