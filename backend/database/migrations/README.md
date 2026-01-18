@@ -17,28 +17,35 @@ This directory contains SQL migration scripts to update your database schema.
 If you have direct access to your PostgreSQL database:
 
 ```bash
-psql -h your-db-host -U your-username -d your-database -f migrations/001_add_warmup_enabled.sql
+psql -h your-db-host -U your-username -d your-database -f migrations/002_update_account_type_constraint.sql
 ```
 
 ### Option 3: Using Supabase CLI
 
 ```bash
-supabase db execute --file migrations/001_add_warmup_enabled.sql
+supabase db execute --file migrations/002_update_account_type_constraint.sql
 ```
 
 ## Migration History
 
-### 001_add_warmup_enabled.sql
+### 002_update_account_type_constraint.sql
+
+**Date:** 2026-01-18
+**Purpose:** Updates the `account_type` check constraint to support all email providers
+
+**Why this is needed:**
+- The original constraint only allowed 'gmail', 'outlook', 'custom'
+- The application now supports 'zoho', 'aws_workmail', and 'stalwart'
+- Fixes error: "new row for relation "email_accounts" violates check constraint"
+
+**Safe to run:** Yes - Drops and recreates the constraint with all supported types
+
+### 001_add_warmup_enabled.sql (DEPRECATED - DO NOT RUN)
 
 **Date:** 2026-01-18
 **Purpose:** Adds the `warmup_enabled` column to the `email_accounts` table
 
-**Why this is needed:**
-- The application code references `warmup_enabled` column
-- This column was missing from the initial schema
-- Fixes error: "Could not find the 'warmup_enabled' column of 'email_accounts' in the schema cache"
-
-**Safe to run:** Yes - Uses conditional logic to only add column if it doesn't exist
+**Status:** DEPRECATED - This migration is no longer needed as `warmup_enabled` has been removed from the application in favor of the `warmup_configs` table and `is_warming_up` flag.
 
 ## Best Practices
 
