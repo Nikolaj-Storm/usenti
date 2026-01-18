@@ -184,5 +184,10 @@ const Icons = {
   X: (p) => Icon({...p, path: [
     h('path', {key:1, d:"M18 6 6 18"}),
     h('path', {key:2, d:"m6 6 12 12"})
+  ]}),
+
+  Eye: (p) => Icon({...p, path: [
+    h('path', {key:1, d:"M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"}),
+    h('circle', {key:2, cx:"12", cy:"12", r:"3"})
   ]})
 };
