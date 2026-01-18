@@ -212,7 +212,7 @@ const AccountCard = ({ account, onRefresh }) => {
       ),
       h('div', { className: "flex justify-between" },
         h('span', { className: "text-stone-500" }, 'Warm-up Status'),
-        h('span', { className: "text-jaguar-900" }, account.warmup_enabled ? 'Enabled' : 'Disabled')
+        h('span', { className: "text-jaguar-900" }, account.is_warming_up ? 'Active' : 'Inactive')
       )
     )
   );
@@ -241,7 +241,7 @@ const WarmupTab = ({ accounts }) => {
     { day: 'Day 7', rate: 94 },
   ];
 
-  const warmupAccounts = accounts.filter(a => a.warmup_enabled);
+  const warmupAccounts = accounts.filter(a => a.is_warming_up);
   const activeWarmups = warmupAccounts.filter(a => a.status === 'warming').length;
 
   return h('div', { className: "space-y-6" },
@@ -415,8 +415,7 @@ const AddAccountModal = ({ onClose, onAdd }) => {
     imap_port: '993',
     imap_username: '',
     imap_password: '',
-    daily_send_limit: '500',
-    warmup_enabled: true
+    daily_send_limit: '500'
   });
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState(null);
@@ -700,29 +699,15 @@ const AddAccountModal = ({ onClose, onAdd }) => {
             )
           )
         ),
-        h('div', { className: "grid grid-cols-2 gap-4" },
-          h('div', null,
-            h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Daily Send Limit'),
-            h('input', {
-              type: "number",
-              required: true,
-              value: formData.daily_send_limit,
-              onChange: (e) => setFormData({ ...formData, daily_send_limit: e.target.value }),
-              className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
-            })
-          ),
-          h('div', null,
-            h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Warmup'),
-            h('label', { className: "flex items-center gap-2 mt-2 cursor-pointer" },
-              h('input', {
-                type: "checkbox",
-                checked: formData.warmup_enabled,
-                onChange: (e) => setFormData({ ...formData, warmup_enabled: e.target.checked }),
-                className: "rounded"
-              }),
-              h('span', { className: "text-sm text-stone-600" }, 'Enable warmup engine')
-            )
-          )
+        h('div', null,
+          h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Daily Send Limit'),
+          h('input', {
+            type: "number",
+            required: true,
+            value: formData.daily_send_limit,
+            onChange: (e) => setFormData({ ...formData, daily_send_limit: e.target.value }),
+            className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+          })
         ),
         testResult && h('div', {
           className: `p-4 rounded-lg border ${
