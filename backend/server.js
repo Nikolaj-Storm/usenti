@@ -156,54 +156,250 @@ app.get('/api/email-accounts', authenticateUser, async (req, res) => {
 });
 
 app.post('/api/email-accounts', authenticateUser, async (req, res) => {
+  const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
   try {
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[${requestId}] NEW EMAIL ACCOUNT REQUEST`);
+    console.log(`${'='.repeat(80)}`);
+    console.log(`[${requestId}] Timestamp: ${new Date().toISOString()}`);
+    console.log(`[${requestId}] User ID: ${req.user?.id}`);
+    console.log(`[${requestId}] User Email: ${req.user?.email}`);
+
     const {
       email_address, account_type, imap_host, imap_port, imap_username, imap_password,
       smtp_host, smtp_port, smtp_username, smtp_password, daily_send_limit
     } = req.body;
 
+    console.log(`\n[${requestId}] === STEP 1: REQUEST BODY VALIDATION ===`);
+    console.log(`[${requestId}] Email Address: ${email_address}`);
+    console.log(`[${requestId}] Account Type: ${account_type}`);
+    console.log(`[${requestId}] IMAP Host: ${imap_host}`);
+    console.log(`[${requestId}] IMAP Port: ${imap_port}`);
+    console.log(`[${requestId}] IMAP Username: ${imap_username}`);
+    console.log(`[${requestId}] IMAP Password Provided: ${!!imap_password}`);
+    console.log(`[${requestId}] IMAP Password Length: ${imap_password?.length || 0}`);
+    console.log(`[${requestId}] SMTP Host: ${smtp_host}`);
+    console.log(`[${requestId}] SMTP Port: ${smtp_port}`);
+    console.log(`[${requestId}] SMTP Username: ${smtp_username}`);
+    console.log(`[${requestId}] SMTP Password Provided: ${!!smtp_password}`);
+    console.log(`[${requestId}] SMTP Password Length: ${smtp_password?.length || 0}`);
+    console.log(`[${requestId}] Daily Send Limit: ${daily_send_limit}`);
+
+    // Validation
     if (!email_address || !account_type) {
-      return res.status(400).json({ error: 'Email address and account type are required' });
+      console.log(`[${requestId}] ❌ VALIDATION FAILED: Missing required fields`);
+      console.log(`[${requestId}]    - email_address present: ${!!email_address}`);
+      console.log(`[${requestId}]    - account_type present: ${!!account_type}`);
+      return res.status(400).json({
+        error: 'Email address and account type are required',
+        requestId
+      });
     }
 
-    // Check if account already exists
-    const { data: existing } = await supabase
+    console.log(`[${requestId}] ✓ Basic validation passed`);
+
+    // Validate account_type is one of the allowed values
+    const allowedTypes = ['gmail', 'outlook', 'zoho', 'aws_workmail', 'stalwart', 'custom'];
+    if (!allowedTypes.includes(account_type)) {
+      console.log(`[${requestId}] ❌ VALIDATION FAILED: Invalid account_type`);
+      console.log(`[${requestId}]    - Received: ${account_type}`);
+      console.log(`[${requestId}]    - Allowed: ${allowedTypes.join(', ')}`);
+      return res.status(400).json({
+        error: `Invalid account_type. Must be one of: ${allowedTypes.join(', ')}`,
+        received: account_type,
+        requestId
+      });
+    }
+
+    console.log(`[${requestId}] ✓ Account type validation passed`);
+
+    // Check for existing account
+    console.log(`\n[${requestId}] === STEP 2: DUPLICATE CHECK ===`);
+    console.log(`[${requestId}] Querying for existing account...`);
+    console.log(`[${requestId}]    - user_id: ${req.user.id}`);
+    console.log(`[${requestId}]    - email_address: ${email_address.toLowerCase()}`);
+
+    const { data: existing, error: checkError } = await supabase
       .from('email_accounts')
-      .select('id')
+      .select('id, email_address, created_at')
       .eq('user_id', req.user.id)
       .eq('email_address', email_address.toLowerCase())
       .single();
 
-    if (existing) {
-      return res.status(400).json({ error: 'Email account already exists' });
+    if (checkError) {
+      if (checkError.code === 'PGRST116') {
+        console.log(`[${requestId}] ✓ No duplicate found (PGRST116 - no rows)`);
+      } else {
+        console.log(`[${requestId}] ❌ ERROR during duplicate check:`, {
+          code: checkError.code,
+          message: checkError.message,
+          details: checkError.details
+        });
+        throw checkError;
+      }
+    } else if (existing) {
+      console.log(`[${requestId}] ❌ DUPLICATE FOUND:`, {
+        id: existing.id,
+        email: existing.email_address,
+        created_at: existing.created_at
+      });
+      return res.status(400).json({
+        error: 'Email account already exists',
+        existingId: existing.id,
+        requestId
+      });
     }
+
+    console.log(`[${requestId}] ✓ Duplicate check passed`);
+
+    // Encrypt passwords
+    console.log(`\n[${requestId}] === STEP 3: PASSWORD ENCRYPTION ===`);
+    console.log(`[${requestId}] Encryption key available: ${!!process.env.ENCRYPTION_KEY}`);
+    console.log(`[${requestId}] Encryption key length: ${process.env.ENCRYPTION_KEY?.length || 0}`);
+
+    let encryptedImapPassword, encryptedSmtpPassword;
+
+    console.log(`[${requestId}] Encrypting IMAP password...`);
+    try {
+      encryptedImapPassword = encrypt(imap_password);
+      console.log(`[${requestId}] ✓ IMAP password encrypted successfully`);
+      console.log(`[${requestId}]    - Original length: ${imap_password?.length}`);
+      console.log(`[${requestId}]    - Encrypted length: ${encryptedImapPassword?.length}`);
+      console.log(`[${requestId}]    - Encrypted format: ${encryptedImapPassword?.substring(0, 20)}...`);
+    } catch (encErr) {
+      console.log(`[${requestId}] ❌ IMAP ENCRYPTION ERROR:`, {
+        name: encErr.name,
+        message: encErr.message,
+        stack: encErr.stack
+      });
+      throw new Error(`IMAP password encryption failed: ${encErr.message}`);
+    }
+
+    console.log(`[${requestId}] Encrypting SMTP password...`);
+    try {
+      encryptedSmtpPassword = encrypt(smtp_password);
+      console.log(`[${requestId}] ✓ SMTP password encrypted successfully`);
+      console.log(`[${requestId}]    - Original length: ${smtp_password?.length}`);
+      console.log(`[${requestId}]    - Encrypted length: ${encryptedSmtpPassword?.length}`);
+      console.log(`[${requestId}]    - Encrypted format: ${encryptedSmtpPassword?.substring(0, 20)}...`);
+    } catch (encErr) {
+      console.log(`[${requestId}] ❌ SMTP ENCRYPTION ERROR:`, {
+        name: encErr.name,
+        message: encErr.message,
+        stack: encErr.stack
+      });
+      throw new Error(`SMTP password encryption failed: ${encErr.message}`);
+    }
+
+    console.log(`[${requestId}] ✓ Both passwords encrypted successfully`);
+
+    // Prepare insert data
+    console.log(`\n[${requestId}] === STEP 4: PREPARE DATABASE INSERT ===`);
+
+    const insertData = {
+      user_id: req.user.id,
+      email_address: email_address.toLowerCase(),
+      account_type,
+      imap_host,
+      imap_port: imap_port || 993,
+      imap_username: imap_username || email_address,
+      imap_password: encryptedImapPassword,
+      smtp_host,
+      smtp_port: smtp_port || 587,
+      smtp_username: smtp_username || email_address,
+      smtp_password: encryptedSmtpPassword,
+      daily_send_limit: daily_send_limit || 10000,
+      is_active: true,
+      health_score: 100
+    };
+
+    console.log(`[${requestId}] Insert data prepared:`, {
+      user_id: insertData.user_id,
+      email_address: insertData.email_address,
+      account_type: insertData.account_type,
+      imap_host: insertData.imap_host,
+      imap_port: insertData.imap_port,
+      imap_username: insertData.imap_username,
+      imap_password: '[ENCRYPTED]',
+      smtp_host: insertData.smtp_host,
+      smtp_port: insertData.smtp_port,
+      smtp_username: insertData.smtp_username,
+      smtp_password: '[ENCRYPTED]',
+      daily_send_limit: insertData.daily_send_limit,
+      is_active: insertData.is_active,
+      health_score: insertData.health_score
+    });
+
+    console.log(`[${requestId}] Attempting database insert...`);
+    console.log(`[${requestId}] Target table: email_accounts`);
+    console.log(`[${requestId}] Select fields: id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at`);
 
     const { data, error } = await supabase
       .from('email_accounts')
-      .insert({
-        user_id: req.user.id,
-        email_address: email_address.toLowerCase(),
-        account_type,
-        imap_host,
-        imap_port: imap_port || 993,
-        imap_username: imap_username || email_address,
-        imap_password: encrypt(imap_password),
-        smtp_host,
-        smtp_port: smtp_port || 587,
-        smtp_username: smtp_username || email_address,
-        smtp_password: encrypt(smtp_password),
-        daily_send_limit: daily_send_limit || 10000,
-        is_active: true,
-        health_score: 100
-      })
+      .insert(insertData)
       .select('id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.log(`\n[${requestId}] === STEP 5: DATABASE INSERT FAILED ===`);
+      console.log(`[${requestId}] ❌ DATABASE ERROR DETAILS:`);
+      console.log(`[${requestId}]    - Error Code: ${error.code}`);
+      console.log(`[${requestId}]    - Error Message: ${error.message}`);
+      console.log(`[${requestId}]    - Error Details: ${error.details}`);
+      console.log(`[${requestId}]    - Error Hint: ${error.hint}`);
+      console.log(`[${requestId}]    - Full Error Object:`, JSON.stringify(error, null, 2));
+
+      // Specific error code handling
+      if (error.code === '23514') {
+        console.log(`[${requestId}] 🔍 CHECK CONSTRAINT VIOLATION DETECTED`);
+        console.log(`[${requestId}]    This usually means the account_type value is not in the allowed list`);
+        console.log(`[${requestId}]    Attempted account_type: ${account_type}`);
+        console.log(`[${requestId}]    Allowed types: gmail, outlook, zoho, aws_workmail, stalwart, custom`);
+      } else if (error.code === '23505') {
+        console.log(`[${requestId}] 🔍 UNIQUE CONSTRAINT VIOLATION`);
+        console.log(`[${requestId}]    An account with this email already exists`);
+      } else if (error.code === '23503') {
+        console.log(`[${requestId}] 🔍 FOREIGN KEY CONSTRAINT VIOLATION`);
+        console.log(`[${requestId}]    The user_id doesn't exist in the users table`);
+      }
+
+      throw error;
+    }
+
+    console.log(`\n[${requestId}] === STEP 5: DATABASE INSERT SUCCESS ===`);
+    console.log(`[${requestId}] ✅ Account created successfully!`);
+    console.log(`[${requestId}] Account ID: ${data.id}`);
+    console.log(`[${requestId}] Response data:`, data);
+    console.log(`${'='.repeat(80)}`);
+    console.log(`[${requestId}] REQUEST COMPLETED SUCCESSFULLY`);
+    console.log(`${'='.repeat(80)}\n`);
+
     res.json(data);
   } catch (error) {
-    console.error('Error adding email account:', error);
-    res.status(500).json({ error: error.message });
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[${requestId}] ❌❌❌ FATAL ERROR ❌❌❌`);
+    console.log(`${'='.repeat(80)}`);
+    console.log(`[${requestId}] Error Type: ${error.constructor.name}`);
+    console.log(`[${requestId}] Error Name: ${error.name}`);
+    console.log(`[${requestId}] Error Message: ${error.message}`);
+    console.log(`[${requestId}] Error Code: ${error.code || 'N/A'}`);
+    console.log(`[${requestId}] Error Details: ${error.details || 'N/A'}`);
+    console.log(`[${requestId}] Error Hint: ${error.hint || 'N/A'}`);
+    console.log(`[${requestId}] Full Error:`, JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    console.log(`[${requestId}] Stack Trace:\n${error.stack}`);
+    console.log(`${'='.repeat(80)}`);
+    console.log(`[${requestId}] REQUEST FAILED`);
+    console.log(`${'='.repeat(80)}\n`);
+
+    res.status(500).json({
+      error: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      requestId,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 

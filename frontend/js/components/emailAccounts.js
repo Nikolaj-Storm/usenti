@@ -478,13 +478,104 @@ const AddAccountModal = ({ onClose, onAdd }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    const requestId = `FRONTEND-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[${requestId}] FRONTEND: Starting email account submission`);
+    console.log(`${'='.repeat(80)}`);
+    console.log(`[${requestId}] Timestamp: ${new Date().toISOString()}`);
+    console.log(`[${requestId}] Account Type Selected: ${accountType}`);
+
+    console.log(`\n[${requestId}] === FORM DATA ===`);
+    console.log(`[${requestId}] Email Address: ${formData.email_address}`);
+    console.log(`[${requestId}] Account Type: ${accountType}`);
+    console.log(`[${requestId}] SMTP Host: ${formData.smtp_host}`);
+    console.log(`[${requestId}] SMTP Port: ${formData.smtp_port}`);
+    console.log(`[${requestId}] SMTP Username: ${formData.smtp_username}`);
+    console.log(`[${requestId}] SMTP Password Length: ${formData.smtp_password?.length || 0}`);
+    console.log(`[${requestId}] IMAP Host: ${formData.imap_host}`);
+    console.log(`[${requestId}] IMAP Port: ${formData.imap_port}`);
+    console.log(`[${requestId}] IMAP Username: ${formData.imap_username}`);
+    console.log(`[${requestId}] IMAP Password Length: ${formData.imap_password?.length || 0}`);
+    console.log(`[${requestId}] Daily Send Limit: ${formData.daily_send_limit}`);
+
+    const payload = {
+      ...formData,
+      account_type: accountType
+    };
+
+    console.log(`\n[${requestId}] === PAYLOAD PREPARED ===`);
+    console.log(`[${requestId}] Full payload (passwords redacted):`, {
+      ...payload,
+      smtp_password: '[REDACTED]',
+      imap_password: '[REDACTED]'
+    });
+
     try {
-      await onAdd({
-        ...formData,
-        account_type: accountType
-      });
-    } catch (error) {
-      alert('Failed to add account: ' + error.message);
+      console.log(`\n[${requestId}] === CALLING API ===`);
+      console.log(`[${requestId}] API Base URL: ${APP_CONFIG.API_BASE_URL}`);
+      console.log(`[${requestId}] Endpoint: ${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}`);
+      console.log(`[${requestId}] Full URL: ${APP_CONFIG.API_BASE_URL}${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}`);
+
+      const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+      console.log(`[${requestId}] Auth Token Present: ${!!token}`);
+      console.log(`[${requestId}] Auth Token Preview: ${token?.substring(0, 20)}...`);
+
+      console.log(`[${requestId}] Making API call...`);
+      const startTime = Date.now();
+
+      const response = await onAdd(payload);
+
+      const duration = Date.now() - startTime;
+      console.log(`\n[${requestId}] === API RESPONSE RECEIVED ===`);
+      console.log(`[${requestId}] Duration: ${duration}ms`);
+      console.log(`[${requestId}] Response:`, response);
+      console.log(`[${requestId}] ✅ SUCCESS: Account added`);
+      console.log(`${'='.repeat(80)}`);
+      console.log(`[${requestId}] FRONTEND REQUEST COMPLETED`);
+      console.log(`${'='.repeat(80)}\n`);
+
+    } catch (err) {
+      console.log(`\n[${requestId}] === ERROR CAUGHT ===`);
+      console.log(`[${requestId}] ❌ Error Type: ${err.constructor.name}`);
+      console.log(`[${requestId}] ❌ Error Message: ${err.message}`);
+      console.log(`[${requestId}] ❌ Error Stack:`, err.stack);
+
+      // Check if it's a network error
+      if (err.message.includes('fetch') || err.message.includes('network')) {
+        console.log(`[${requestId}] 🔍 NETWORK ERROR DETECTED`);
+        console.log(`[${requestId}] Possible causes:`);
+        console.log(`[${requestId}]    - Backend is down`);
+        console.log(`[${requestId}]    - CORS issue`);
+        console.log(`[${requestId}]    - Wrong API URL`);
+        console.log(`[${requestId}]    - Network connectivity issue`);
+      }
+
+      // Check if it's an auth error
+      if (err.message.includes('401') || err.message.includes('Unauthorized')) {
+        console.log(`[${requestId}] 🔍 AUTHENTICATION ERROR`);
+        console.log(`[${requestId}] Session may have expired`);
+        console.log(`[${requestId}] Token in localStorage:`, !!localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN));
+      }
+
+      // Check if it's a validation error
+      if (err.message.includes('400') || err.message.includes('validation')) {
+        console.log(`[${requestId}] 🔍 VALIDATION ERROR`);
+        console.log(`[${requestId}] Request may be missing required fields`);
+      }
+
+      // Check if it's a database error
+      if (err.message.includes('constraint') || err.message.includes('23514') || err.message.includes('23505')) {
+        console.log(`[${requestId}] 🔍 DATABASE CONSTRAINT ERROR`);
+        console.log(`[${requestId}] This is likely a schema issue`);
+        console.log(`[${requestId}] Account type sent: ${accountType}`);
+      }
+
+      console.log(`${'='.repeat(80)}`);
+      console.log(`[${requestId}] FRONTEND REQUEST FAILED`);
+      console.log(`${'='.repeat(80)}\n`);
+
+      alert('Failed to add account: ' + err.message);
     }
   };
 
