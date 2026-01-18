@@ -120,6 +120,8 @@ const AccountCard = ({ account, onRefresh }) => {
         return 'bg-indigo-100 text-indigo-700';
       case 'aws_workmail':
         return 'bg-orange-100 text-orange-700';
+      case 'zoho':
+        return 'bg-purple-100 text-purple-700';
       case 'gmail':
         return 'bg-red-100 text-red-700';
       case 'outlook':
@@ -422,7 +424,15 @@ const AddAccountModal = ({ onClose, onAdd }) => {
   const handleTypeSelect = (type) => {
     setAccountType(type);
 
-    if (type === 'gmail') {
+    if (type === 'zoho') {
+      setFormData({
+        ...formData,
+        smtp_host: 'smtp.zoho.com',
+        smtp_port: '587',
+        imap_host: 'imap.zoho.com',
+        imap_port: '993'
+      });
+    } else if (type === 'gmail') {
       setFormData({
         ...formData,
         smtp_host: 'smtp.gmail.com',
@@ -517,6 +527,18 @@ const AddAccountModal = ({ onClose, onAdd }) => {
             h('div', null,
               h('h4', { className: "font-medium text-jaguar-900 mb-1" }, 'AWS WorkMail'),
               h('p', { className: "text-sm text-stone-500" }, 'Enterprise email service from Amazon')
+            )
+          )
+        ),
+        h('button', {
+          onClick: () => handleTypeSelect('zoho'),
+          className: "w-full p-6 border-2 border-stone-200 rounded-lg hover:border-jaguar-900 hover:bg-cream-50 transition-all text-left group"
+        },
+          h('div', { className: "flex items-center gap-4" },
+            h('div', { className: "w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center text-purple-700 font-bold text-xl group-hover:scale-110 transition-transform" }, 'Z'),
+            h('div', null,
+              h('h4', { className: "font-medium text-jaguar-900 mb-1" }, 'Zoho Mail'),
+              h('p', { className: "text-sm text-stone-500" }, 'Professional email with simple setup (no app passwords needed)')
             )
           )
         ),
