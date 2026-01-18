@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS email_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   email_address TEXT NOT NULL,
-  account_type TEXT NOT NULL CHECK (account_type IN ('gmail', 'outlook', 'custom')),
+  account_type TEXT NOT NULL CHECK (account_type IN ('gmail', 'outlook', 'zoho', 'aws_workmail', 'stalwart', 'custom')),
 
   -- IMAP Configuration
   imap_host TEXT NOT NULL,
@@ -55,7 +55,6 @@ CREATE TABLE IF NOT EXISTS email_accounts (
   -- Settings
   daily_send_limit INTEGER DEFAULT 500,
   is_active BOOLEAN DEFAULT true,
-  warmup_enabled BOOLEAN DEFAULT false,
   is_warming_up BOOLEAN DEFAULT false,
   warmup_stage INTEGER DEFAULT 0,
   health_score INTEGER DEFAULT 100 CHECK (health_score >= 0 AND health_score <= 100),
