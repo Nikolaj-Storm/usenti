@@ -59,6 +59,27 @@ For better security, use OAuth 2.0 with Gmail API:
 
 **Status:** OAuth 2.0 support is planned for a future release.
 
+## Zoho Mail (Recommended Alternative)
+
+Zoho Mail supports standard IMAP/SMTP with username and password:
+- **No app passwords or OAuth required**
+- Simple username and password authentication
+- Professional and reliable
+- Great deliverability
+- Affordable pricing
+
+**Settings:**
+- IMAP Host: `imap.zoho.com`
+- IMAP Port: `993`
+- SMTP Host: `smtp.zoho.com`
+- SMTP Port: `587`
+
+**Why choose Zoho:**
+- Easy setup compared to Gmail/Outlook
+- No complex authentication requirements
+- Professional appearance
+- Good for both personal and business use
+
 ## AWS WorkMail
 
 AWS WorkMail supports standard IMAP/SMTP with username and password:
