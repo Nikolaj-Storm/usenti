@@ -143,7 +143,7 @@ app.get('/api/email-accounts', authenticateUser, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('email_accounts')
-      .select('id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
+      .select('id, email_address, account_type, daily_send_limit, warmup_enabled, is_warming_up, warmup_stage, is_active, health_score, created_at')
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false });
     
@@ -197,7 +197,7 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
         is_active: true,
         health_score: 100
       })
-      .select('id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
+      .select('id, email_address, account_type, daily_send_limit, warmup_enabled, is_warming_up, warmup_stage, is_active, health_score, created_at')
       .single();
     
     if (error) throw error;
@@ -375,12 +375,13 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
 
 app.put('/api/email-accounts/:id', authenticateUser, async (req, res) => {
   try {
-    const { email_address, daily_send_limit, is_active, imap_password, smtp_password } = req.body;
+    const { email_address, daily_send_limit, is_active, warmup_enabled, imap_password, smtp_password } = req.body;
 
     const updates = {};
     if (email_address) updates.email_address = email_address.toLowerCase();
     if (daily_send_limit !== undefined) updates.daily_send_limit = daily_send_limit;
     if (is_active !== undefined) updates.is_active = is_active;
+    if (warmup_enabled !== undefined) updates.warmup_enabled = warmup_enabled;
     if (imap_password) updates.imap_password = encrypt(imap_password);
     if (smtp_password) updates.smtp_password = encrypt(smtp_password);
 
@@ -389,7 +390,7 @@ app.put('/api/email-accounts/:id', authenticateUser, async (req, res) => {
       .update(updates)
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
-      .select('id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
+      .select('id, email_address, account_type, daily_send_limit, warmup_enabled, is_warming_up, warmup_stage, is_active, health_score, created_at')
       .single();
     
     if (error) throw error;
