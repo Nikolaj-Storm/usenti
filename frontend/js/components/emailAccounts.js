@@ -430,6 +430,9 @@ const AddAccountModal = ({ onClose, onAdd }) => {
         imap_host: 'imap.gmail.com',
         imap_port: '993'
       });
+
+      // Show app password info for Gmail
+      alert('⚠️ Important: Gmail requires App Passwords for third-party applications.\n\nTo connect your Gmail account:\n\n1. Enable 2-Step Verification on your Google account\n2. Go to https://myaccount.google.com/apppasswords\n3. Generate an app password for "Mail"\n4. Use that password (not your regular password) in the IMAP/SMTP password fields');
     } else if (type === 'outlook') {
       setFormData({
         ...formData,
@@ -438,6 +441,9 @@ const AddAccountModal = ({ onClose, onAdd }) => {
         imap_host: 'outlook.office365.com',
         imap_port: '993'
       });
+
+      // Show OAuth 2.0 warning for Outlook
+      alert('⚠️ Important: Microsoft disabled basic authentication for Outlook/Office 365 in late 2022.\n\nTo connect your Outlook account, you MUST use an App Password:\n\n1. Go to https://account.microsoft.com/security\n2. Navigate to "Advanced security options"\n3. Create a new app password\n4. Use that password (not your regular password) in the IMAP/SMTP password fields\n\nIf app passwords are disabled by your organization, you will need to contact your IT administrator.');
     }
 
     setStep('details');
@@ -540,6 +546,31 @@ const AddAccountModal = ({ onClose, onAdd }) => {
         )
       ),
       step === 'details' && h('form', { onSubmit: handleSubmit, className: "space-y-6" },
+        (accountType === 'outlook' || accountType === 'gmail') && h('div', { className: "p-4 bg-amber-50 border border-amber-200 rounded-lg" },
+          h('div', { className: "flex gap-3" },
+            h(Icons.AlertCircle, { size: 20, className: "text-amber-600 shrink-0 mt-0.5" }),
+            h('div', null,
+              h('h4', { className: "font-medium text-amber-900 mb-1" }, 'App Password Required'),
+              h('p', { className: "text-sm text-amber-700 mb-2" },
+                accountType === 'outlook'
+                  ? 'Microsoft disabled basic authentication for Outlook/Office 365. You must use an App Password:'
+                  : 'Gmail requires App Passwords for third-party applications. You must use an App Password:'
+              ),
+              h('ol', { className: "text-sm text-amber-700 list-decimal list-inside space-y-1" },
+                accountType === 'outlook' ? [
+                  h('li', { key: 1 }, 'Visit ', h('a', { href: "https://account.microsoft.com/security", target: "_blank", className: "underline" }, 'account.microsoft.com/security')),
+                  h('li', { key: 2 }, 'Create a new app password under "Advanced security options"'),
+                  h('li', { key: 3 }, 'Use that password in the IMAP/SMTP password fields below')
+                ] : [
+                  h('li', { key: 1 }, 'Enable 2-Step Verification on your Google account'),
+                  h('li', { key: 2 }, 'Visit ', h('a', { href: "https://myaccount.google.com/apppasswords", target: "_blank", className: "underline" }, 'myaccount.google.com/apppasswords')),
+                  h('li', { key: 3 }, 'Generate an app password for "Mail"'),
+                  h('li', { key: 4 }, 'Use that password in the IMAP/SMTP password fields below')
+                ]
+              )
+            )
+          )
+        ),
         h('div', null,
           h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Email Address'),
           h('input', {

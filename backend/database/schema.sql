@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS email_accounts (
   -- Settings
   daily_send_limit INTEGER DEFAULT 500,
   is_active BOOLEAN DEFAULT true,
+  warmup_enabled BOOLEAN DEFAULT false,
   is_warming_up BOOLEAN DEFAULT false,
   warmup_stage INTEGER DEFAULT 0,
   health_score INTEGER DEFAULT 100 CHECK (health_score >= 0 AND health_score <= 100),
