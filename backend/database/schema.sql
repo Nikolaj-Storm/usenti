@@ -1,8 +1,25 @@
 -- ============================================================================
--- Mr. Snowman Database Schema
+-- Mr. Snowman Database Schema v1.0
 -- ============================================================================
 -- This schema is designed for Supabase (PostgreSQL)
 -- Execute this in your Supabase SQL Editor: https://app.supabase.com
+--
+-- ⚡ QUICK START:
+-- 1. Delete old schema (see QUICK_DATABASE_REBUILD.md)
+-- 2. Copy this ENTIRE file (all 450 lines)
+-- 3. Paste in Supabase SQL Editor
+-- 4. Click RUN
+-- 5. Done! 🎉
+--
+-- ✅ INCLUDES ALL FIXES:
+-- • Auto-creates user_profiles on signup (critical fix!)
+-- • Proper account_type constraint (Gmail, Outlook, Zoho, etc.)
+-- • Row Level Security policies for all tables
+-- • Auto-update triggers for updated_at columns
+-- • Indexes for optimal performance
+--
+-- For detailed instructions, see: DATABASE_REBUILD_GUIDE.md
+-- ============================================================================
 
 -- ============================================================================
 -- USERS (Managed by Supabase Auth, but we can extend with a profile table)
