@@ -370,6 +370,24 @@ CREATE INDEX idx_warmup_messages_created_at ON warmup_messages(created_at DESC);
 -- FUNCTIONS & TRIGGERS
 -- ============================================================================
 
+-- Function to automatically create user_profiles when a new user signs up
+-- CRITICAL: This prevents the issue where users can't add email accounts
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.user_profiles (id, created_at, updated_at)
+  VALUES (NEW.id, NOW(), NOW())
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger to auto-create user_profiles on signup
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
