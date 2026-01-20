@@ -6,25 +6,29 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [name, setName] = React.useState('');
-  const [cooldownRemaining, setCooldownRemaining] = React.useState(7);
-  const [mountTime] = React.useState(Date.now());
+  const [cooldownRemaining, setCooldownRemaining] = React.useState(0);
+  const [cooldownEndTime, setCooldownEndTime] = React.useState(null);
 
-  // Countdown timer for Supabase's 7-second rate limit
+  // Countdown timer for Supabase's rate limit
   React.useEffect(() => {
-    if (view !== 'signup') return;
+    if (!cooldownEndTime) {
+      setCooldownRemaining(0);
+      return;
+    }
 
     const interval = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - mountTime) / 1000);
-      const remaining = Math.max(0, 7 - elapsed);
+      const remaining = Math.max(0, Math.ceil((cooldownEndTime - Date.now()) / 1000));
       setCooldownRemaining(remaining);
 
       if (remaining === 0) {
+        setCooldownEndTime(null);
+        setError(''); // Clear error when countdown completes
         clearInterval(interval);
       }
     }, 100);
 
     return () => clearInterval(interval);
-  }, [view, mountTime]);
+  }, [cooldownEndTime]);
 
   const handleSubmit = async (e) => {
     console.log('🎯 [Auth] Form submitted!', { view, email, hasPassword: !!password, hasName: !!name });
@@ -68,7 +72,18 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
         stack: err.stack,
         response: err.response
       });
-      setError(err.message || 'Authentication failed. Please check your credentials.');
+
+      // Check if this is a rate limit error and extract the required wait time
+      const rateLimitMatch = err.message?.match(/after (\d+) seconds/);
+      if (rateLimitMatch) {
+        const requiredSeconds = parseInt(rateLimitMatch[1], 10);
+        console.warn(`⏰ [Auth] Rate limit detected. Need to wait ${requiredSeconds} seconds.`);
+        // Set the cooldown end time to now + required seconds + 2 second buffer
+        setCooldownEndTime(Date.now() + (requiredSeconds + 2) * 1000);
+        setError(`Anti-bot security: Please wait ${requiredSeconds} seconds before trying again.`);
+      } else {
+        setError(err.message || 'Authentication failed. Please check your credentials.');
+      }
     } finally {
       setLoading(false);
       console.log('🏁 [Auth] Authentication attempt completed. Loading:', false);
@@ -173,12 +188,12 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
           ),
           h('button', {
             type: "submit",
-            disabled: loading || (view === 'signup' && cooldownRemaining > 0),
+            disabled: loading || cooldownRemaining > 0,
             className: "w-full py-3 bg-jaguar-900 text-cream-50 rounded-lg font-medium hover:bg-jaguar-800 transition-all shadow-lg shadow-jaguar-900/10 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
           },
             loading
               ? h(Icons.Loader2, { size: 20, className: "animate-spin" })
-              : (view === 'signup' && cooldownRemaining > 0)
+              : cooldownRemaining > 0
                 ? `Please wait ${cooldownRemaining}s (anti-bot security)`
                 : (view === 'login' ? 'Sign In' : 'Create Account')
           )
