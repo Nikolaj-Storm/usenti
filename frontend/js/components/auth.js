@@ -6,6 +6,25 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [name, setName] = React.useState('');
+  const [cooldownRemaining, setCooldownRemaining] = React.useState(7);
+  const [mountTime] = React.useState(Date.now());
+
+  // Countdown timer for Supabase's 7-second rate limit
+  React.useEffect(() => {
+    if (view !== 'signup') return;
+
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - mountTime) / 1000);
+      const remaining = Math.max(0, 7 - elapsed);
+      setCooldownRemaining(remaining);
+
+      if (remaining === 0) {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [view, mountTime]);
 
   const handleSubmit = async (e) => {
     console.log('🎯 [Auth] Form submitted!', { view, email, hasPassword: !!password, hasName: !!name });
@@ -154,12 +173,14 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
           ),
           h('button', {
             type: "submit",
-            disabled: loading,
+            disabled: loading || (view === 'signup' && cooldownRemaining > 0),
             className: "w-full py-3 bg-jaguar-900 text-cream-50 rounded-lg font-medium hover:bg-jaguar-800 transition-all shadow-lg shadow-jaguar-900/10 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
           },
             loading
               ? h(Icons.Loader2, { size: 20, className: "animate-spin" })
-              : (view === 'login' ? 'Sign In' : 'Create Account')
+              : (view === 'signup' && cooldownRemaining > 0)
+                ? `Please wait ${cooldownRemaining}s (anti-bot security)`
+                : (view === 'login' ? 'Sign In' : 'Create Account')
           )
         ),
         h('div', { className: "text-center text-sm text-stone-500" },
