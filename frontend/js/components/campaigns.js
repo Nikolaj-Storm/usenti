@@ -114,6 +114,48 @@ const CampaignBuilder = () => {
     }
   };
 
+  const handleStartCampaign = async () => {
+    if (isDemo || !selectedCampaign) return;
+
+    if (!confirm('Start this campaign? Emails will be sent to all contacts in the selected list.')) {
+      return;
+    }
+
+    try {
+      await api.startCampaign(selectedCampaign.id);
+
+      // Update local state
+      const updatedCampaign = { ...selectedCampaign, status: 'running' };
+      setSelectedCampaign(updatedCampaign);
+      setCampaigns(campaigns.map(c =>
+        c.id === selectedCampaign.id ? updatedCampaign : c
+      ));
+
+      alert('Campaign started successfully!');
+    } catch (error) {
+      alert('Error starting campaign: ' + error.message);
+    }
+  };
+
+  const handlePauseCampaign = async () => {
+    if (isDemo || !selectedCampaign) return;
+
+    try {
+      await api.post(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/pause`);
+
+      // Update local state
+      const updatedCampaign = { ...selectedCampaign, status: 'paused' };
+      setSelectedCampaign(updatedCampaign);
+      setCampaigns(campaigns.map(c =>
+        c.id === selectedCampaign.id ? updatedCampaign : c
+      ));
+
+      alert('Campaign paused successfully!');
+    } catch (error) {
+      alert('Error pausing campaign: ' + error.message);
+    }
+  };
+
   const handleAddStep = async (stepType) => {
     if (isDemo || !selectedCampaign) return;
     
@@ -216,13 +258,25 @@ const CampaignBuilder = () => {
       h('div', null,
         h('h1', { className: "font-serif text-3xl text-jaguar-900 mb-2" }, selectedCampaign?.name),
         h('div', { className: "flex items-center gap-2 text-sm text-stone-500" },
-          h('span', { className: `w-2 h-2 rounded-full ${selectedCampaign?.status === 'running' ? 'bg-green-500' : 'bg-stone-300'}` }),
+          h('span', { className: `w-2 h-2 rounded-full ${selectedCampaign?.status === 'running' ? 'bg-green-500 animate-pulse' : selectedCampaign?.status === 'paused' ? 'bg-yellow-500' : 'bg-stone-300'}` }),
           h('span', { className: "capitalize" }, selectedCampaign?.status),
           h('span', null, '•'),
           isDemo ? h('span', { className: "text-gold-600" }, "Demo Mode") : h('span', null, "Auto-saved")
         )
       ),
       h('div', { className: "flex gap-3" },
+        // Campaign Control Buttons (Start/Pause)
+        !isDemo && selectedCampaign && (
+          selectedCampaign.status === 'running'
+            ? h('button', {
+                onClick: handlePauseCampaign,
+                className: "px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 flex items-center gap-2"
+              }, h(Icons.Pause, { size: 16 }), 'Pause Campaign')
+            : h('button', {
+                onClick: handleStartCampaign,
+                className: "px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+              }, h(Icons.Play, { size: 16 }), selectedCampaign.status === 'paused' ? 'Resume Campaign' : 'Start Campaign')
+        ),
         !isDemo && h('select', {
             className: "px-4 py-2 border border-stone-200 rounded-lg bg-white",
             value: selectedCampaign?.id,
