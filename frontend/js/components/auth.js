@@ -9,6 +9,9 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
   const [name, setName] = React.useState('');
   const [cooldownRemaining, setCooldownRemaining] = React.useState(0);
   const [cooldownEndTime, setCooldownEndTime] = React.useState(null);
+  const [waitingForVerification, setWaitingForVerification] = React.useState(false);
+  const [verificationEmail, setVerificationEmail] = React.useState('');
+  const [verificationPassword, setVerificationPassword] = React.useState('');
 
   // Countdown timer for Supabase's rate limit
   React.useEffect(() => {
@@ -31,6 +34,46 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
     return () => clearInterval(interval);
   }, [cooldownEndTime]);
 
+  // Poll for email verification - auto-login once verified
+  React.useEffect(() => {
+    if (!waitingForVerification || !verificationEmail || !verificationPassword) {
+      return;
+    }
+
+    console.log('📧 [Auth] Polling for email verification...');
+
+    let attempts = 0;
+    const maxAttempts = 120; // Poll for up to 10 minutes (120 * 5 seconds)
+
+    const pollInterval = setInterval(async () => {
+      attempts++;
+      console.log(`🔄 [Auth] Verification poll attempt ${attempts}/${maxAttempts}`);
+
+      try {
+        // Try to login - if email is verified, this will succeed
+        const response = await api.login(verificationEmail, verificationPassword);
+
+        if (response && response.session) {
+          console.log('✅ [Auth] Email verified! Logging in...');
+          clearInterval(pollInterval);
+          setWaitingForVerification(false);
+          onAuthenticate(response.user);
+        }
+      } catch (err) {
+        console.log('⏳ [Auth] Email not verified yet, will retry...');
+
+        if (attempts >= maxAttempts) {
+          console.warn('⚠️ [Auth] Max verification attempts reached');
+          clearInterval(pollInterval);
+          setWaitingForVerification(false);
+          setError('Verification timeout. Please log in manually after confirming your email.');
+        }
+      }
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [waitingForVerification, verificationEmail, verificationPassword, onAuthenticate]);
+
   const handleSubmit = async (e) => {
     console.log('🎯 [Auth] Form submitted!', { view, email, hasPassword: !!password, hasName: !!name });
     e.preventDefault();
@@ -50,13 +93,12 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
 
         // Check if email confirmation is required (no session returned)
         if (response.user && !response.session) {
-          console.log('📧 [Auth] Email confirmation required. No session returned.');
-          setSuccess('Account created! Please check your email to confirm your account, then log in.');
-          // Clear the form
-          setEmail('');
-          setPassword('');
-          setName('');
-          // Don't redirect - let user read the message and manually go to login
+          console.log('📧 [Auth] Email confirmation required. Showing verification screen...');
+          // Store credentials to auto-login after verification
+          setVerificationEmail(email);
+          setVerificationPassword(password);
+          // Show the "waiting for verification" screen
+          setWaitingForVerification(true);
           return;
         }
       } else {
@@ -140,15 +182,66 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
         'Secure Encryption • SOC2 Compliant • 99.9% Uptime'
       )
     ),
-    // Right Side - Form
+    // Right Side - Form or Verification Screen
     h('div', { className: "w-full lg:w-1/2 flex flex-col justify-center items-center p-8 sm:p-16 relative" },
       h('button', {
-        onClick: () => onNavigate('landing'),
+        onClick: () => {
+          if (waitingForVerification) {
+            setWaitingForVerification(false);
+            setVerificationEmail('');
+            setVerificationPassword('');
+          }
+          onNavigate('landing');
+        },
         className: "absolute top-8 left-8 flex items-center gap-2 text-stone-400 hover:text-jaguar-900 transition-colors lg:hidden"
       },
         h(Icons.ArrowLeft, { size: 18 }),
         ' Back'
       ),
+
+      // Email Verification Waiting Screen
+      waitingForVerification ? h('div', { className: "w-full max-w-md space-y-8 animate-fade-in text-center" },
+        h('div', { className: "flex justify-center mb-8" },
+          h('div', { className: "w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center" },
+            h(Icons.Mail, { size: 48, className: "text-blue-600" })
+          )
+        ),
+        h('div', null,
+          h('h2', { className: "font-serif text-3xl text-jaguar-900 mb-3" }, 'Check your email'),
+          h('p', { className: "text-stone-600 text-lg mb-6" },
+            'We sent a confirmation link to ',
+            h('strong', null, verificationEmail)
+          ),
+          h('p', { className: "text-stone-500 mb-8" },
+            'Click the link in the email to verify your account. This page will automatically redirect you to the dashboard once verified.'
+          )
+        ),
+        h('div', { className: "flex flex-col items-center gap-4" },
+          h('div', { className: "flex items-center gap-3 text-stone-500" },
+            h(Icons.Loader2, { size: 20, className: "animate-spin text-blue-600" }),
+            h('span', null, 'Waiting for email confirmation...')
+          ),
+          h('div', { className: "mt-8 p-6 bg-blue-50 border border-blue-100 rounded-lg text-left" },
+            h('p', { className: "text-sm text-blue-800 font-medium mb-2" }, '📧 Didn\'t receive the email?'),
+            h('ul', { className: "text-sm text-blue-700 space-y-1 ml-4 list-disc" },
+              h('li', null, 'Check your spam/junk folder'),
+              h('li', null, 'Make sure you entered the correct email address'),
+              h('li', null, 'Wait a few minutes - emails can be delayed')
+            )
+          ),
+          h('button', {
+            onClick: () => {
+              setWaitingForVerification(false);
+              setVerificationEmail('');
+              setVerificationPassword('');
+              onNavigate('login');
+            },
+            className: "mt-6 text-stone-500 hover:text-jaguar-900 underline text-sm"
+          }, 'I\'ll verify later and log in manually →')
+        )
+      ) :
+
+      // Regular Form
       h('div', { className: "w-full max-w-md space-y-8 animate-fade-in" },
         h('div', { className: "text-center lg:text-left" },
           h('h2', { className: "font-serif text-3xl text-jaguar-900" },
