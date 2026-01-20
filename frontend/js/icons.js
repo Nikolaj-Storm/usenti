@@ -131,6 +131,11 @@ const Icons = {
 
   Play: (p) => Icon({...p, path: h('polygon', {points:"5 3 19 12 5 21 5 3"})}),
 
+  Pause: (p) => Icon({...p, path: [
+    h('rect', {key:1, width:"4", height:"16", x:"6", y:"4"}),
+    h('rect', {key:2, width:"4", height:"16", x:"14", y:"4"})
+  ]}),
+
   Split: (p) => Icon({...p, path: [
     h('path', {key:1, d:"M16 3h5v5"}),
     h('path', {key:2, d:"M8 3H3v5"}),
