@@ -24,7 +24,7 @@ class EmailService {
       throw new Error('Email account not found');
     }
 
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       host: account.smtp_host,
       port: account.smtp_port,
       secure: account.smtp_port === 465,
