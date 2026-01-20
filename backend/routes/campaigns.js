@@ -368,6 +368,18 @@ router.post('/:id/start', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'No active contacts in list' });
     }
 
+    // Delete existing campaign_contacts entries to allow restart
+    // This ensures the campaign starts fresh when restarted
+    const { error: deleteError } = await supabase
+      .from('campaign_contacts')
+      .delete()
+      .eq('campaign_id', req.params.id);
+
+    if (deleteError) {
+      console.error('Error deleting existing campaign_contacts:', deleteError);
+      throw deleteError;
+    }
+
     // Create campaign_contacts entries
     const campaignContacts = contacts.map(contact => ({
       campaign_id: req.params.id,
