@@ -14,6 +14,8 @@ const Card = ({ children, className = '', title, subtitle, action }) => {
 };
 
 const Dashboard = () => {
+  console.log('🚀 [Dashboard] Component mounting...');
+
   const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip: RechartsTooltip, ResponsiveContainer } = window.Recharts;
 
   const [dashboardData, setDashboardData] = React.useState(null);
@@ -21,16 +23,28 @@ const Dashboard = () => {
   const [error, setError] = React.useState(null);
 
   React.useEffect(() => {
+    console.log('🚀 [Dashboard] Initializing dashboard data load...');
     loadDashboardData();
   }, []);
 
   const loadDashboardData = async () => {
+    console.log('📊 [Dashboard] Loading dashboard stats...');
     try {
       const data = await api.getDashboardStats();
+      console.log('✅ [Dashboard] Dashboard data loaded successfully:', data);
       setDashboardData(data);
     } catch (err) {
-      console.error('Failed to load dashboard data:', err);
+      console.error('❌ [Dashboard] Failed to load dashboard data:', err);
+      console.error('💥 [Dashboard] Error details:', {
+        message: err.message,
+        stack: err.stack
+      });
       setError(err.message);
+
+      // Check if this is an auth-related error that might cause a redirect
+      if (err.message?.includes('401') || err.message?.includes('unauthorized')) {
+        console.warn('⚠️ [Dashboard] Unauthorized error detected. This might trigger a redirect.');
+      }
     } finally {
       setLoading(false);
     }
