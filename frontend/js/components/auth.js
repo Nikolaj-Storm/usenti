@@ -14,17 +14,26 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
 
     try {
       let response;
-      
+
       // Handle API calls locally to catch specific errors
       if (view === 'signup') {
+        console.log('🔐 [Auth] Starting signup process...');
         response = await api.signup(email, password, name);
+        console.log('✅ [Auth] Signup successful. User created:', response?.user);
       } else {
+        console.log('🔐 [Auth] Starting login process...');
         response = await api.login(email, password);
+        console.log('✅ [Auth] Login successful. User authenticated:', response?.user);
       }
 
       // CRITICAL: Pass the user object directly to App.js
       // This prevents App.js from trying to login again
       if (response && response.user) {
+        console.log('⏳ [Auth] Redirecting to dashboard...', {
+          view,
+          userId: response.user.id,
+          email: response.user.email
+        });
         onAuthenticate(response.user);
       } else {
         throw new Error('No user data received');

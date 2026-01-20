@@ -12,11 +12,14 @@ const App = () => {
   }, []);
 
   const verifySession = async () => {
+    console.log('🔄 [App] Verifying session...');
     const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
     const storedUser = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.USER);
-    
+    console.log('🔍 [App] Session check:', { hasToken: !!token, hasStoredUser: !!storedUser });
+
     // If no token, show Landing Page immediately
     if (!token) {
+      console.log('⚠️ [App] No token found. User is signed out.');
       setAuthState('unauthenticated');
       return;
     }
@@ -24,24 +27,29 @@ const App = () => {
     // Quick load from local storage to prevent flickering
     if (storedUser) {
         try {
-            setUser(JSON.parse(storedUser));
+            const parsedUser = JSON.parse(storedUser);
+            console.log('✅ [App] Loaded user from localStorage:', parsedUser.email);
+            setUser(parsedUser);
             setAuthState('authenticated');
         } catch (e) {
-            console.error("Error parsing stored user", e);
+            console.error("❌ [App] Error parsing stored user", e);
         }
     }
 
     // Verify it with the backend in the background
     try {
+      console.log('🌐 [App] Verifying session with backend...');
       const userData = await api.get('/api/auth/me');
       if (userData && userData.user) {
+          console.log('✅ [App] Backend verification successful:', userData.user.email);
           setUser(userData.user);
           setAuthState('authenticated');
       }
     } catch (error) {
-      console.warn('Session verification failed:', error);
+      console.warn('⚠️ [App] Session verification failed:', error);
       // Only clear if the server explicitly rejects the token
       if (error.message.includes('401') || error.message.includes('Invalid')) {
+          console.error('⛔ [App] Invalid session. Clearing auth data and redirecting to landing.');
           localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
           localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
           setAuthState('unauthenticated');
@@ -53,19 +61,27 @@ const App = () => {
   const handleLogin = (userData) => {
     // Auth.js has already called the API and verified credentials.
     // We just need to update the app state with the user object it passed us.
+    console.log('🔄 [App] Auth State Changed: SIGNED_IN', userData);
+    console.log('✅ [App] User is signed in. Current location:', window.location.hash || '(root)');
+
     if (userData) {
+      console.log('📍 [App] Setting auth state to authenticated and navigating to dashboard');
       setUser(userData);
       setAuthState('authenticated');
       setPrivateView('dashboard');
+    } else {
+      console.error('❌ [App] handleLogin called with no userData!');
     }
   };
 
   const handleLogout = async () => {
+    console.log('🔄 [App] Auth State Changed: SIGNED_OUT');
     try {
       await api.logout();
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('❌ [App] Logout error:', error);
     }
+    console.log('⚠️ [App] User is signed out. Redirecting to landing page.');
     setUser(null);
     setAuthState('unauthenticated');
     setPublicView('landing');
@@ -91,6 +107,7 @@ const App = () => {
   }
 
   if (authState === 'unauthenticated') {
+    console.log('📍 [Router] Rendering public view:', publicView);
     if (publicView === 'landing') {
       return h(LandingPage, { onNavigate: handlePublicNavigate });
     }
@@ -98,6 +115,7 @@ const App = () => {
   }
 
   // --- Private Dashboard View ---
+  console.log('📍 [Router] Rendering private view:', privateView, '| User:', user?.email);
 
   const NavItem = ({ view, icon: IconComponent, label }) =>
     h('button', {
