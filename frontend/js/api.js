@@ -5,6 +5,14 @@ const api = {
     const url = APP_CONFIG.API_BASE_URL + endpoint;
     const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
 
+    console.log('🌐 [API] Making request:', {
+      method: options.method || 'GET',
+      endpoint,
+      url,
+      hasToken: !!token,
+      skipAuth: options.skipAuth
+    });
+
     const config = {
       headers: {
         'Content-Type': 'application/json',
@@ -19,11 +27,23 @@ const api = {
 
     try {
       const response = await fetch(url, config);
+      console.log('📡 [API] Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+
       const data = await response.json();
 
       if (!response.ok) {
+        console.error('❌ [API] Request failed:', {
+          status: response.status,
+          error: data.error || data.message
+        });
+
         if (response.status === 401) {
           // Unauthorized - clear auth and reload
+          console.warn('⚠️ [API] 401 Unauthorized - clearing auth and reloading page!');
           localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
           localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
           window.location.reload();
@@ -31,9 +51,10 @@ const api = {
         throw new Error(data.error || data.message || 'Request failed');
       }
 
+      console.log('✅ [API] Request successful:', data);
       return data;
     } catch (error) {
-      console.error('API Error:', error);
+      console.error('💥 [API] Error during request:', error);
       throw error;
     }
   },
@@ -64,30 +85,56 @@ const api = {
 
   // Authentication
   async signup(email, password, name) {
+    console.log('🔑 [API] Signup called with:', { email, name, hasPassword: !!password });
+
     const response = await this.post(
       APP_CONFIG.ENDPOINTS.AUTH_SIGNUP,
       { email, password, name },
       { skipAuth: true }
     );
 
+    console.log('✅ [API] Signup response received:', {
+      hasSession: !!response.session,
+      hasAccessToken: !!response.session?.access_token,
+      hasUser: !!response.user,
+      userId: response.user?.id
+    });
+
     if (response.session?.access_token) {
+      console.log('💾 [API] Storing token and user in localStorage...');
       localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, response.session.access_token);
       localStorage.setItem(APP_CONFIG.STORAGE_KEYS.USER, JSON.stringify(response.user));
+      console.log('✅ [API] Token and user stored successfully');
+    } else {
+      console.warn('⚠️ [API] No access token in signup response!');
     }
 
     return response;
   },
 
   async login(email, password) {
+    console.log('🔑 [API] Login called with:', { email, hasPassword: !!password });
+
     const response = await this.post(
       APP_CONFIG.ENDPOINTS.AUTH_LOGIN,
       { email, password },
       { skipAuth: true }
     );
 
+    console.log('✅ [API] Login response received:', {
+      hasSession: !!response.session,
+      hasAccessToken: !!response.session?.access_token,
+      hasUser: !!response.user,
+      userId: response.user?.id
+    });
+
     if (response.session?.access_token) {
+      console.log('💾 [API] Storing token and user in localStorage...');
       localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, response.session.access_token);
       localStorage.setItem(APP_CONFIG.STORAGE_KEYS.USER, JSON.stringify(response.user));
+      console.log('✅ [API] Token and user stored successfully');
+    } else {
+      console.warn('⚠️ [API] No access token in login response!');
     }
 
     return response;

@@ -8,9 +8,12 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
   const [name, setName] = React.useState('');
 
   const handleSubmit = async (e) => {
+    console.log('🎯 [Auth] Form submitted!', { view, email, hasPassword: !!password, hasName: !!name });
     e.preventDefault();
     setLoading(true);
     setError('');
+
+    console.log('📝 [Auth] Form data validated, proceeding with authentication...');
 
     try {
       let response;
@@ -40,10 +43,16 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
       }
 
     } catch (err) {
-      console.error(err);
+      console.error('❌ [Auth] Authentication error caught:', err);
+      console.error('💥 [Auth] Error details:', {
+        message: err.message,
+        stack: err.stack,
+        response: err.response
+      });
       setError(err.message || 'Authentication failed. Please check your credentials.');
     } finally {
       setLoading(false);
+      console.log('🏁 [Auth] Authentication attempt completed. Loading:', false);
     }
   };
 
