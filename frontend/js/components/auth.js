@@ -3,6 +3,7 @@
 const Auth = ({ view, onAuthenticate, onNavigate }) => {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [success, setSuccess] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [name, setName] = React.useState('');
@@ -46,21 +47,35 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
         console.log('🔐 [Auth] Starting signup process...');
         response = await api.signup(email, password, name);
         console.log('✅ [Auth] Signup successful. User created:', response?.user);
+
+        // Check if email confirmation is required (no session returned)
+        if (response.user && !response.session) {
+          console.log('📧 [Auth] Email confirmation required. No session returned.');
+          setSuccess('Account created! Please check your email to confirm your account, then log in.');
+          // Clear the form
+          setEmail('');
+          setPassword('');
+          setName('');
+          // Don't redirect - let user read the message and manually go to login
+          return;
+        }
       } else {
         console.log('🔐 [Auth] Starting login process...');
         response = await api.login(email, password);
         console.log('✅ [Auth] Login successful. User authenticated:', response?.user);
       }
 
-      // CRITICAL: Pass the user object directly to App.js
-      // This prevents App.js from trying to login again
-      if (response && response.user) {
+      // CRITICAL: Pass the user object and session to App.js
+      // Only redirect if we have both user AND session
+      if (response && response.user && response.session) {
         console.log('⏳ [Auth] Redirecting to dashboard...', {
           view,
           userId: response.user.id,
           email: response.user.email
         });
         onAuthenticate(response.user);
+      } else if (response && response.user && !response.session) {
+        throw new Error('Email not confirmed. Please check your email and confirm your account.');
       } else {
         throw new Error('No user data received');
       }
@@ -148,6 +163,16 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
         error && h('div', { className: "p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2" },
           h(Icons.AlertCircle, { size: 16 }),
           error
+        ),
+        success && h('div', { className: "p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm flex items-center gap-2" },
+          h(Icons.Mail, { size: 16 }),
+          h('div', null,
+            h('div', { className: "font-medium" }, success),
+            h('button', {
+              onClick: () => onNavigate('login'),
+              className: "mt-2 text-green-800 underline hover:text-green-900"
+            }, 'Go to login →')
+          )
         ),
         h('form', { onSubmit: handleSubmit, className: "space-y-6" },
           view === 'signup' && h('div', { className: "space-y-2" },
