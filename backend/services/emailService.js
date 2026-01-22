@@ -3,6 +3,7 @@ const supabase = require('../config/supabase');
 const { decrypt } = require('../utils/encryption');
 const crypto = require('crypto');
 const gmailService = require('./gmailService');
+const microsoftService = require('./microsoftService');
 
 class EmailService {
   constructor() {
@@ -147,6 +148,14 @@ class EmailService {
       if (providerType === 'gmail_oauth') {
         console.log(`[EMAIL] 🔀 Routing to Gmail API...`);
         result = await gmailService.sendEmail({
+          emailAccountId,
+          to,
+          subject,
+          body: finalBody
+        });
+      } else if (providerType === 'microsoft_oauth') {
+        console.log(`[EMAIL] 🔀 Routing to Microsoft Graph API...`);
+        result = await microsoftService.sendEmail({
           emailAccountId,
           to,
           subject,
