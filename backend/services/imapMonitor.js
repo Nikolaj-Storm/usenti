@@ -137,6 +137,36 @@ class ImapMonitor {
     });
   }
 
+  // Save incoming email to inbox
+  async saveToInbox(message, account) {
+    try {
+      const from = message.from?.value?.[0] || {};
+      const simpleBody = message.text || message.html || '';
+
+      // Create a snippet (first 100 chars)
+      const snippet = simpleBody.substring(0, 100).replace(/\s+/g, ' ').trim();
+      const snippetWithEllipsis = snippet + (simpleBody.length > 100 ? '...' : '');
+
+      await supabase.from('inbox_messages').upsert({
+        email_account_id: account.id,
+        message_id: message.messageId,
+        from_name: from.name || '',
+        from_address: from.address?.toLowerCase(),
+        subject: message.subject || '(No Subject)',
+        snippet: snippetWithEllipsis,
+        body_html: message.html,
+        body_text: message.text,
+        received_at: message.date || new Date().toISOString()
+      }, {
+        onConflict: 'email_account_id, message_id'
+      });
+
+      console.log(`[IMAP] 📥 Saved email from ${from.address} to inbox`);
+    } catch (error) {
+      console.error('[IMAP] Error saving to inbox:', error);
+    }
+  }
+
   // Process a received message
   async processMessage(message, account) {
     try {
@@ -151,14 +181,17 @@ class ImapMonitor {
 
       console.log(`[IMAP] Processing message from ${from}`);
 
-      // Check if this is a reply to a campaign email
+      // 1. SAVE TO INBOX (New - save all incoming emails)
+      await this.saveToInbox(message, account);
+
+      // 2. Check if this is a reply to a campaign email
       const isReply = inReplyTo || (references && references.length > 0);
 
       if (isReply) {
         await this.handleCampaignReply(message, from, account);
       }
 
-      // Check if this is a warm-up seed reply
+      // 3. Check if this is a warm-up seed reply
       await this.handleWarmupReply(message, from, account);
 
     } catch (error) {

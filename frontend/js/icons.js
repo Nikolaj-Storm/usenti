@@ -194,5 +194,10 @@ const Icons = {
   Eye: (p) => Icon({...p, path: [
     h('path', {key:1, d:"M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"}),
     h('circle', {key:2, cx:"12", cy:"12", r:"3"})
+  ]}),
+
+  Reply: (p) => Icon({...p, path: [
+    h('polyline', {key:1, points:"9 17 4 12 9 7"}),
+    h('path', {key:2, d:"M20 18v-2a4 4 0 0 0-4-4H4"})
   ]})
 };

@@ -151,6 +151,7 @@ const App = () => {
         h(NavItem, { view: "dashboard", icon: Icons.LayoutDashboard, label: "Overview" }),
         h(NavItem, { view: "campaigns", icon: Icons.Send, label: "Campaigns" }),
         h(NavItem, { view: "contacts", icon: Icons.Users, label: "Contacts" }),
+        h(NavItem, { view: "inbox", icon: Icons.Inbox, label: "Inbox" }),
         h('div', { className: "py-6" }),
         h('p', { className: "px-4 text-xs font-bold text-jaguar-700 uppercase tracking-widest mb-4" }, 'System'),
         h(NavItem, { view: "infrastructure", icon: Icons.Layers, label: "Infrastructure" }),
@@ -183,6 +184,7 @@ const App = () => {
           privateView === 'campaigns' && 'Campaign Management',
           privateView === 'infrastructure' && 'Infrastructure & Warm-up',
           privateView === 'contacts' && 'Contact Management',
+          privateView === 'inbox' && 'Unified Inbox',
           privateView === 'settings' && 'System Settings'
         ),
         h('div', { className: "flex items-center gap-4" },
@@ -198,6 +200,7 @@ const App = () => {
           privateView === 'campaigns' && h(CampaignBuilder),
           privateView === 'infrastructure' && h(EmailAccounts),
           privateView === 'contacts' && h(Contacts),
+          privateView === 'inbox' && h(Inbox),
           privateView === 'settings' && h('div', { className: "flex flex-col items-center justify-center h-96 text-stone-400 animate-fade-in" },
             h(Icons.Settings, { size: 48, className: "mb-4 opacity-20" }),
             h('p', { className: "font-serif text-xl text-jaguar-900 mb-2" }, 'Coming Soon'),
