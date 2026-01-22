@@ -220,5 +220,14 @@ const api = {
   // Dashboard
   async getDashboardStats() {
     return this.get(APP_CONFIG.ENDPOINTS.DASHBOARD_STATS);
+  },
+
+  // Inbox
+  async getInbox(accountId = 'all', limit = 50, offset = 0) {
+    return this.get(`/api/inbox?account_id=${accountId}&limit=${limit}&offset=${offset}`);
+  },
+
+  async markInboxAsRead(messageId, isRead = true) {
+    return this.put(`/api/inbox/${messageId}/read`, { is_read: isRead });
   }
 };

@@ -1,0 +1,260 @@
+// Mr. Snowman - Unified Inbox Component
+
+const Inbox = () => {
+  const [accounts, setAccounts] = React.useState([]);
+  const [messages, setMessages] = React.useState([]);
+  const [selectedAccount, setSelectedAccount] = React.useState('all');
+  const [selectedMessage, setSelectedMessage] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+
+  React.useEffect(() => {
+    loadData();
+  }, [selectedAccount]);
+
+  const loadData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [accs, msgs] = await Promise.all([
+        api.getEmailAccounts(),
+        api.getInbox(selectedAccount)
+      ]);
+      setAccounts(Array.isArray(accs) ? accs : []);
+      setMessages(Array.isArray(msgs) ? msgs : []);
+    } catch (error) {
+      console.error('Failed to load inbox:', error);
+      setError(error.message || 'Failed to load inbox data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAccountChange = (accountId) => {
+    setSelectedAccount(accountId);
+    setSelectedMessage(null); // Clear selected message when switching accounts
+  };
+
+  const handleSelectMessage = async (msg) => {
+    setSelectedMessage(msg);
+
+    // Mark as read if it's unread
+    if (!msg.is_read) {
+      try {
+        await api.markInboxAsRead(msg.id, true);
+        // Update local state
+        setMessages(messages.map(m =>
+          m.id === msg.id ? { ...m, is_read: true } : m
+        ));
+      } catch (error) {
+        console.error('Failed to mark message as read:', error);
+      }
+    }
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      // Today - show time
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    } else if (diffDays === 1) {
+      return 'Yesterday';
+    } else if (diffDays < 7) {
+      return date.toLocaleDateString('en-US', { weekday: 'short' });
+    } else {
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+  };
+
+  const formatFullDate = (dateStr) => {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getInitial = (name, email) => {
+    if (name && name.length > 0) {
+      return name[0].toUpperCase();
+    }
+    if (email && email.length > 0) {
+      return email[0].toUpperCase();
+    }
+    return '?';
+  };
+
+  // Loading state
+  if (loading && messages.length === 0) {
+    return h('div', { className: "flex items-center justify-center h-96 animate-fade-in" },
+      h('div', { className: "text-center" },
+        h(Icons.Loader2, { size: 48, className: "text-jaguar-900 animate-spin mx-auto mb-4" }),
+        h('p', { className: "text-stone-500" }, 'Loading inbox...')
+      )
+    );
+  }
+
+  // Error state
+  if (error) {
+    return h('div', { className: "flex flex-col items-center justify-center h-96 animate-fade-in" },
+      h(Icons.AlertCircle, { size: 64, className: "text-red-300 mb-4" }),
+      h('h3', { className: "font-serif text-2xl text-jaguar-900 mb-2" }, 'Failed to Load Inbox'),
+      h('p', { className: "text-stone-500 mb-4" }, error),
+      h('button', {
+        onClick: loadData,
+        className: "px-4 py-2 bg-jaguar-900 text-white rounded-lg hover:bg-jaguar-800 transition-colors"
+      }, 'Retry')
+    );
+  }
+
+  return h('div', { className: "h-[calc(100vh-120px)] flex flex-col animate-fade-in" },
+    // Header
+    h('div', { className: "flex justify-between items-center mb-6 pb-6 border-b border-stone-200" },
+      h('div', null,
+        h('h1', { className: "font-serif text-3xl text-jaguar-900" }, "Unified Inbox"),
+        h('p', { className: "text-stone-500 mt-1" },
+          messages.length === 0
+            ? "No messages yet"
+            : `${messages.length} message${messages.length !== 1 ? 's' : ''} across all accounts`
+        )
+      ),
+      h('div', { className: "flex gap-3" },
+        h('select', {
+          className: "px-4 py-2 border border-stone-200 rounded-lg bg-white min-w-[200px] focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all",
+          value: selectedAccount,
+          onChange: (e) => handleAccountChange(e.target.value)
+        },
+          h('option', { value: "all" }, "All Inboxes"),
+          accounts.map(acc =>
+            h('option', { key: acc.id, value: acc.id }, acc.email_address)
+          )
+        ),
+        h('button', {
+          onClick: loadData,
+          disabled: loading,
+          className: "p-2 border border-stone-200 rounded-lg hover:bg-stone-50 text-stone-600 transition-colors disabled:opacity-50",
+          title: "Refresh inbox"
+        }, h(Icons.RefreshCw, { size: 20, className: loading ? "animate-spin" : "" }))
+      )
+    ),
+
+    // Content Layout
+    h('div', { className: "flex gap-6 flex-1 overflow-hidden" },
+
+      // Message List (Left Sidebar)
+      h('div', { className: "w-1/3 bg-white border border-stone-200 rounded-lg overflow-hidden flex flex-col shadow-sm" },
+        messages.length === 0 && !loading
+          ? h('div', { className: "flex-1 flex flex-col items-center justify-center text-stone-400 p-8 text-center" },
+              h(Icons.Inbox, { size: 48, className: "mb-4 opacity-20" }),
+              h('p', { className: "font-medium text-lg mb-1" }, "No messages found"),
+              h('p', { className: "text-sm" },
+                selectedAccount === 'all'
+                  ? "Emails will appear here once you receive them"
+                  : "No emails in this inbox yet"
+              )
+            )
+          : h('div', { className: "overflow-y-auto custom-scrollbar flex-1" },
+              messages.map(msg =>
+                h('div', {
+                  key: msg.id,
+                  onClick: () => handleSelectMessage(msg),
+                  className: `p-4 border-b border-stone-100 cursor-pointer transition-all ${
+                    selectedMessage?.id === msg.id
+                      ? 'bg-cream-100 border-l-4 border-l-gold-600'
+                      : msg.is_read
+                        ? 'hover:bg-cream-50'
+                        : 'bg-blue-50/30 hover:bg-blue-50/50'
+                  }`
+                },
+                  h('div', { className: "flex justify-between items-start mb-1" },
+                    h('span', {
+                      className: `truncate pr-2 ${msg.is_read ? 'text-stone-700' : 'font-semibold text-jaguar-900'}`
+                    }, msg.from_name || msg.from_address),
+                    h('span', { className: "text-xs text-stone-400 whitespace-nowrap" }, formatDate(msg.received_at))
+                  ),
+                  h('h4', {
+                    className: `text-sm truncate mb-1 ${msg.is_read ? 'text-stone-600 font-normal' : 'text-stone-800 font-medium'}`
+                  }, msg.subject || '(No Subject)'),
+                  h('p', { className: "text-xs text-stone-500 line-clamp-2" }, msg.snippet || ''),
+                  selectedAccount === 'all' && msg.email_accounts && h('div', { className: "mt-2" },
+                    h('span', { className: "text-[10px] bg-stone-100 text-stone-500 px-2 py-0.5 rounded-full" },
+                      msg.email_accounts.email_address || 'Unknown Account'
+                    )
+                  )
+                )
+              )
+            )
+      ),
+
+      // Message Detail (Right Content)
+      h('div', { className: "flex-1 bg-white border border-stone-200 rounded-lg shadow-sm overflow-hidden flex flex-col" },
+        selectedMessage
+          ? h('div', { className: "flex flex-col h-full" },
+              // Message Header
+              h('div', { className: "p-6 border-b border-stone-100 bg-cream-50" },
+                h('h2', { className: "font-serif text-2xl text-jaguar-900 mb-4" }, selectedMessage.subject || '(No Subject)'),
+                h('div', { className: "flex justify-between items-start" },
+                  h('div', { className: "flex gap-3" },
+                    h('div', { className: "w-10 h-10 rounded-full bg-jaguar-100 flex items-center justify-center text-jaguar-900 font-bold" },
+                      getInitial(selectedMessage.from_name, selectedMessage.from_address)
+                    ),
+                    h('div', null,
+                      h('p', { className: "font-medium text-jaguar-900" }, selectedMessage.from_name || selectedMessage.from_address),
+                      h('p', { className: "text-sm text-stone-500" }, `<${selectedMessage.from_address}>`)
+                    )
+                  ),
+                  h('div', { className: "text-right" },
+                    h('p', { className: "text-sm text-stone-500" }, formatFullDate(selectedMessage.received_at)),
+                    selectedMessage.email_accounts && h('p', { className: "text-xs text-stone-400 mt-1" },
+                      `To: ${selectedMessage.email_accounts.email_address}`
+                    )
+                  )
+                )
+              ),
+              // Message Body
+              h('div', { className: "flex-1 p-8 overflow-y-auto" },
+                h('div', {
+                  className: "prose max-w-none text-stone-800",
+                  dangerouslySetInnerHTML: {
+                    __html: selectedMessage.body_html || (selectedMessage.body_text?.replace(/\n/g, '<br/>') || '<p class="text-stone-400 italic">No content available</p>')
+                  }
+                })
+              ),
+              // Message Actions (Footer)
+              h('div', { className: "p-4 border-t border-stone-100 bg-stone-50 flex gap-2" },
+                h('button', {
+                  className: "px-4 py-2 bg-jaguar-900 text-white rounded-lg hover:bg-jaguar-800 transition-colors flex items-center gap-2",
+                  onClick: () => {
+                    // TODO: Implement reply functionality
+                    alert('Reply functionality coming soon!');
+                  }
+                },
+                  h(Icons.Reply, { size: 16 }),
+                  h('span', null, 'Reply')
+                ),
+                h('button', {
+                  className: "px-4 py-2 border border-stone-200 text-stone-700 rounded-lg hover:bg-stone-100 transition-colors",
+                  onClick: () => {
+                    // TODO: Implement forward functionality
+                    alert('Forward functionality coming soon!');
+                  }
+                }, 'Forward')
+              )
+            )
+          : h('div', { className: "h-full flex flex-col items-center justify-center text-stone-400" },
+              h(Icons.Mail, { size: 48, className: "opacity-20 mb-4" }),
+              h('p', { className: "text-lg font-medium" }, "Select an email to read"),
+              h('p', { className: "text-sm mt-1" }, "Choose a message from the list to view its content")
+            )
+      )
+    )
+  );
+};

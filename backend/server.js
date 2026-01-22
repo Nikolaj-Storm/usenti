@@ -620,10 +620,129 @@ app.delete('/api/email-accounts/:id', authenticateUser, async (req, res) => {
       .delete()
       .eq('id', req.params.id)
       .eq('user_id', req.user.id);
-    
+
     if (error) throw error;
     res.json({ success: true });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// INBOX ROUTES
+// ============================================================================
+
+app.get('/api/inbox', authenticateUser, async (req, res) => {
+  const requestId = `INBOX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  try {
+    const { account_id, limit = 50, offset = 0 } = req.query;
+
+    console.log(`[${requestId}] Fetching inbox for user ${req.user.id}`);
+    console.log(`[${requestId}] Filters - account_id: ${account_id || 'all'}, limit: ${limit}, offset: ${offset}`);
+
+    // First, get all email accounts that belong to the user
+    const { data: userAccounts, error: accountsError } = await supabase
+      .from('email_accounts')
+      .select('id')
+      .eq('user_id', req.user.id);
+
+    if (accountsError) {
+      console.error(`[${requestId}] Error fetching user accounts:`, accountsError);
+      throw accountsError;
+    }
+
+    const userAccountIds = userAccounts.map(a => a.id);
+
+    if (userAccountIds.length === 0) {
+      console.log(`[${requestId}] No email accounts found for user`);
+      return res.json([]);
+    }
+
+    // Build the inbox query
+    let query = supabase
+      .from('inbox_messages')
+      .select(`
+        *,
+        email_accounts!inner(email_address, id)
+      `)
+      .order('received_at', { ascending: false })
+      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+
+    // Filter by specific account if requested
+    if (account_id && account_id !== 'all') {
+      // Verify the account belongs to the user
+      if (!userAccountIds.includes(account_id)) {
+        console.warn(`[${requestId}] Unauthorized access attempt to account ${account_id}`);
+        return res.status(403).json({ error: 'Unauthorized access to this email account' });
+      }
+      query = query.eq('email_account_id', account_id);
+      console.log(`[${requestId}] Filtering by account_id: ${account_id}`);
+    } else {
+      // Show all messages from all user's accounts
+      query = query.in('email_account_id', userAccountIds);
+      console.log(`[${requestId}] Fetching from all accounts (${userAccountIds.length} accounts)`);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error(`[${requestId}] Error fetching inbox:`, error);
+      throw error;
+    }
+
+    console.log(`[${requestId}] Successfully fetched ${data?.length || 0} inbox messages`);
+    res.json(data);
+  } catch (error) {
+    console.error(`[${requestId}] Error in inbox route:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Mark inbox message as read/unread
+app.put('/api/inbox/:id/read', authenticateUser, async (req, res) => {
+  const requestId = `INBOX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  try {
+    const { id } = req.params;
+    const { is_read } = req.body;
+
+    console.log(`[${requestId}] Marking inbox message ${id} as ${is_read ? 'read' : 'unread'}`);
+
+    // Verify the message belongs to user's email account
+    const { data: message, error: fetchError } = await supabase
+      .from('inbox_messages')
+      .select('email_account_id, email_accounts!inner(user_id)')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !message) {
+      console.error(`[${requestId}] Message not found:`, fetchError);
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (message.email_accounts.user_id !== req.user.id) {
+      console.warn(`[${requestId}] Unauthorized access attempt`);
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Update the message
+    const { data, error } = await supabase
+      .from('inbox_messages')
+      .update({ is_read })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(`[${requestId}] Error updating message:`, error);
+      throw error;
+    }
+
+    console.log(`[${requestId}] Successfully updated message`);
+    res.json(data);
+  } catch (error) {
+    console.error(`[${requestId}] Error in route:`, error);
     res.status(500).json({ error: error.message });
   }
 });

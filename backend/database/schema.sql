@@ -446,6 +446,45 @@ CREATE TRIGGER update_warmup_threads_updated_at BEFORE UPDATE ON warmup_threads
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================================
+-- INBOX MESSAGES (Unified Inbox)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS inbox_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email_account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+  message_id TEXT, -- The unique IMAP/SMTP message ID
+  from_name TEXT,
+  from_address TEXT NOT NULL,
+  subject TEXT,
+  snippet TEXT, -- Short preview for the list view (first 100 chars)
+  body_html TEXT,
+  body_text TEXT,
+  received_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+  is_read BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+
+  UNIQUE(email_account_id, message_id)
+);
+
+ALTER TABLE inbox_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own inbox messages" ON inbox_messages
+  FOR ALL USING (
+    email_account_id IN (
+      SELECT id FROM email_accounts WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE INDEX idx_inbox_account_created ON inbox_messages(email_account_id, received_at DESC);
+CREATE INDEX idx_inbox_is_read ON inbox_messages(is_read);
+CREATE INDEX idx_inbox_from_address ON inbox_messages(from_address);
+
+-- Trigger for inbox_messages updated_at
+CREATE TRIGGER update_inbox_messages_updated_at BEFORE UPDATE ON inbox_messages
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
 -- INITIAL SEED DATA (Optional)
 -- ============================================================================
 
