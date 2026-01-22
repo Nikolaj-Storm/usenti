@@ -56,7 +56,9 @@ cd backend
 cp .env.example .env
 # Edit .env with your Supabase credentials
 npm install
-npm start
+npm run dev    # Development mode with auto-reload
+# OR
+npm start      # Production mode
 ```
 
 ### 4. Configure Frontend
@@ -70,13 +72,22 @@ API_BASE_URL: 'http://localhost:3001'  // or your production URL
 ### 5. Run Frontend
 
 ```bash
-# Serve the root directory
-python3 -m http.server 3000
-# or
-npx http-server -p 3000
+# Install dependencies (if not already done)
+npm install
+
+# Start Vite development server
+npm run dev
 ```
 
 Visit `http://localhost:3000`
+
+Alternatively, for quick testing:
+```bash
+# Serve with Python
+python3 -m http.server 3000
+# or with npx
+npx http-server -p 3000
+```
 
 ## Deployment
 
@@ -92,29 +103,51 @@ See **[SETUP.md](./SETUP.md)** for complete deployment instructions including:
 ```
 Snowman.2.0/
 ├── backend/
-│   ├── config/           # Configuration files
-│   ├── controllers/      # Route handlers
-│   ├── database/         # Database schema
-│   ├── middleware/       # Express middleware
-│   ├── routes/           # API routes
-│   ├── services/         # Business logic (campaigns, warmup, IMAP)
-│   ├── utils/            # Helper functions
-│   ├── server.js         # Entry point
-│   └── package.json
+│   ├── config/
+│   │   └── supabase.js          # Supabase client configuration
+│   ├── database/
+│   │   ├── schema.sql           # Complete database schema
+│   │   ├── migrations/          # Schema migration scripts
+│   │   └── *.sql                # Cleanup and verification scripts
+│   ├── middleware/
+│   │   └── auth.js              # JWT authentication middleware
+│   ├── routes/
+│   │   ├── auth.js              # Auth endpoints
+│   │   ├── campaigns.js         # Campaign management
+│   │   ├── contacts.js          # Contact lists
+│   │   ├── emailAccounts.js     # Email account config
+│   │   └── warmup.js            # Warm-up management
+│   ├── services/
+│   │   ├── emailService.js      # Email sending with tracking
+│   │   ├── campaignExecutor.js  # Campaign automation (cron)
+│   │   ├── warmupEngine.js      # Domain warm-up (cron)
+│   │   └── imapMonitor.js       # Reply detection (real-time)
+│   ├── utils/
+│   │   ├── encryption.js        # AES-256 password encryption
+│   │   └── emailTemplates.js    # Email template utilities
+│   ├── server.js                # Main Express server & entry point
+│   └── package.json             # Backend dependencies & scripts
 │
 ├── frontend/
 │   ├── js/
-│   │   ├── components/   # React components
-│   │   ├── utils/        # Frontend utilities
-│   │   ├── api.js        # API service layer
-│   │   ├── auth.js       # Authentication
-│   │   ├── app.js        # Main app component
-│   │   └── config.js     # Frontend config
-│   └── index.html        # Single-page app
+│   │   ├── components/
+│   │   │   ├── auth.js          # Login/signup
+│   │   │   ├── campaigns.js     # Campaign management UI
+│   │   │   ├── dashboard.js     # Analytics dashboard
+│   │   │   ├── contacts.js      # Contact management
+│   │   │   ├── emailAccounts.js # Email account setup
+│   │   │   └── landing.js       # Landing page
+│   │   ├── api.js               # API service layer
+│   │   ├── app.js               # Main React application
+│   │   ├── config.js            # Frontend configuration
+│   │   └── icons.js             # Icon components
+│   └── index.html               # Frontend entry point
 │
-├── index.html            # Main entry point
-├── README.md             # This file
-└── SETUP.md              # Detailed setup guide
+├── index.html                   # Root HTML file
+├── vite.config.ts               # Vite build configuration
+├── package.json                 # Root package.json (Vite)
+├── README.md                    # This file
+└── SETUP.md                     # Detailed deployment guide
 ```
 
 ## Usage
@@ -185,41 +218,271 @@ See backend code for complete API documentation.
 
 ### Backend (.env)
 
+Create `backend/.env` with the following variables:
+
 ```env
 NODE_ENV=development
 PORT=3001
 FRONTEND_URL=http://localhost:3000
+
+# Supabase Configuration
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_KEY=your-service-key
-SUPABASE_ANON_KEY=your-anon-key
-ENCRYPTION_KEY=your-64-char-hex-key
+SUPABASE_SERVICE_KEY=your-service-key-here
+SUPABASE_ANON_KEY=your-anon-key-here
+
+# Email Password Encryption (AES-256)
+ENCRYPTION_KEY=your-64-char-hex-key-here
 ```
 
-Generate encryption key:
+**Generate encryption key:**
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
+This generates a secure 64-character hexadecimal key used by `utils/encryption.js` to encrypt SMTP/IMAP passwords in the database.
+
+### Frontend Configuration
+
+Edit `frontend/js/config.js`:
+
+```javascript
+export const API_BASE_URL = 'http://localhost:3001';  // or your production URL
+```
+
+### Production Environment
+
+For production deployment (Render, etc.), set:
+
+```env
+NODE_ENV=production
+PORT=3001
+FRONTEND_URL=https://your-github-pages-url
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_KEY=your-service-key
+SUPABASE_ANON_KEY=your-anon-key
+ENCRYPTION_KEY=your-generated-key
+```
+
+## Scripts Reference
+
+### Backend Scripts
+
+#### NPM Scripts (backend/package.json)
+
+```bash
+npm start          # Start production server
+npm run dev        # Start development server with auto-reload (nodemon)
+```
+
+#### Core Services
+
+**server.js** - Main Express Server
+- RESTful API server with authentication
+- CORS configuration for GitHub Pages
+- Health check endpoint at `/health`
+- Scheduled cron jobs for campaign execution (every 5 min) and warmup (hourly)
+- IMAP monitoring for reply detection
+- Entry point: `node backend/server.js`
+
+**services/emailService.js** - Email Sending Service
+- Manages SMTP transporter connections with caching
+- Email personalization with template variables ({{first_name}}, etc.)
+- Open/click tracking pixel injection
+- Schedule validation and daily limit checking
+- Comprehensive logging for debugging
+
+**services/campaignExecutor.js** - Campaign Execution Engine
+- Processes pending campaign contacts (runs every 5 minutes via cron)
+- Multi-step campaign flow handling (email, wait, condition steps)
+- Send schedule validation (business hours, daily limits)
+- Email personalization and tracking
+- Manual trigger available at `POST /api/campaigns/executor/trigger`
+
+**services/warmupEngine.js** - Domain Warm-up Automation
+- Gradual email volume ramping for new domains
+- Simulates natural email conversations with seed addresses
+- Automated reply generation
+- Thread management with target reply counts
+- Runs hourly via cron job
+
+**services/imapMonitor.js** - IMAP Reply Detection
+- Real-time monitoring of all active email accounts
+- Detects campaign replies and updates contact status
+- Processes warm-up seed replies
+- Auto-starts on server launch
+- Graceful shutdown on SIGTERM/SIGINT
+
+**utils/encryption.js** - Password Encryption
+- AES-256-CBC encryption for email passwords
+- Secure key derivation from environment variable
+- Used to protect SMTP/IMAP credentials in database
+
+### Frontend Scripts
+
+#### NPM Scripts (package.json)
+
+```bash
+npm run dev        # Start Vite dev server (port 3000)
+npm run build      # Build for production
+npm run preview    # Preview production build
+```
+
+#### Application Files
+
+**frontend/js/app.js** - Main React Application
+- Single-page application router
+- Component orchestration
+- State management
+
+**frontend/js/api.js** - API Service Layer
+- Centralized HTTP client
+- JWT token management
+- Error handling
+
+**frontend/js/config.js** - Frontend Configuration
+- API base URL configuration
+- Environment-specific settings
+
+**frontend/js/components/** - React Components
+- `auth.js` - Login/signup forms
+- `campaigns.js` - Campaign management UI
+- `dashboard.js` - Analytics dashboard
+- `contacts.js` - Contact list management
+- `emailAccounts.js` - Email account configuration
+- `landing.js` - Landing page
+
+**frontend/js/icons.js** - SVG Icon Components
+- Lucide icon set wrapped for React
+
+### Configuration Files
+
+**vite.config.ts** - Vite Build Configuration
+- Dev server on port 3000
+- Gemini API key injection
+- Path aliases
+- TypeScript support
+
+### Database Scripts
+
+**backend/database/schema.sql** - Complete Database Schema
+- All table definitions with RLS policies
+- User profiles, email accounts, campaigns
+- Contact lists, warm-up configurations
+- Email events tracking
+
+**backend/database/migrations/** - Schema Migrations
+- Version-controlled database changes
+- Run in order by number prefix
+- `001_add_warmup_enabled.sql` - Add warmup features
+- `002_update_account_type_constraint.sql` - Update email account types
+- `003_add_email_to_user_profiles.sql` - User profile email field
+- `004_add_name_and_email_to_user_profiles.sql` - User name field
+
+**backend/database/cleanup_all_users.sql** - User Data Cleanup
+- Removes all user data (use with caution)
+
+**backend/database/verify_and_cleanup.sql** - Data Verification
+- Validates database integrity
+
+### Automated Background Processes
+
+The server automatically runs several background processes:
+
+**Campaign Executor** (Every 5 minutes)
+- Processes pending campaign contacts
+- Sends scheduled emails
+- Handles multi-step sequences
+- Respects send schedules and daily limits
+- Manually trigger: `POST /api/campaigns/executor/trigger`
+
+**Warm-up Engine** (Every hour)
+- Sends warm-up emails to seed addresses
+- Replies to received warm-up messages
+- Gradually ramps up sending volume
+- Maintains domain reputation
+
+**IMAP Monitor** (Continuous)
+- Monitors all active email accounts in real-time
+- Detects campaign replies automatically
+- Processes warm-up seed responses
+- Updates contact status on reply
+- Auto-starts when server launches
+
+These processes are essential for the platform's operation and start automatically with `npm start`.
+
 ## Development
 
-### Run Tests
+### Run Backend
 
 ```bash
 cd backend
-npm test
+npm install
+npm run dev        # Uses nodemon for auto-restart
 ```
 
-### Lint Code
+### Run Frontend
 
 ```bash
-npm run lint
+npm install
+npm run dev        # Starts Vite dev server
 ```
 
-### Watch Mode
+### Manual Script Execution
 
 ```bash
-npm run dev  # Uses nodemon for auto-restart
+# Start campaign executor manually
+node backend/server.js
+# Then trigger via API: POST /api/campaigns/executor/trigger
+
+# Run database migrations
+psql -f backend/database/migrations/001_add_warmup_enabled.sql
+
+# Generate encryption key
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
+
+## Monitoring and Logs
+
+The backend services provide comprehensive logging for debugging and monitoring:
+
+### Log Prefixes
+
+- `[EXECUTOR]` - Campaign execution engine
+- `[WARMUP]` - Domain warm-up engine
+- `[IMAP]` - IMAP reply monitoring
+- `[EMAIL]` - Email sending service
+- `[CRON]` - Scheduled cron jobs
+- `[API]` - API request logs
+- `[CONTACTS]` - Contact management
+
+### Monitoring Campaign Execution
+
+```bash
+# Watch server logs in real-time
+npm run dev
+
+# Check if campaigns are running
+curl http://localhost:3001/health
+
+# Manually trigger campaign executor
+curl -X POST http://localhost:3001/api/campaigns/executor/trigger \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Common Log Messages
+
+- **Campaign Executor**: Runs every 5 minutes, logs pending contacts and send status
+- **Warm-up Engine**: Runs hourly, logs warm-up email sends and replies
+- **IMAP Monitor**: Logs connection status and new message detection
+- **Email Service**: Detailed SMTP connection and send logs
+
+### Debugging Tips
+
+1. Check server logs for `[EXECUTOR]` messages to see campaign execution
+2. Look for `✅` (success) and `❌` (error) indicators in logs
+3. IMAP connection issues show as `[IMAP] ✗ Error`
+4. Email send failures include error codes and messages
+5. Health check endpoint provides server status: `GET /health`
 
 ## Security
 
