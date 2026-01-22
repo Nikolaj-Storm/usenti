@@ -10,10 +10,14 @@ class EmailService {
 
   // Get or create transporter for email account
   async getTransporter(emailAccountId) {
+    console.log(`[EMAIL] 🔌 Getting transporter for account ${emailAccountId}...`);
+
     if (this.transporters.has(emailAccountId)) {
+      console.log(`[EMAIL]    ✅ Using cached transporter`);
       return this.transporters.get(emailAccountId);
     }
 
+    console.log(`[EMAIL]    🔍 Fetching email account from database...`);
     const { data: account, error } = await supabase
       .from('email_accounts')
       .select('*')
@@ -21,9 +25,16 @@ class EmailService {
       .single();
 
     if (error || !account) {
+      console.error(`[EMAIL]    ❌ Email account not found: ${error?.message}`);
       throw new Error('Email account not found');
     }
 
+    console.log(`[EMAIL]    📧 Account: ${account.email_address}`);
+    console.log(`[EMAIL]    🌐 SMTP Host: ${account.smtp_host}:${account.smtp_port}`);
+    console.log(`[EMAIL]    👤 SMTP User: ${account.smtp_username}`);
+    console.log(`[EMAIL]    🔒 Secure: ${account.smtp_port === 465 ? 'YES (SSL)' : 'NO (TLS/STARTTLS)'}`);
+
+    console.log(`[EMAIL]    🔧 Creating SMTP transporter...`);
     const transporter = nodemailer.createTransport({
       host: account.smtp_host,
       port: account.smtp_port,
@@ -37,6 +48,7 @@ class EmailService {
       }
     });
 
+    console.log(`[EMAIL]    ✅ Transporter created and cached`);
     this.transporters.set(emailAccountId, transporter);
     return transporter;
   }
@@ -93,35 +105,58 @@ class EmailService {
     trackOpens = true,
     trackClicks = true
   }) {
+    console.log(`[EMAIL] 📨 Preparing to send email...`);
+    console.log(`[EMAIL]    To: ${to}`);
+    console.log(`[EMAIL]    Subject: "${subject}"`);
+    console.log(`[EMAIL]    Campaign ID: ${campaignId}`);
+    console.log(`[EMAIL]    Contact ID: ${contactId}`);
+
     try {
+      console.log(`[EMAIL] 🔌 Getting SMTP transporter...`);
       const transporter = await this.getTransporter(emailAccountId);
-      
+
       // Get sender info
+      console.log(`[EMAIL] 🔍 Getting sender email address...`);
       const { data: account } = await supabase
         .from('email_accounts')
         .select('email_address')
         .eq('id', emailAccountId)
         .single();
 
+      console.log(`[EMAIL]    From: ${account.email_address}`);
+
       let finalBody = body;
 
       // Add tracking
       if (trackOpens) {
+        console.log(`[EMAIL] 🔍 Adding open tracking pixel...`);
         finalBody = this.addTrackingPixel(finalBody, campaignId, contactId);
       }
       if (trackClicks) {
+        console.log(`[EMAIL] 🔗 Adding click tracking to links...`);
         finalBody = this.rewriteLinksForTracking(finalBody, campaignId, contactId);
       }
 
       // Send email
-      const info = await transporter.sendMail({
+      console.log(`[EMAIL] 📤 Sending via SMTP...`);
+      console.log(`[EMAIL]    Body length: ${finalBody.length} characters`);
+
+      const mailOptions = {
         from: account.email_address,
         to,
         subject,
         html: finalBody
-      });
+      };
+
+      console.log(`[EMAIL] 🚀 Calling transporter.sendMail()...`);
+      const info = await transporter.sendMail(mailOptions);
+
+      console.log(`[EMAIL] ✅ Email sent successfully!`);
+      console.log(`[EMAIL]    Message ID: ${info.messageId}`);
+      console.log(`[EMAIL]    Response: ${info.response}`);
 
       // Log sent event
+      console.log(`[EMAIL] 💾 Logging 'sent' event to database...`);
       await supabase.from('email_events').insert({
         campaign_id: campaignId,
         contact_id: contactId,
@@ -132,20 +167,29 @@ class EmailService {
         }
       });
 
+      console.log(`[EMAIL] ✅ Event logged successfully`);
+
       return {
         success: true,
         messageId: info.messageId
       };
     } catch (error) {
-      console.error('Email send error:', error);
-      
+      console.error(`[EMAIL] ❌ Email send error!`);
+      console.error(`[EMAIL]    Error type: ${error.constructor.name}`);
+      console.error(`[EMAIL]    Error message: ${error.message}`);
+      console.error(`[EMAIL]    Error code: ${error.code}`);
+      console.error(`[EMAIL]    Error command: ${error.command}`);
+      console.error(`[EMAIL]    Full error:`, error);
+
       // Log failed event
+      console.log(`[EMAIL] 💾 Logging 'failed' event to database...`);
       await supabase.from('email_events').insert({
         campaign_id: campaignId,
         contact_id: contactId,
         event_type: 'failed',
         event_data: {
           error: error.message,
+          error_code: error.code,
           timestamp: new Date().toISOString()
         }
       });

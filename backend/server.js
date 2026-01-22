@@ -11,6 +11,7 @@ require('dotenv').config();
 // Import services
 const warmupEngine = require('./services/warmupEngine');
 const imapMonitor = require('./services/imapMonitor');
+const campaignExecutor = require('./services/campaignExecutor');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -1372,9 +1373,28 @@ app.post('/api/campaigns/:id/pause', authenticateUser, async (req, res) => {
       .update({ status: 'paused' })
       .eq('id', req.params.id)
       .eq('user_id', req.user.id);
-    
+
     if (error) throw error;
     res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Manual trigger for campaign executor (for testing)
+app.post('/api/campaigns/executor/trigger', authenticateUser, async (req, res) => {
+  try {
+    console.log('[API] 🔧 Manual trigger for campaign executor requested by user:', req.user.id);
+
+    // Execute immediately (don't wait for cron)
+    campaignExecutor.executePendingCampaigns()
+      .then(() => console.log('[API] ✅ Manual campaign execution completed'))
+      .catch(err => console.error('[API] ❌ Manual campaign execution failed:', err));
+
+    res.json({
+      success: true,
+      message: 'Campaign executor triggered. Check server logs for details.'
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1934,11 +1954,12 @@ async function checkDailyLimit(emailAccountId, campaignId) {
 
 // Execute campaigns every 5 minutes
 cron.schedule('*/5 * * * *', async () => {
-  console.log('[CRON] Running campaign executor...');
+  console.log('[CRON] ⏰ Campaign executor scheduled run triggered');
   try {
-    await executePendingCampaigns();
+    await campaignExecutor.executePendingCampaigns();
   } catch (error) {
-    console.error('[CRON] Campaign executor error:', error);
+    console.error('[CRON] ❌ Campaign executor error:', error);
+    console.error('[CRON] Stack:', error.stack);
   }
 });
 
