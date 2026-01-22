@@ -14,10 +14,17 @@ class CampaignExecutor {
     }
 
     this.processing = true;
-    console.log('[EXECUTOR] Starting campaign execution cycle...');
+    const now = new Date().toISOString();
+    console.log('');
+    console.log('='.repeat(80));
+    console.log(`[EXECUTOR] 🚀 Starting campaign execution cycle at ${now}`);
+    console.log('='.repeat(80));
 
     try {
       // Get pending campaign contacts that are ready to send
+      console.log('[EXECUTOR] 🔍 Querying for pending campaign contacts...');
+      console.log(`[EXECUTOR] Query filters: status='in_progress', campaign.status='running', next_send_time <= ${now}`);
+
       const { data: pending, error } = await supabase
         .from('campaign_contacts')
         .select(`
@@ -55,24 +62,58 @@ class CampaignExecutor {
         .lte('next_send_time', new Date().toISOString())
         .limit(50);
 
-      if (error) throw error;
+      if (error) {
+        console.error('[EXECUTOR] ❌ Database query error:', error);
+        throw error;
+      }
+
+      console.log(`[EXECUTOR] 📊 Query returned ${pending?.length || 0} pending campaign contacts`);
 
       if (!pending || pending.length === 0) {
-        console.log('[EXECUTOR] No pending emails to send');
+        console.log('[EXECUTOR] ℹ️  No pending emails to send at this time');
+        console.log('[EXECUTOR] Possible reasons:');
+        console.log('  - No campaigns are running');
+        console.log('  - No contacts in in_progress status');
+        console.log('  - next_send_time is in the future');
+        console.log('='.repeat(80));
         return;
       }
 
-      console.log(`[EXECUTOR] Found ${pending.length} emails to process`);
+      console.log(`[EXECUTOR] ✅ Found ${pending.length} emails ready to process`);
+      console.log('[EXECUTOR] Campaign breakdown:');
 
-      for (const item of pending) {
+      // Log campaign summary
+      const campaignSummary = pending.reduce((acc, item) => {
+        const campaignName = item.campaigns.name;
+        acc[campaignName] = (acc[campaignName] || 0) + 1;
+        return acc;
+      }, {});
+
+      Object.entries(campaignSummary).forEach(([name, count]) => {
+        console.log(`  - ${name}: ${count} contact(s)`);
+      });
+
+      console.log('[EXECUTOR] 🔄 Processing contacts...');
+      console.log('');
+
+      for (let i = 0; i < pending.length; i++) {
+        const item = pending[i];
+        console.log(`[EXECUTOR] [${i + 1}/${pending.length}] Processing contact ${item.contacts.email} (Campaign: ${item.campaigns.name})`);
+
         try {
           await this.processCampaignContact(item);
         } catch (err) {
-          console.error(`[EXECUTOR] Error processing contact ${item.id}:`, err.message);
+          console.error(`[EXECUTOR] ❌ Error processing contact ${item.id}:`, err.message);
+          console.error('[EXECUTOR] Error stack:', err.stack);
         }
+
+        console.log(''); // Blank line for readability
       }
 
-      console.log('[EXECUTOR] Cycle complete');
+      console.log('='.repeat(80));
+      console.log(`[EXECUTOR] ✅ Cycle complete - Processed ${pending.length} contacts`);
+      console.log('='.repeat(80));
+      console.log('');
     } catch (error) {
       console.error('[EXECUTOR] Execution error:', error);
     } finally {
@@ -84,22 +125,39 @@ class CampaignExecutor {
   async processCampaignContact(campaignContact) {
     const { campaigns: campaign, contacts: contact, campaign_steps: step } = campaignContact;
 
+    console.log(`[EXECUTOR]   📋 Contact: ${contact.email}`);
+    console.log(`[EXECUTOR]   📧 Campaign: ${campaign.name} (ID: ${campaign.id})`);
+    console.log(`[EXECUTOR]   📍 Step ${step.step_order}: ${step.step_type.toUpperCase()}`);
+    console.log(`[EXECUTOR]   ⏰ Next send time: ${campaignContact.next_send_time}`);
+
     // Check if within send schedule
-    if (!emailService.isWithinSchedule(campaign.send_schedule)) {
-      console.log(`[EXECUTOR] Outside schedule for campaign ${campaign.id}, rescheduling...`);
+    console.log(`[EXECUTOR]   🕐 Checking send schedule...`);
+    const schedule = campaign.send_schedule;
+    if (schedule) {
+      console.log(`[EXECUTOR]      Schedule: Days=${schedule.days?.join(',')}, Hours=${schedule.start_hour}-${schedule.end_hour}`);
+    }
+
+    const withinSchedule = emailService.isWithinSchedule(campaign.send_schedule);
+    console.log(`[EXECUTOR]      Within schedule: ${withinSchedule ? '✅ YES' : '❌ NO'}`);
+
+    if (!withinSchedule) {
       const nextTime = emailService.getNextSendTime(campaign.send_schedule);
+      console.log(`[EXECUTOR]      ⏭️  Rescheduling to next available time: ${nextTime.toISOString()}`);
       await this.updateNextSendTime(campaignContact.id, nextTime);
       return;
     }
 
     // Check daily limit
+    console.log(`[EXECUTOR]   📊 Checking daily limit...`);
     const withinLimit = await emailService.checkDailyLimit(
       campaign.email_account_id,
       campaign.id
     );
 
+    console.log(`[EXECUTOR]      Within daily limit: ${withinLimit ? '✅ YES' : '❌ NO'}`);
+
     if (!withinLimit) {
-      console.log(`[EXECUTOR] Daily limit reached for campaign ${campaign.id}`);
+      console.log(`[EXECUTOR]      ⏸️  Daily limit reached, rescheduling to tomorrow 9 AM`);
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(9, 0, 0, 0);
@@ -108,6 +166,7 @@ class CampaignExecutor {
     }
 
     // Process based on step type
+    console.log(`[EXECUTOR]   ⚙️  Processing step type: ${step.step_type}`);
     switch (step.step_type) {
       case 'email':
         await this.handleEmailStep(campaignContact, campaign, contact, step);
@@ -119,13 +178,15 @@ class CampaignExecutor {
         await this.handleConditionStep(campaignContact, campaign, step);
         break;
       default:
-        console.error(`[EXECUTOR] Unknown step type: ${step.step_type}`);
+        console.error(`[EXECUTOR] ❌ Unknown step type: ${step.step_type}`);
     }
   }
 
   // Handle email step
   async handleEmailStep(campaignContact, campaign, contact, step) {
     try {
+      console.log(`[EXECUTOR]      📝 Personalizing email content...`);
+
       // Personalize content
       const personalizedSubject = emailService.personalizeContent(
         step.subject || 'No Subject',
@@ -136,8 +197,14 @@ class CampaignExecutor {
         contact
       );
 
+      console.log(`[EXECUTOR]         Subject: "${personalizedSubject}"`);
+      console.log(`[EXECUTOR]         Body length: ${personalizedBody.length} characters`);
+      console.log(`[EXECUTOR]         To: ${contact.email}`);
+      console.log(`[EXECUTOR]         Email Account ID: ${campaign.email_account_id}`);
+
       // Send email
-      await emailService.sendEmail({
+      console.log(`[EXECUTOR]      📤 Sending email via emailService...`);
+      const result = await emailService.sendEmail({
         emailAccountId: campaign.email_account_id,
         to: contact.email,
         subject: personalizedSubject,
@@ -148,14 +215,19 @@ class CampaignExecutor {
         trackClicks: true
       });
 
-      console.log(`[EXECUTOR] ✓ Sent email to ${contact.email} (Campaign: ${campaign.name})`);
+      console.log(`[EXECUTOR]      ✅ Email sent successfully!`);
+      console.log(`[EXECUTOR]         Message ID: ${result.messageId}`);
 
       // Move to next step
+      console.log(`[EXECUTOR]      ➡️  Moving to next step...`);
       await this.moveToNextStep(campaignContact, campaign.id, step);
     } catch (error) {
-      console.error(`[EXECUTOR] ✗ Failed to send to ${contact.email}:`, error.message);
-      
+      console.error(`[EXECUTOR]      ❌ Failed to send email to ${contact.email}`);
+      console.error(`[EXECUTOR]         Error: ${error.message}`);
+      console.error(`[EXECUTOR]         Stack: ${error.stack}`);
+
       // Mark as failed
+      console.log(`[EXECUTOR]      🔴 Marking contact as failed...`);
       await supabase
         .from('campaign_contacts')
         .update({ status: 'failed' })
