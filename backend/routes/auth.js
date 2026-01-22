@@ -31,6 +31,7 @@ router.post('/signup', async (req, res) => {
         .insert({
           id: data.user.id,
           email: data.user.email, // Store email in user_profiles for convenience
+          name: data.user.user_metadata?.name || name || email.split('@')[0], // Store user's name
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -90,6 +91,7 @@ router.post('/login', async (req, res) => {
           .insert({
             id: data.user.id,
             email: data.user.email, // Store email in user_profiles for convenience
+            name: data.user.user_metadata?.name || data.user.email.split('@')[0], // Store user's name
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
@@ -161,6 +163,7 @@ router.get('/me', async (req, res) => {
           .insert({
             id: user.id,
             email: user.email, // Store email in user_profiles for convenience
+            name: user.user_metadata?.name || user.email.split('@')[0], // Store user's name
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
