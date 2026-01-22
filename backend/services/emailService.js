@@ -2,6 +2,7 @@ const nodemailer = require('nodemailer');
 const supabase = require('../config/supabase');
 const { decrypt } = require('../utils/encryption');
 const crypto = require('crypto');
+const gmailService = require('./gmailService');
 
 class EmailService {
   constructor() {
@@ -112,17 +113,20 @@ class EmailService {
     console.log(`[EMAIL]    Contact ID: ${contactId}`);
 
     try {
-      console.log(`[EMAIL] 🔌 Getting SMTP transporter...`);
-      const transporter = await this.getTransporter(emailAccountId);
-
-      // Get sender info
-      console.log(`[EMAIL] 🔍 Getting sender email address...`);
-      const { data: account } = await supabase
+      // Get account to check provider type
+      console.log(`[EMAIL] 🔍 Getting email account to determine provider type...`);
+      const { data: account, error: accountError } = await supabase
         .from('email_accounts')
-        .select('email_address')
+        .select('provider_type, email_address')
         .eq('id', emailAccountId)
         .single();
 
+      if (accountError || !account) {
+        throw new Error('Email account not found');
+      }
+
+      const providerType = account.provider_type || 'smtp';
+      console.log(`[EMAIL]    Provider type: ${providerType}`);
       console.log(`[EMAIL]    From: ${account.email_address}`);
 
       let finalBody = body;
@@ -137,23 +141,45 @@ class EmailService {
         finalBody = this.rewriteLinksForTracking(finalBody, campaignId, contactId);
       }
 
-      // Send email
-      console.log(`[EMAIL] 📤 Sending via SMTP...`);
-      console.log(`[EMAIL]    Body length: ${finalBody.length} characters`);
+      let result;
 
-      const mailOptions = {
-        from: account.email_address,
-        to,
-        subject,
-        html: finalBody
-      };
+      // Route to appropriate sending method based on provider type
+      if (providerType === 'gmail_oauth') {
+        console.log(`[EMAIL] 🔀 Routing to Gmail API...`);
+        result = await gmailService.sendEmail({
+          emailAccountId,
+          to,
+          subject,
+          body: finalBody
+        });
+      } else {
+        // Use traditional SMTP for smtp, smtp_direct, smtp_relay
+        console.log(`[EMAIL] 🔀 Routing to SMTP...`);
+        console.log(`[EMAIL] 🔌 Getting SMTP transporter...`);
+        const transporter = await this.getTransporter(emailAccountId);
 
-      console.log(`[EMAIL] 🚀 Calling transporter.sendMail()...`);
-      const info = await transporter.sendMail(mailOptions);
+        console.log(`[EMAIL] 📤 Sending via SMTP...`);
+        console.log(`[EMAIL]    Body length: ${finalBody.length} characters`);
 
-      console.log(`[EMAIL] ✅ Email sent successfully!`);
-      console.log(`[EMAIL]    Message ID: ${info.messageId}`);
-      console.log(`[EMAIL]    Response: ${info.response}`);
+        const mailOptions = {
+          from: account.email_address,
+          to,
+          subject,
+          html: finalBody
+        };
+
+        console.log(`[EMAIL] 🚀 Calling transporter.sendMail()...`);
+        const info = await transporter.sendMail(mailOptions);
+
+        console.log(`[EMAIL] ✅ Email sent successfully via SMTP!`);
+        console.log(`[EMAIL]    Message ID: ${info.messageId}`);
+        console.log(`[EMAIL]    Response: ${info.response}`);
+
+        result = {
+          success: true,
+          messageId: info.messageId
+        };
+      }
 
       // Log sent event
       console.log(`[EMAIL] 💾 Logging 'sent' event to database...`);
@@ -162,17 +188,14 @@ class EmailService {
         contact_id: contactId,
         event_type: 'sent',
         event_data: {
-          message_id: info.messageId,
+          message_id: result.messageId,
           timestamp: new Date().toISOString()
         }
       });
 
       console.log(`[EMAIL] ✅ Event logged successfully`);
 
-      return {
-        success: true,
-        messageId: info.messageId
-      };
+      return result;
     } catch (error) {
       console.error(`[EMAIL] ❌ Email send error!`);
       console.error(`[EMAIL]    Error type: ${error.constructor.name}`);
