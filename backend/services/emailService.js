@@ -230,26 +230,31 @@ class EmailService {
     }
   }
 
-  // Check if within sending schedule
+  // Check if within sending schedule (uses UTC time for consistency)
   isWithinSchedule(schedule) {
     if (!schedule || !schedule.days || !schedule.start_hour || !schedule.end_hour) {
       return true; // No schedule = always send
     }
 
     const now = new Date();
-    const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase();
-    const hour = now.getHours();
+    // Use UTC to ensure consistent behavior regardless of server timezone
+    const daysOfWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const dayOfWeek = daysOfWeek[now.getUTCDay()];
+    const hour = now.getUTCHours();
 
     const dayAllowed = schedule.days.includes(dayOfWeek);
     const hourAllowed = hour >= schedule.start_hour && hour < schedule.end_hour;
 
+    console.log(`[SCHEDULE] Checking schedule - UTC Day: ${dayOfWeek}, UTC Hour: ${hour}, Days allowed: ${schedule.days.join(',')}, Hours: ${schedule.start_hour}-${schedule.end_hour}`);
+    console.log(`[SCHEDULE] Day allowed: ${dayAllowed}, Hour allowed: ${hourAllowed}, Within schedule: ${dayAllowed && hourAllowed}`);
+
     return dayAllowed && hourAllowed;
   }
 
-  // Get next available send time based on schedule
+  // Get next available send time based on schedule (uses UTC for consistency)
   getNextSendTime(schedule) {
     const now = new Date();
-    
+
     if (!schedule || !schedule.days || !schedule.start_hour) {
       return now; // No schedule = send now
     }
@@ -259,20 +264,25 @@ class EmailService {
     let attempts = 0;
 
     while (attempts < 14) { // Check up to 2 weeks ahead
-      const dayOfWeek = daysOfWeek[checkDate.getDay()];
-      
+      const dayOfWeek = daysOfWeek[checkDate.getUTCDay()];
+
       if (schedule.days.includes(dayOfWeek)) {
-        checkDate.setHours(schedule.start_hour || 9, 0, 0, 0);
-        
+        // Set to the start hour in UTC
+        checkDate.setUTCHours(schedule.start_hour || 9, 0, 0, 0);
+
         if (checkDate > now) {
+          console.log(`[SCHEDULE] Next send time calculated: ${checkDate.toISOString()} (UTC)`);
           return checkDate;
         }
       }
 
-      checkDate.setDate(checkDate.getDate() + 1);
+      // Move to next day at midnight UTC
+      checkDate.setUTCDate(checkDate.getUTCDate() + 1);
+      checkDate.setUTCHours(0, 0, 0, 0);
       attempts++;
     }
 
+    console.log(`[SCHEDULE] Fallback next send time: ${checkDate.toISOString()} (UTC)`);
     return checkDate;
   }
 

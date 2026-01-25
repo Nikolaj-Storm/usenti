@@ -6,6 +6,7 @@ const Inbox = () => {
   const [selectedAccount, setSelectedAccount] = React.useState('all');
   const [selectedMessage, setSelectedMessage] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
+  const [syncing, setSyncing] = React.useState(false);
   const [error, setError] = React.useState(null);
 
   React.useEffect(() => {
@@ -27,6 +28,22 @@ const Inbox = () => {
       setError(error.message || 'Failed to load inbox data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSyncInbox = async () => {
+    setSyncing(true);
+    try {
+      console.log('📥 [Inbox] Starting IMAP sync...');
+      const result = await api.syncInbox(selectedAccount === 'all' ? null : selectedAccount, 50);
+      console.log('✅ [Inbox] Sync complete:', result);
+      // Reload inbox data after sync
+      await loadData();
+    } catch (error) {
+      console.error('❌ [Inbox] Sync failed:', error);
+      setError('Failed to sync inbox: ' + error.message);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -136,6 +153,15 @@ const Inbox = () => {
           accounts.map(acc =>
             h('option', { key: acc.id, value: acc.id }, acc.email_address)
           )
+        ),
+        h('button', {
+          onClick: handleSyncInbox,
+          disabled: syncing || loading,
+          className: "px-4 py-2 bg-jaguar-900 text-white rounded-lg hover:bg-jaguar-800 transition-colors disabled:opacity-50 flex items-center gap-2",
+          title: "Sync from mail server"
+        },
+          h(Icons.Download, { size: 16, className: syncing ? "animate-bounce" : "" }),
+          h('span', null, syncing ? 'Syncing...' : 'Sync Inbox')
         ),
         h('button', {
           onClick: loadData,
