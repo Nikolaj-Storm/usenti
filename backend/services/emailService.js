@@ -232,18 +232,27 @@ class EmailService {
 
   // Check if within sending schedule (uses UTC time for consistency)
   isWithinSchedule(schedule) {
-    if (!schedule || !schedule.days || !schedule.start_hour || !schedule.end_hour) {
+    if (!schedule || !schedule.days || schedule.start_hour === undefined || schedule.end_hour === undefined) {
       return true; // No schedule = always send
+    }
+
+    // Check for 24/7 schedule (all days, 0-24 hours)
+    const allDays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const is24_7 = schedule.days.length === 7 && schedule.start_hour === 0 && schedule.end_hour === 24;
+    if (is24_7) {
+      console.log(`[SCHEDULE] 24/7 schedule detected - always within schedule`);
+      return true;
     }
 
     const now = new Date();
     // Use UTC to ensure consistent behavior regardless of server timezone
-    const daysOfWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-    const dayOfWeek = daysOfWeek[now.getUTCDay()];
+    const dayOfWeek = allDays[now.getUTCDay()];
     const hour = now.getUTCHours();
 
     const dayAllowed = schedule.days.includes(dayOfWeek);
-    const hourAllowed = hour >= schedule.start_hour && hour < schedule.end_hour;
+    // Handle end_hour of 24 (means up to midnight)
+    const endHour = schedule.end_hour === 24 ? 24 : schedule.end_hour;
+    const hourAllowed = hour >= schedule.start_hour && hour < endHour;
 
     console.log(`[SCHEDULE] Checking schedule - UTC Day: ${dayOfWeek}, UTC Hour: ${hour}, Days allowed: ${schedule.days.join(',')}, Hours: ${schedule.start_hour}-${schedule.end_hour}`);
     console.log(`[SCHEDULE] Day allowed: ${dayAllowed}, Hour allowed: ${hourAllowed}, Within schedule: ${dayAllowed && hourAllowed}`);
@@ -255,8 +264,15 @@ class EmailService {
   getNextSendTime(schedule) {
     const now = new Date();
 
-    if (!schedule || !schedule.days || !schedule.start_hour) {
+    if (!schedule || !schedule.days || schedule.start_hour === undefined) {
       return now; // No schedule = send now
+    }
+
+    // Check for 24/7 schedule - can send anytime
+    const is24_7 = schedule.days.length === 7 && schedule.start_hour === 0 && schedule.end_hour === 24;
+    if (is24_7) {
+      console.log(`[SCHEDULE] 24/7 schedule - sending now`);
+      return now;
     }
 
     const daysOfWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -268,7 +284,7 @@ class EmailService {
 
       if (schedule.days.includes(dayOfWeek)) {
         // Set to the start hour in UTC
-        checkDate.setUTCHours(schedule.start_hour || 9, 0, 0, 0);
+        checkDate.setUTCHours(schedule.start_hour || 0, 0, 0, 0);
 
         if (checkDate > now) {
           console.log(`[SCHEDULE] Next send time calculated: ${checkDate.toISOString()} (UTC)`);
