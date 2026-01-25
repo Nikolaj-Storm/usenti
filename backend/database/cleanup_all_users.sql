@@ -8,10 +8,21 @@
 -- - Resetting development database
 -- - Clearing test data between testing sessions
 -- - Removing all authentication sessions and user records
+-- - Clearing OAuth tokens (Gmail, Microsoft) from email accounts
+-- - Removing unconfirmed email accounts
 --
 -- 🚨 DANGER ZONE: This cannot be undone!
 --
 -- Run this in your Supabase SQL Editor: https://app.supabase.com/project/_/sql
+-- ============================================================================
+--
+-- ALTERNATIVE: To delete ONLY unconfirmed users (not all data), use this instead:
+-- /*
+-- DELETE FROM auth.users WHERE email_confirmed_at IS NULL;
+-- DELETE FROM auth.sessions;
+-- DELETE FROM auth.refresh_tokens;
+-- */
+--
 -- ============================================================================
 
 BEGIN;
@@ -65,6 +76,8 @@ DELETE FROM public.contact_lists;
 -- STEP 4: Delete email accounts
 -- ============================================================================
 -- User's connected email accounts (Gmail, Outlook, etc.)
+-- This includes both SMTP accounts and OAuth-connected accounts
+-- All OAuth tokens (Gmail, Microsoft) will be cleared
 
 DELETE FROM public.email_accounts;
 
@@ -79,16 +92,34 @@ DELETE FROM public.user_profiles;
 -- STEP 6: Delete authentication records
 -- ============================================================================
 -- This removes all users from Supabase auth system
--- Includes: login sessions, email confirmations, password reset tokens
+-- Includes: login sessions, email confirmations, password reset tokens, OAuth data
 
--- Delete all auth users (this cascades to any remaining FK references)
-DELETE FROM auth.users;
-
--- Optional: Clear any lingering auth sessions
+-- Clear all active sessions (forces logout)
 DELETE FROM auth.sessions;
 
--- Optional: Clear refresh tokens
+-- Clear all refresh tokens
 DELETE FROM auth.refresh_tokens;
+
+-- Clear SAML providers (if any)
+DELETE FROM auth.saml_providers WHERE id IN (SELECT id FROM auth.users);
+
+-- Clear SAML relay states (if any)
+DELETE FROM auth.saml_relay_states WHERE id IN (SELECT id FROM auth.users);
+
+-- Clear identities (OAuth connections like Google, GitHub, etc.)
+DELETE FROM auth.identities WHERE user_id IN (SELECT id FROM auth.users);
+
+-- Clear MFA factors (if any)
+DELETE FROM auth.mfa_factors WHERE user_id IN (SELECT id FROM auth.users);
+
+-- Clear MFA challenges (if any)
+DELETE FROM auth.mfa_challenges WHERE factor_id IN (SELECT id FROM auth.mfa_factors);
+
+-- Clear one-time tokens (password reset, email confirmation, etc.)
+DELETE FROM auth.one_time_tokens WHERE user_id IN (SELECT id FROM auth.users);
+
+-- Finally, delete all users (this should cascade to remaining references)
+DELETE FROM auth.users;
 
 -- ============================================================================
 -- STEP 7: Verify cleanup was successful
@@ -110,6 +141,11 @@ UNION ALL
 SELECT 'auth.refresh_tokens', COUNT(*),
   CASE WHEN COUNT(*) = 0 THEN '✓ Clean' ELSE '✗ Has data!' END
 FROM auth.refresh_tokens
+
+UNION ALL
+SELECT 'auth.identities', COUNT(*),
+  CASE WHEN COUNT(*) = 0 THEN '✓ Clean' ELSE '✗ Has data!' END
+FROM auth.identities
 
 UNION ALL
 SELECT 'user_profiles', COUNT(*),
@@ -185,6 +221,12 @@ COMMIT;
 -- ✓ Test email verification flow from scratch
 -- ✓ Test campaign creation without old data interfering
 -- ✓ All authentication sessions have been cleared
+-- ✓ All OAuth tokens (Gmail, Microsoft) have been removed
+-- ✓ Unconfirmed email accounts have been deleted
 --
--- Note: Users will need to sign up again to access the application
+-- IMPORTANT: After running this script:
+-- 1. Clear browser cache: localStorage.clear(); sessionStorage.clear();
+-- 2. Or use incognito/private window for testing
+-- 3. Users will need to sign up again to access the application
+-- 4. Reconnect OAuth accounts (Gmail/Outlook) if testing OAuth features
 -- ============================================================================
