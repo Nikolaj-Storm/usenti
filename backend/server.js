@@ -1277,7 +1277,7 @@ app.get('/api/campaigns/:id', authenticateUser, async (req, res) => {
 
 app.post('/api/campaigns', authenticateUser, async (req, res) => {
   try {
-    const { name, email_account_id, contact_list_id, send_schedule, daily_limit } = req.body;
+    const { name, email_account_id, contact_list_id, send_schedule, daily_limit, send_immediately } = req.body;
 
     if (!name || !email_account_id || !contact_list_id) {
       return res.status(400).json({ error: 'Name, email account, and contact list are required' });
@@ -1320,7 +1320,8 @@ app.post('/api/campaigns', authenticateUser, async (req, res) => {
           start_hour: 9,
           end_hour: 17
         },
-        daily_limit: daily_limit || 500
+        daily_limit: daily_limit || 500,
+        send_immediately: send_immediately || false
       })
       .select(`
         *,
@@ -1328,7 +1329,7 @@ app.post('/api/campaigns', authenticateUser, async (req, res) => {
         contact_lists(id, name, total_contacts)
       `)
       .single();
-    
+
     if (error) throw error;
     res.json(data);
   } catch (error) {
@@ -1510,7 +1511,7 @@ app.post('/api/campaigns/:id/start', authenticateUser, async (req, res) => {
   try {
     const { data: campaign } = await supabase
       .from('campaigns')
-      .select('id, contact_list_id')
+      .select('id, contact_list_id, send_schedule, send_immediately')
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
       .single();
@@ -1538,12 +1539,30 @@ app.post('/api/campaigns/:id/start', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'No active contacts in list' });
     }
 
+    // Calculate next_send_time based on schedule and send_immediately flag
+    let nextSendTime;
+    if (campaign.send_immediately) {
+      // Send immediately - use current time
+      nextSendTime = new Date().toISOString();
+      console.log(`[CAMPAIGN-START] Send immediately enabled, using current time: ${nextSendTime}`);
+    } else {
+      // Calculate next valid send time based on schedule
+      const emailService = require('./services/emailService');
+      if (emailService.isWithinSchedule(campaign.send_schedule)) {
+        nextSendTime = new Date().toISOString();
+        console.log(`[CAMPAIGN-START] Within schedule, using current time: ${nextSendTime}`);
+      } else {
+        nextSendTime = emailService.getNextSendTime(campaign.send_schedule).toISOString();
+        console.log(`[CAMPAIGN-START] Outside schedule, next send time: ${nextSendTime}`);
+      }
+    }
+
     const campaignContacts = contacts.map(contact => ({
       campaign_id: req.params.id,
       contact_id: contact.id,
       current_step_id: firstStep.id,
       status: 'in_progress',
-      next_send_time: new Date().toISOString()
+      next_send_time: nextSendTime
     }));
 
     const { error: insertError } = await supabase
@@ -1559,7 +1578,12 @@ app.post('/api/campaigns/:id/start', authenticateUser, async (req, res) => {
 
     if (updateError) throw updateError;
 
-    res.json({ success: true, message: `Campaign started with ${contacts.length} contacts` });
+    res.json({
+      success: true,
+      message: `Campaign started with ${contacts.length} contacts`,
+      next_send_time: nextSendTime,
+      send_immediately: campaign.send_immediately
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

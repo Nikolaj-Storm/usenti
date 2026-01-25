@@ -460,10 +460,31 @@ const StepEditor = ({ step, onUpdate, saving }) => {
 };
 
 const NewCampaignModal = ({ onClose, onCreate }) => {
-  const [formData, setFormData] = React.useState({ name: '', email_account_id: '', contact_list_id: '' });
+  const [formData, setFormData] = React.useState({
+    name: '',
+    email_account_id: '',
+    contact_list_id: '',
+    send_schedule: {
+      days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+      start_hour: 9,
+      end_hour: 17
+    },
+    send_immediately: false
+  });
   const [emailAccounts, setEmailAccounts] = React.useState([]);
   const [contactLists, setContactLists] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
+
+  const allDays = [
+    { key: 'mon', label: 'Mon' },
+    { key: 'tue', label: 'Tue' },
+    { key: 'wed', label: 'Wed' },
+    { key: 'thu', label: 'Thu' },
+    { key: 'fri', label: 'Fri' },
+    { key: 'sat', label: 'Sat' },
+    { key: 'sun', label: 'Sun' }
+  ];
 
   React.useEffect(() => {
     Promise.all([api.getEmailAccounts(), api.getContactLists()])
@@ -474,13 +495,24 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
         .finally(() => setLoading(false));
   }, []);
 
+  const toggleDay = (day) => {
+    const currentDays = formData.send_schedule.days;
+    const newDays = currentDays.includes(day)
+      ? currentDays.filter(d => d !== day)
+      : [...currentDays, day];
+    setFormData({
+      ...formData,
+      send_schedule: { ...formData.send_schedule, days: newDays }
+    });
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     onCreate(formData);
   };
 
   return h('div', { className: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in", onClick: onClose },
-    h('div', { className: "bg-white rounded-lg p-8 max-w-md w-full mx-4", onClick: e => e.stopPropagation() },
+    h('div', { className: "bg-white rounded-lg p-8 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto", onClick: e => e.stopPropagation() },
         h('h3', { className: "font-serif text-2xl text-jaguar-900 mb-6" }, "New Campaign"),
         loading ? h(Icons.Loader2, { className: "animate-spin mx-auto" }) :
         h('form', { onSubmit: handleSubmit, className: "space-y-4" },
@@ -502,6 +534,91 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
                     contactLists.map(l => h('option', { key: l.id, value: l.id }, String(l.name)))
                 )
             ),
+
+            // Send Immediately Option
+            h('div', { className: "flex items-center gap-2 p-3 bg-cream-50 rounded-lg border border-stone-200" },
+                h('input', {
+                    type: "checkbox",
+                    id: "send_immediately",
+                    checked: formData.send_immediately,
+                    onChange: e => setFormData({...formData, send_immediately: e.target.checked}),
+                    className: "w-4 h-4 text-jaguar-900 rounded"
+                }),
+                h('label', { htmlFor: "send_immediately", className: "text-sm text-stone-700" },
+                    "Send first email immediately (ignore schedule)"
+                )
+            ),
+
+            // Advanced Schedule Options Toggle
+            h('button', {
+                type: "button",
+                onClick: () => setShowAdvanced(!showAdvanced),
+                className: "text-sm text-jaguar-900 hover:underline flex items-center gap-1"
+            },
+                h(showAdvanced ? Icons.ChevronUp : Icons.ChevronDown, { size: 16 }),
+                showAdvanced ? "Hide Schedule Options" : "Show Schedule Options"
+            ),
+
+            // Advanced Schedule Options
+            showAdvanced && h('div', { className: "space-y-4 p-4 bg-stone-50 rounded-lg border border-stone-200" },
+                // Days Selection
+                h('div', null,
+                    h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, "Send Days"),
+                    h('div', { className: "flex flex-wrap gap-2" },
+                        allDays.map(day =>
+                            h('button', {
+                                key: day.key,
+                                type: "button",
+                                onClick: () => toggleDay(day.key),
+                                className: `px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                                    formData.send_schedule.days.includes(day.key)
+                                        ? 'bg-jaguar-900 text-white'
+                                        : 'bg-white border border-stone-300 text-stone-600 hover:border-jaguar-900'
+                                }`
+                            }, day.label)
+                        )
+                    )
+                ),
+
+                // Hours Selection
+                h('div', { className: "grid grid-cols-2 gap-4" },
+                    h('div', null,
+                        h('label', { className: "block text-sm font-medium text-stone-700 mb-1" }, "Start Hour (UTC)"),
+                        h('select', {
+                            className: "w-full border p-2 rounded bg-white",
+                            value: formData.send_schedule.start_hour,
+                            onChange: e => setFormData({
+                                ...formData,
+                                send_schedule: { ...formData.send_schedule, start_hour: parseInt(e.target.value) }
+                            })
+                        },
+                            Array.from({ length: 24 }, (_, i) =>
+                                h('option', { key: i, value: i }, `${i.toString().padStart(2, '0')}:00`)
+                            )
+                        )
+                    ),
+                    h('div', null,
+                        h('label', { className: "block text-sm font-medium text-stone-700 mb-1" }, "End Hour (UTC)"),
+                        h('select', {
+                            className: "w-full border p-2 rounded bg-white",
+                            value: formData.send_schedule.end_hour,
+                            onChange: e => setFormData({
+                                ...formData,
+                                send_schedule: { ...formData.send_schedule, end_hour: parseInt(e.target.value) }
+                            })
+                        },
+                            Array.from({ length: 24 }, (_, i) =>
+                                h('option', { key: i, value: i }, `${i.toString().padStart(2, '0')}:00`)
+                            )
+                        )
+                    )
+                ),
+
+                h('p', { className: "text-xs text-stone-500" },
+                    "Emails will only be sent during these hours on selected days. Times are in UTC."
+                )
+            ),
+
             h('button', { type: "submit", className: "w-full bg-jaguar-900 text-white p-2 rounded hover:bg-jaguar-800" }, "Create")
         )
     )
