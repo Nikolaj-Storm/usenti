@@ -197,6 +197,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
   -- Scheduling
   send_schedule JSONB DEFAULT '{"days": ["mon", "tue", "wed", "thu", "fri"], "start_hour": 9, "end_hour": 17}',
   daily_limit INTEGER DEFAULT 500,
+  send_immediately BOOLEAN DEFAULT false,
 
   -- Timestamps
   started_at TIMESTAMP WITH TIME ZONE,
@@ -267,6 +268,7 @@ CREATE TABLE IF NOT EXISTS campaign_contacts (
   current_step_id UUID REFERENCES campaign_steps(id) ON DELETE SET NULL,
   status TEXT DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed', 'failed', 'replied', 'unsubscribed')),
   next_send_time TIMESTAMP WITH TIME ZONE,
+  emails_sent INTEGER DEFAULT 0,
   replied_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
