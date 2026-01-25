@@ -486,6 +486,13 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
     { key: 'sun', label: 'Sun' }
   ];
 
+  const schedulePresets = [
+    { label: 'Weekdays (9-17)', days: ['mon', 'tue', 'wed', 'thu', 'fri'], start: 9, end: 17 },
+    { label: 'All Days (9-17)', days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], start: 9, end: 17 },
+    { label: '24/7', days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], start: 0, end: 24 },
+    { label: 'Evenings (17-22)', days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], start: 17, end: 22 }
+  ];
+
   React.useEffect(() => {
     Promise.all([api.getEmailAccounts(), api.getContactLists()])
         .then(([accs, lists]) => {
@@ -503,6 +510,37 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
     setFormData({
       ...formData,
       send_schedule: { ...formData.send_schedule, days: newDays }
+    });
+  };
+
+  const applyPreset = (preset) => {
+    setFormData({
+      ...formData,
+      send_schedule: {
+        days: preset.days,
+        start_hour: preset.start,
+        end_hour: preset.end
+      }
+    });
+  };
+
+  const selectAllDays = () => {
+    setFormData({
+      ...formData,
+      send_schedule: {
+        ...formData.send_schedule,
+        days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+      }
+    });
+  };
+
+  const selectWeekdaysOnly = () => {
+    setFormData({
+      ...formData,
+      send_schedule: {
+        ...formData.send_schedule,
+        days: ['mon', 'tue', 'wed', 'thu', 'fri']
+      }
     });
   };
 
@@ -561,9 +599,39 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
 
             // Advanced Schedule Options
             showAdvanced && h('div', { className: "space-y-4 p-4 bg-stone-50 rounded-lg border border-stone-200" },
+                // Quick Presets
+                h('div', null,
+                    h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, "Quick Presets"),
+                    h('div', { className: "flex flex-wrap gap-2" },
+                        schedulePresets.map(preset =>
+                            h('button', {
+                                key: preset.label,
+                                type: "button",
+                                onClick: () => applyPreset(preset),
+                                className: "px-3 py-1 rounded text-xs font-medium bg-white border border-stone-300 text-stone-600 hover:bg-jaguar-900 hover:text-white hover:border-jaguar-900 transition-colors"
+                            }, preset.label)
+                        )
+                    )
+                ),
+
                 // Days Selection
                 h('div', null,
-                    h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, "Send Days"),
+                    h('div', { className: "flex justify-between items-center mb-2" },
+                        h('label', { className: "text-sm font-medium text-stone-700" }, "Send Days"),
+                        h('div', { className: "flex gap-2" },
+                            h('button', {
+                                type: "button",
+                                onClick: selectAllDays,
+                                className: "text-xs text-jaguar-900 hover:underline"
+                            }, "All"),
+                            h('span', { className: "text-stone-300" }, "|"),
+                            h('button', {
+                                type: "button",
+                                onClick: selectWeekdaysOnly,
+                                className: "text-xs text-jaguar-900 hover:underline"
+                            }, "Weekdays")
+                        )
+                    ),
                     h('div', { className: "flex flex-wrap gap-2" },
                         allDays.map(day =>
                             h('button', {
@@ -592,8 +660,8 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
                                 send_schedule: { ...formData.send_schedule, start_hour: parseInt(e.target.value) }
                             })
                         },
-                            Array.from({ length: 24 }, (_, i) =>
-                                h('option', { key: i, value: i }, `${i.toString().padStart(2, '0')}:00`)
+                            Array.from({ length: 25 }, (_, i) =>
+                                h('option', { key: i, value: i }, i === 24 ? '24:00 (midnight)' : `${i.toString().padStart(2, '0')}:00`)
                             )
                         )
                     ),
@@ -607,15 +675,15 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
                                 send_schedule: { ...formData.send_schedule, end_hour: parseInt(e.target.value) }
                             })
                         },
-                            Array.from({ length: 24 }, (_, i) =>
-                                h('option', { key: i, value: i }, `${i.toString().padStart(2, '0')}:00`)
+                            Array.from({ length: 25 }, (_, i) =>
+                                h('option', { key: i, value: i }, i === 24 ? '24:00 (midnight)' : `${i.toString().padStart(2, '0')}:00`)
                             )
                         )
                     )
                 ),
 
                 h('p', { className: "text-xs text-stone-500" },
-                    "Emails will only be sent during these hours on selected days. Times are in UTC."
+                    "Emails will only be sent during these hours on selected days. Times are in UTC. Set 0-24 for 24/7 sending."
                 )
             ),
 

@@ -199,5 +199,9 @@ const Icons = {
   Reply: (p) => Icon({...p, path: [
     h('polyline', {key:1, points:"9 17 4 12 9 7"}),
     h('path', {key:2, d:"M20 18v-2a4 4 0 0 0-4-4H4"})
-  ]})
+  ]}),
+
+  ChevronUp: (p) => Icon({...p, path: h('path', {d:"m18 15-6-6-6 6"})}),
+
+  ChevronDown: (p) => Icon({...p, path: h('path', {d:"m6 9 6 6 6-6"})})
 };
