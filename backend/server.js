@@ -754,6 +754,79 @@ app.put('/api/inbox/:id/read', authenticateUser, async (req, res) => {
   }
 });
 
+// Sync inbox from IMAP server (fetches ALL recent messages, not just unread)
+app.post('/api/inbox/sync', authenticateUser, async (req, res) => {
+  const requestId = `INBOX-SYNC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  try {
+    const { account_id, limit = 50 } = req.body;
+
+    console.log(`[${requestId}] Inbox sync request for user ${req.user.id}`);
+    console.log(`[${requestId}] Account filter: ${account_id || 'all'}, Limit: ${limit}`);
+
+    // Get user's email accounts
+    let accountsQuery = supabase
+      .from('email_accounts')
+      .select('id, email_address')
+      .eq('user_id', req.user.id)
+      .eq('is_active', true);
+
+    if (account_id && account_id !== 'all') {
+      accountsQuery = accountsQuery.eq('id', account_id);
+    }
+
+    const { data: accounts, error: accountsError } = await accountsQuery;
+
+    if (accountsError) {
+      console.error(`[${requestId}] Error fetching accounts:`, accountsError);
+      throw accountsError;
+    }
+
+    if (!accounts || accounts.length === 0) {
+      console.log(`[${requestId}] No email accounts found`);
+      return res.json({ synced: 0, message: 'No email accounts to sync' });
+    }
+
+    console.log(`[${requestId}] Syncing ${accounts.length} account(s)...`);
+
+    const imapMonitor = require('./services/imapMonitor');
+    let totalSynced = 0;
+    const results = [];
+
+    for (const account of accounts) {
+      try {
+        console.log(`[${requestId}] Syncing account: ${account.email_address}`);
+        const messages = await imapMonitor.syncInbox(account.id, limit);
+        totalSynced += messages.length;
+        results.push({
+          account_id: account.id,
+          email: account.email_address,
+          synced: messages.length,
+          status: 'success'
+        });
+      } catch (syncError) {
+        console.error(`[${requestId}] Error syncing ${account.email_address}:`, syncError.message);
+        results.push({
+          account_id: account.id,
+          email: account.email_address,
+          synced: 0,
+          status: 'error',
+          error: syncError.message
+        });
+      }
+    }
+
+    console.log(`[${requestId}] ✅ Sync complete. Total messages synced: ${totalSynced}`);
+    res.json({
+      synced: totalSynced,
+      accounts: results
+    });
+  } catch (error) {
+    console.error(`[${requestId}] Error in sync route:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============================================================================
 // CONTACT LISTS ROUTES
 // ============================================================================

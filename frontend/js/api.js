@@ -229,5 +229,13 @@ const api = {
 
   async markInboxAsRead(messageId, isRead = true) {
     return this.put(`/api/inbox/${messageId}/read`, { is_read: isRead });
+  },
+
+  async syncInbox(accountId = null, limit = 50) {
+    console.log('📥 [API] Syncing inbox from IMAP server...');
+    return this.post('/api/inbox/sync', {
+      account_id: accountId,
+      limit
+    });
   }
 };

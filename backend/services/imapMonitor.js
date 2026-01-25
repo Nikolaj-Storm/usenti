@@ -137,6 +137,167 @@ class ImapMonitor {
     });
   }
 
+  // Sync inbox - fetch ALL recent messages (not just unread)
+  async syncInbox(accountId, limit = 50) {
+    return new Promise(async (resolve, reject) => {
+      const requestId = `SYNC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      console.log(`[${requestId}] Starting inbox sync for account ${accountId}...`);
+
+      try {
+        // Get account details
+        const { data: account, error: accountError } = await supabase
+          .from('email_accounts')
+          .select('*')
+          .eq('id', accountId)
+          .single();
+
+        if (accountError || !account) {
+          console.error(`[${requestId}] Account not found:`, accountError?.message);
+          return reject(new Error('Email account not found'));
+        }
+
+        console.log(`[${requestId}] Connecting to ${account.imap_host}:${account.imap_port}...`);
+
+        const imap = new Imap({
+          user: account.imap_username,
+          password: decrypt(account.imap_password),
+          host: account.imap_host,
+          port: account.imap_port,
+          tls: account.imap_port === 993,
+          tlsOptions: { rejectUnauthorized: false }
+        });
+
+        const messages = [];
+
+        imap.once('ready', () => {
+          console.log(`[${requestId}] Connected, opening INBOX...`);
+
+          imap.openBox('INBOX', true, (err, box) => {
+            if (err) {
+              console.error(`[${requestId}] Failed to open inbox:`, err);
+              imap.end();
+              return reject(err);
+            }
+
+            console.log(`[${requestId}] INBOX opened. Total messages: ${box.messages.total}`);
+
+            // Fetch the most recent messages (last N messages)
+            const totalMessages = box.messages.total;
+            if (totalMessages === 0) {
+              console.log(`[${requestId}] No messages in inbox`);
+              imap.end();
+              return resolve([]);
+            }
+
+            const start = Math.max(1, totalMessages - limit + 1);
+            const range = `${start}:${totalMessages}`;
+            console.log(`[${requestId}] Fetching messages ${range}...`);
+
+            const fetch = imap.seq.fetch(range, {
+              bodies: ['HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)', 'TEXT'],
+              struct: true
+            });
+
+            fetch.on('message', (msg, seqno) => {
+              const msgData = { seqno };
+
+              msg.on('body', (stream, info) => {
+                let buffer = '';
+                stream.on('data', (chunk) => {
+                  buffer += chunk.toString('utf8');
+                });
+                stream.on('end', () => {
+                  if (info.which.includes('HEADER')) {
+                    // Parse headers
+                    const lines = buffer.split('\r\n');
+                    lines.forEach(line => {
+                      const [key, ...valueParts] = line.split(':');
+                      if (key && valueParts.length) {
+                        const value = valueParts.join(':').trim();
+                        const keyLower = key.toLowerCase();
+                        if (keyLower === 'from') msgData.from = value;
+                        if (keyLower === 'to') msgData.to = value;
+                        if (keyLower === 'subject') msgData.subject = value;
+                        if (keyLower === 'date') msgData.date = value;
+                        if (keyLower === 'message-id') msgData.messageId = value;
+                      }
+                    });
+                  } else {
+                    // Body text
+                    msgData.snippet = buffer.substring(0, 200).replace(/\s+/g, ' ').trim();
+                  }
+                });
+              });
+
+              msg.on('attributes', (attrs) => {
+                msgData.flags = attrs.flags;
+                msgData.uid = attrs.uid;
+              });
+
+              msg.once('end', () => {
+                messages.push(msgData);
+              });
+            });
+
+            fetch.once('error', (err) => {
+              console.error(`[${requestId}] Fetch error:`, err);
+              imap.end();
+              reject(err);
+            });
+
+            fetch.once('end', async () => {
+              console.log(`[${requestId}] Fetched ${messages.length} messages, saving to database...`);
+
+              // Save messages to inbox_messages table
+              for (const msg of messages) {
+                try {
+                  // Parse from address
+                  const fromMatch = msg.from?.match(/<([^>]+)>/) || [null, msg.from];
+                  const fromAddress = fromMatch[1] || msg.from || 'unknown';
+                  const fromName = msg.from?.replace(/<[^>]+>/, '').trim() || '';
+
+                  await supabase.from('inbox_messages').upsert({
+                    email_account_id: account.id,
+                    message_id: msg.messageId || `sync-${msg.uid}-${Date.now()}`,
+                    from_name: fromName,
+                    from_address: fromAddress.toLowerCase(),
+                    subject: msg.subject || '(No Subject)',
+                    snippet: msg.snippet || '',
+                    received_at: msg.date ? new Date(msg.date).toISOString() : new Date().toISOString(),
+                    is_read: msg.flags?.includes('\\Seen') || false
+                  }, {
+                    onConflict: 'email_account_id, message_id',
+                    ignoreDuplicates: false
+                  });
+                } catch (saveError) {
+                  console.error(`[${requestId}] Error saving message:`, saveError.message);
+                }
+              }
+
+              console.log(`[${requestId}] ✅ Inbox sync complete. Saved ${messages.length} messages.`);
+              imap.end();
+              resolve(messages);
+            });
+          });
+        });
+
+        imap.once('error', (err) => {
+          console.error(`[${requestId}] IMAP connection error:`, err);
+          reject(err);
+        });
+
+        imap.once('end', () => {
+          console.log(`[${requestId}] IMAP connection closed`);
+        });
+
+        imap.connect();
+      } catch (error) {
+        console.error(`[${requestId}] Sync error:`, error);
+        reject(error);
+      }
+    });
+  }
+
   // Save incoming email to inbox
   async saveToInbox(message, account) {
     try {
