@@ -34,6 +34,7 @@ class CampaignExecutor {
             name,
             email_account_id,
             send_schedule,
+            send_immediately,
             status,
             daily_limit
           ),
@@ -129,22 +130,32 @@ class CampaignExecutor {
     console.log(`[EXECUTOR]   📧 Campaign: ${campaign.name} (ID: ${campaign.id})`);
     console.log(`[EXECUTOR]   📍 Step ${step.step_order}: ${step.step_type.toUpperCase()}`);
     console.log(`[EXECUTOR]   ⏰ Next send time: ${campaignContact.next_send_time}`);
+    console.log(`[EXECUTOR]   🚀 Send immediately: ${campaign.send_immediately ? 'YES' : 'NO'}`);
+    console.log(`[EXECUTOR]   📬 Emails sent so far: ${campaignContact.emails_sent || 0}`);
 
-    // Check if within send schedule
-    console.log(`[EXECUTOR]   🕐 Checking send schedule...`);
-    const schedule = campaign.send_schedule;
-    if (schedule) {
-      console.log(`[EXECUTOR]      Schedule: Days=${schedule.days?.join(',')}, Hours=${schedule.start_hour}-${schedule.end_hour}`);
-    }
+    // Check if this is the first email and send_immediately is enabled
+    const isFirstEmail = step.step_order === 1 && (campaignContact.emails_sent || 0) === 0;
+    const shouldSkipSchedule = campaign.send_immediately && isFirstEmail;
 
-    const withinSchedule = emailService.isWithinSchedule(campaign.send_schedule);
-    console.log(`[EXECUTOR]      Within schedule: ${withinSchedule ? '✅ YES' : '❌ NO'}`);
+    if (shouldSkipSchedule) {
+      console.log(`[EXECUTOR]   ⚡ Skipping schedule check (send_immediately + first email)`);
+    } else {
+      // Check if within send schedule
+      console.log(`[EXECUTOR]   🕐 Checking send schedule...`);
+      const schedule = campaign.send_schedule;
+      if (schedule) {
+        console.log(`[EXECUTOR]      Schedule: Days=${schedule.days?.join(',')}, Hours=${schedule.start_hour}-${schedule.end_hour}`);
+      }
 
-    if (!withinSchedule) {
-      const nextTime = emailService.getNextSendTime(campaign.send_schedule);
-      console.log(`[EXECUTOR]      ⏭️  Rescheduling to next available time: ${nextTime.toISOString()}`);
-      await this.updateNextSendTime(campaignContact.id, nextTime);
-      return;
+      const withinSchedule = emailService.isWithinSchedule(campaign.send_schedule);
+      console.log(`[EXECUTOR]      Within schedule: ${withinSchedule ? '✅ YES' : '❌ NO'}`);
+
+      if (!withinSchedule) {
+        const nextTime = emailService.getNextSendTime(campaign.send_schedule);
+        console.log(`[EXECUTOR]      ⏭️  Rescheduling to next available time: ${nextTime.toISOString()}`);
+        await this.updateNextSendTime(campaignContact.id, nextTime);
+        return;
+      }
     }
 
     // Check daily limit
@@ -217,6 +228,14 @@ class CampaignExecutor {
 
       console.log(`[EXECUTOR]      ✅ Email sent successfully!`);
       console.log(`[EXECUTOR]         Message ID: ${result.messageId}`);
+
+      // Increment emails_sent counter
+      const newEmailsSent = (campaignContact.emails_sent || 0) + 1;
+      await supabase
+        .from('campaign_contacts')
+        .update({ emails_sent: newEmailsSent })
+        .eq('id', campaignContact.id);
+      console.log(`[EXECUTOR]      📊 Updated emails_sent to ${newEmailsSent}`);
 
       // Move to next step
       console.log(`[EXECUTOR]      ➡️  Moving to next step...`);
