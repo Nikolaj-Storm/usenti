@@ -37,6 +37,8 @@ const CampaignBuilder = () => {
   const [showNewCampaignModal, setShowNewCampaignModal] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [isDemo, setIsDemo] = React.useState(false);
+  const [stats, setStats] = React.useState(null);
+  const [loadingStats, setLoadingStats] = React.useState(false);
 
   React.useEffect(() => {
     loadCampaigns();
@@ -66,23 +68,69 @@ const CampaignBuilder = () => {
     setSelectedCampaign(campaign);
     setLoading(true);
     setIsDemo(false);
+    setStats(null);
     try {
       const data = await api.get(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${campaign.id}/steps`);
-      
+
       // Sanitize Steps
       const rawSteps = Array.isArray(data) ? data : [];
       const cleanSteps = rawSteps.map(sanitizeStep).filter(Boolean);
-      
+
       setSteps(cleanSteps);
-      
+
       if (cleanSteps.length > 0) setActiveStep(cleanSteps[0].id);
       else setActiveStep(null);
+
+      // Load stats in background
+      loadCampaignStats(campaign.id);
 
     } catch (error) {
       console.error('Failed to load steps:', error);
       setSteps([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCampaignStats = async (campaignId) => {
+    setLoadingStats(true);
+    try {
+      const data = await api.getCampaignStats(campaignId);
+      setStats(data);
+    } catch (error) {
+      console.error('Failed to load campaign stats:', error);
+      setStats(null);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  const handleDeleteCampaign = async () => {
+    if (isDemo || !selectedCampaign) return;
+
+    if (!confirm(`Delete campaign "${selectedCampaign.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await api.deleteCampaign(selectedCampaign.id);
+
+      // Remove from local state
+      const remaining = campaigns.filter(c => c.id !== selectedCampaign.id);
+      setCampaigns(remaining);
+
+      // Select another campaign or clear selection
+      if (remaining.length > 0) {
+        handleSelectCampaign(remaining[0]);
+      } else {
+        setSelectedCampaign(null);
+        setSteps([]);
+        setStats(null);
+      }
+
+      alert('Campaign deleted successfully');
+    } catch (error) {
+      alert('Error deleting campaign: ' + error.message);
     }
   };
 
@@ -254,7 +302,7 @@ const CampaignBuilder = () => {
   // Builder View
   return h('div', { className: "h-[calc(100vh-120px)] flex flex-col animate-fade-in" },
     // Header
-    h('div', { className: "flex justify-between items-start mb-6 pb-6 border-b border-stone-200" },
+    h('div', { className: "flex justify-between items-start mb-4 pb-4 border-b border-stone-200" },
       h('div', null,
         h('h1', { className: "font-serif text-3xl text-jaguar-900 mb-2" }, selectedCampaign?.name),
         h('div', { className: "flex items-center gap-2 text-sm text-stone-500" },
@@ -265,6 +313,12 @@ const CampaignBuilder = () => {
         )
       ),
       h('div', { className: "flex gap-3" },
+        // Delete Button
+        !isDemo && selectedCampaign && h('button', {
+          onClick: handleDeleteCampaign,
+          className: "p-2 border border-red-200 rounded-lg hover:bg-red-50 text-red-500 hover:text-red-700",
+          title: "Delete Campaign"
+        }, h(Icons.Trash2, { size: 20 })),
         // Campaign Control Buttons (Start/Pause)
         !isDemo && selectedCampaign && (
           selectedCampaign.status === 'running'
@@ -287,6 +341,21 @@ const CampaignBuilder = () => {
         }, campaigns.map(c => h('option', { key: c.id, value: c.id }, c.name))),
         h('button', { onClick: () => setShowNewCampaignModal(true), className: "p-2 border rounded-lg hover:bg-stone-50" }, h(Icons.Plus, { size: 20 }))
       )
+    ),
+
+    // Stats Bar
+    !isDemo && stats && h('div', { className: "flex gap-4 mb-4 p-4 bg-cream-50 rounded-lg border border-stone-200" },
+      h(StatCard, { label: "Contacts", value: stats.total_contacts, icon: Icons.Users }),
+      h(StatCard, { label: "Sent", value: stats.sent_count, icon: Icons.Send }),
+      h(StatCard, { label: "Opened", value: stats.opened_count, rate: stats.open_rate, icon: Icons.Eye }),
+      h(StatCard, { label: "Clicked", value: stats.clicked_count, rate: stats.click_rate, icon: Icons.MousePointer2 }),
+      h(StatCard, { label: "Replied", value: stats.replied_count, rate: stats.reply_rate, icon: Icons.Reply })
+    ),
+
+    // Loading stats indicator
+    !isDemo && loadingStats && !stats && h('div', { className: "flex items-center gap-2 mb-4 p-4 bg-cream-50 rounded-lg border border-stone-200 text-stone-500" },
+      h(Icons.Loader2, { size: 16, className: "animate-spin" }),
+      h('span', { className: "text-sm" }, "Loading campaign stats...")
     ),
 
     // Main Layout
@@ -345,6 +414,21 @@ const CampaignBuilder = () => {
 
 // --- Sub-Components ---
 
+const StatCard = ({ label, value, rate, icon: IconComponent }) => {
+  return h('div', { className: "flex-1 flex items-center gap-3" },
+    h('div', { className: "p-2 bg-white rounded-lg border border-stone-200" },
+      h(IconComponent, { size: 18, className: "text-jaguar-900" })
+    ),
+    h('div', null,
+      h('div', { className: "flex items-baseline gap-1" },
+        h('span', { className: "text-xl font-semibold text-jaguar-900" }, value || 0),
+        rate !== undefined && rate > 0 && h('span', { className: "text-xs text-stone-500" }, `(${rate}%)`)
+      ),
+      h('span', { className: "text-xs text-stone-500" }, label)
+    )
+  );
+};
+
 const TimelineStep = ({ step, index, isActive, onClick, onDelete }) => {
     // Note: step is guaranteed sanitized here
     const isEmail = step.step_type === 'email';
@@ -386,6 +470,15 @@ const StepEditor = ({ step, onUpdate, saving }) => {
     const handleChange = (key, val) => setData({...data, [key]: val});
     const handleBlur = () => onUpdate(step.id, data);
 
+    // All available personalization variables
+    const personalizationVars = [
+        { var: '{{first_name}}', label: 'First Name' },
+        { var: '{{last_name}}', label: 'Last Name' },
+        { var: '{{email}}', label: 'Email' },
+        { var: '{{company}}', label: 'Company' },
+        { var: '{{unsubscribe_link}}', label: 'Unsubscribe' }
+    ];
+
     const insertVar = (variable) => {
         const textarea = document.getElementById('emailBody');
         if (textarea) {
@@ -400,17 +493,17 @@ const StepEditor = ({ step, onUpdate, saving }) => {
 
     return h('div', { className: "p-8 h-full overflow-y-auto animate-fade-in" },
         h('div', { className: "flex justify-between items-center mb-6" },
-            h('h3', { className: "font-serif text-2xl text-jaguar-900" }, 
-                step.step_type === 'email' ? 'Email Content' : 
+            h('h3', { className: "font-serif text-2xl text-jaguar-900" },
+                step.step_type === 'email' ? 'Email Content' :
                 step.step_type === 'wait' ? 'Wait Delay' : 'Condition'
             ),
             saving && h('span', { className: "text-xs text-stone-400 flex items-center gap-1" }, h(Icons.Loader2, { size: 12 }), "Saving...")
         ),
-        
+
         step.step_type === 'email' && h('div', { className: "space-y-4" },
             h('div', null,
                 h('label', { className: "block text-sm font-medium text-stone-700 mb-1" }, "Subject"),
-                h('input', { 
+                h('input', {
                     className: "w-full px-4 py-2 border border-stone-200 rounded-md",
                     value: data.subject,
                     onChange: e => handleChange('subject', e.target.value),
@@ -420,17 +513,28 @@ const StepEditor = ({ step, onUpdate, saving }) => {
             h('div', null,
                 h('div', { className: "flex justify-between items-center mb-2" },
                     h('label', { className: "block text-sm font-medium text-stone-700" }, "Body"),
-                    h('div', { className: "flex gap-2" },
-                        ['{{first_name}}', '{{company}}'].map(v => h('button', { key: v, onClick: () => insertVar(v), className: "text-xs bg-stone-100 px-2 py-1 rounded" }, v))
+                    h('div', { className: "flex flex-wrap gap-1" },
+                        personalizationVars.map(v => h('button', {
+                            key: v.var,
+                            onClick: () => insertVar(v.var),
+                            className: "text-xs bg-stone-100 px-2 py-1 rounded hover:bg-jaguar-900 hover:text-white transition-colors",
+                            title: v.label
+                        }, v.var))
                     )
                 ),
-                h('textarea', { 
+                h('textarea', {
                     id: "emailBody",
                     className: "w-full px-4 py-2 border border-stone-200 rounded-md h-64 font-mono text-sm",
                     value: data.body,
                     onChange: e => handleChange('body', e.target.value),
-                    onBlur: handleBlur
+                    onBlur: handleBlur,
+                    placeholder: "Write your email here...\n\nUse variables like {{first_name}} to personalize."
                 })
+            ),
+            h('div', { className: "p-3 bg-cream-50 rounded-lg border border-stone-200" },
+                h('p', { className: "text-xs text-stone-500" },
+                    "💡 Tip: Variables are replaced with contact data. Tracking pixel and links are added automatically."
+                )
             )
         ),
 
@@ -446,14 +550,19 @@ const StepEditor = ({ step, onUpdate, saving }) => {
 
         step.step_type === 'condition' && h('div', { className: "p-6 bg-cream-50 rounded-lg border border-stone-200" },
             h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, "Condition Type"),
-            h('select', { 
+            h('select', {
                 className: "w-full px-4 py-2 border border-stone-200 rounded-md bg-white",
                 value: data.condition_type,
                 onChange: e => { handleChange('condition_type', e.target.value); onUpdate(step.id, {condition_type: e.target.value}); }
             },
                 h('option', { value: "if_opened" }, "If Opened"),
+                h('option', { value: "if_not_opened" }, "If NOT Opened"),
                 h('option', { value: "if_clicked" }, "If Clicked"),
-                h('option', { value: "if_replied" }, "If Replied")
+                h('option', { value: "if_replied" }, "If Replied"),
+                h('option', { value: "if_not_replied" }, "If NOT Replied")
+            ),
+            h('p', { className: "text-xs text-stone-500 mt-2" },
+                "Contacts will continue to the next step only if this condition is met."
             )
         )
     );

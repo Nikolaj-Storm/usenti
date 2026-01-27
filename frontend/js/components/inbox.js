@@ -5,9 +5,14 @@ const Inbox = () => {
   const [messages, setMessages] = React.useState([]);
   const [selectedAccount, setSelectedAccount] = React.useState('all');
   const [selectedMessage, setSelectedMessage] = React.useState(null);
+  const [emailContent, setEmailContent] = React.useState(null);
+  const [loadingContent, setLoadingContent] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [syncing, setSyncing] = React.useState(false);
   const [error, setError] = React.useState(null);
+  const [showReplyForm, setShowReplyForm] = React.useState(false);
+  const [replyBody, setReplyBody] = React.useState('');
+  const [sendingReply, setSendingReply] = React.useState(false);
 
   React.useEffect(() => {
     loadData();
@@ -52,8 +57,28 @@ const Inbox = () => {
     setSelectedMessage(null); // Clear selected message when switching accounts
   };
 
+  const handleSendReply = async () => {
+    if (!replyBody.trim() || !selectedMessage) return;
+
+    setSendingReply(true);
+    try {
+      await api.sendReply(selectedMessage.id, replyBody);
+      alert('Reply sent successfully!');
+      setShowReplyForm(false);
+      setReplyBody('');
+    } catch (error) {
+      console.error('Failed to send reply:', error);
+      alert('Failed to send reply: ' + error.message);
+    } finally {
+      setSendingReply(false);
+    }
+  };
+
   const handleSelectMessage = async (msg) => {
     setSelectedMessage(msg);
+    setEmailContent(null);
+    setShowReplyForm(false);
+    setReplyBody('');
 
     // Mark as read if it's unread
     if (!msg.is_read) {
@@ -66,6 +91,22 @@ const Inbox = () => {
       } catch (error) {
         console.error('Failed to mark message as read:', error);
       }
+    }
+
+    // Fetch full email content on-demand
+    setLoadingContent(true);
+    try {
+      const content = await api.getEmailContent(msg.id);
+      setEmailContent(content);
+    } catch (error) {
+      console.error('Failed to load email content:', error);
+      // Use snippet as fallback
+      setEmailContent({
+        body_text: msg.snippet || 'Failed to load email content',
+        body_html: null
+      });
+    } finally {
+      setLoadingContent(false);
     }
   };
 
@@ -140,7 +181,7 @@ const Inbox = () => {
         h('p', { className: "text-stone-500 mt-1" },
           messages.length === 0
             ? "No messages yet"
-            : `${messages.length} message${messages.length !== 1 ? 's' : ''} across all accounts`
+            : `${messages.length} recent message${messages.length !== 1 ? 's' : ''} (max 500 per account, 30-day retention)`
         )
       ),
       h('div', { className: "flex gap-3" },
@@ -247,21 +288,55 @@ const Inbox = () => {
               ),
               // Message Body
               h('div', { className: "flex-1 p-8 overflow-y-auto" },
-                h('div', {
-                  className: "prose max-w-none text-stone-800",
-                  dangerouslySetInnerHTML: {
-                    __html: selectedMessage.body_html || (selectedMessage.body_text?.replace(/\n/g, '<br/>') || '<p class="text-stone-400 italic">No content available</p>')
-                  }
-                })
+                loadingContent
+                  ? h('div', { className: "flex flex-col items-center justify-center h-full text-stone-400" },
+                      h(Icons.Loader2, { size: 32, className: "animate-spin mb-3" }),
+                      h('p', { className: "text-sm" }, "Loading email content...")
+                    )
+                  : emailContent
+                    ? h('div', {
+                        className: "prose max-w-none text-stone-800",
+                        dangerouslySetInnerHTML: {
+                          __html: emailContent.body_html || (emailContent.body_text?.replace(/\n/g, '<br/>') || '<p class="text-stone-400 italic">No content available</p>')
+                        }
+                      })
+                    : h('div', { className: "text-stone-400 italic" }, "Loading...")
               ),
+              // Reply Form (shown when replying)
+              showReplyForm && h('div', { className: "p-4 border-t border-stone-200 bg-cream-50" },
+                h('div', { className: "mb-2" },
+                  h('label', { className: "text-sm font-medium text-stone-700" }, `Reply to: ${selectedMessage.from_name || selectedMessage.from_address}`)
+                ),
+                h('textarea', {
+                  className: "w-full p-3 border border-stone-200 rounded-lg mb-3 resize-none",
+                  rows: 6,
+                  placeholder: "Type your reply here...",
+                  value: replyBody,
+                  onChange: (e) => setReplyBody(e.target.value),
+                  disabled: sendingReply
+                }),
+                h('div', { className: "flex gap-2" },
+                  h('button', {
+                    className: "px-4 py-2 bg-jaguar-900 text-white rounded-lg hover:bg-jaguar-800 transition-colors flex items-center gap-2 disabled:opacity-50",
+                    onClick: handleSendReply,
+                    disabled: sendingReply || !replyBody.trim()
+                  },
+                    sendingReply ? h(Icons.Loader2, { size: 16, className: "animate-spin" }) : h(Icons.Send, { size: 16 }),
+                    h('span', null, sendingReply ? 'Sending...' : 'Send Reply')
+                  ),
+                  h('button', {
+                    className: "px-4 py-2 border border-stone-200 text-stone-700 rounded-lg hover:bg-stone-100 transition-colors",
+                    onClick: () => { setShowReplyForm(false); setReplyBody(''); },
+                    disabled: sendingReply
+                  }, 'Cancel')
+                )
+              ),
+
               // Message Actions (Footer)
-              h('div', { className: "p-4 border-t border-stone-100 bg-stone-50 flex gap-2" },
+              !showReplyForm && h('div', { className: "p-4 border-t border-stone-100 bg-stone-50 flex gap-2" },
                 h('button', {
                   className: "px-4 py-2 bg-jaguar-900 text-white rounded-lg hover:bg-jaguar-800 transition-colors flex items-center gap-2",
-                  onClick: () => {
-                    // TODO: Implement reply functionality
-                    alert('Reply functionality coming soon!');
-                  }
+                  onClick: () => setShowReplyForm(true)
                 },
                   h(Icons.Reply, { size: 16 }),
                   h('span', null, 'Reply')
@@ -269,10 +344,12 @@ const Inbox = () => {
                 h('button', {
                   className: "px-4 py-2 border border-stone-200 text-stone-700 rounded-lg hover:bg-stone-100 transition-colors",
                   onClick: () => {
-                    // TODO: Implement forward functionality
-                    alert('Forward functionality coming soon!');
+                    // Copy email to clipboard for forwarding
+                    const text = `Subject: Fwd: ${selectedMessage.subject}\n\n--- Forwarded Message ---\nFrom: ${selectedMessage.from_name || selectedMessage.from_address} <${selectedMessage.from_address}>\nDate: ${formatFullDate(selectedMessage.received_at)}\n\n${emailContent?.body_text || selectedMessage.snippet}`;
+                    navigator.clipboard.writeText(text);
+                    alert('Email content copied to clipboard for forwarding');
                   }
-                }, 'Forward')
+                }, 'Copy for Forward')
               )
             )
           : h('div', { className: "h-full flex flex-col items-center justify-center text-stone-400" },
