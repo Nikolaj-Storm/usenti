@@ -827,6 +827,173 @@ app.post('/api/inbox/sync', authenticateUser, async (req, res) => {
   }
 });
 
+// Fetch email content on-demand from IMAP (without storing in database)
+app.get('/api/inbox/:id/content', authenticateUser, async (req, res) => {
+  const requestId = `FETCH-CONTENT-${Date.now()}`;
+
+  try {
+    const { id } = req.params;
+    console.log(`[${requestId}] Fetching content for message ${id}`);
+
+    // Get the inbox message record
+    const { data: message, error: msgError } = await supabase
+      .from('inbox_messages')
+      .select('*, email_accounts!inner(id, user_id)')
+      .eq('id', id)
+      .single();
+
+    if (msgError || !message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Verify ownership
+    if (message.email_accounts.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // If we already have the body stored, return it
+    if (message.body_html || message.body_text) {
+      console.log(`[${requestId}] Returning stored content`);
+      return res.json({
+        body_html: message.body_html,
+        body_text: message.body_text,
+        from_name: message.from_name,
+        from_address: message.from_address,
+        subject: message.subject,
+        received_at: message.received_at
+      });
+    }
+
+    // Fetch from IMAP if not stored
+    console.log(`[${requestId}] Fetching from IMAP server...`);
+    const imapMonitor = require('./services/imapMonitor');
+
+    try {
+      const content = await imapMonitor.fetchEmailContent(
+        message.email_account_id,
+        message.message_id
+      );
+
+      // Optionally store the fetched content for future use
+      await supabase
+        .from('inbox_messages')
+        .update({
+          body_html: content.body_html,
+          body_text: content.body_text
+        })
+        .eq('id', id);
+
+      console.log(`[${requestId}] ✅ Fetched and cached content`);
+      res.json(content);
+    } catch (imapError) {
+      console.error(`[${requestId}] IMAP fetch failed:`, imapError.message);
+      // Return snippet as fallback
+      res.json({
+        body_html: null,
+        body_text: message.snippet || 'Email content could not be loaded from server.',
+        from_name: message.from_name,
+        from_address: message.from_address,
+        subject: message.subject,
+        received_at: message.received_at,
+        fetch_error: imapError.message
+      });
+    }
+  } catch (error) {
+    console.error(`[${requestId}] Error:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Send reply to an inbox message
+app.post('/api/inbox/:id/reply', authenticateUser, async (req, res) => {
+  const requestId = `REPLY-${Date.now()}`;
+
+  try {
+    const { id } = req.params;
+    const { body } = req.body;
+
+    if (!body || body.trim().length === 0) {
+      return res.status(400).json({ error: 'Reply body is required' });
+    }
+
+    console.log(`[${requestId}] Sending reply to message ${id}`);
+
+    // Get the original message
+    const { data: originalMessage, error: msgError } = await supabase
+      .from('inbox_messages')
+      .select('*, email_accounts!inner(*)')
+      .eq('id', id)
+      .single();
+
+    if (msgError || !originalMessage) {
+      return res.status(404).json({ error: 'Original message not found' });
+    }
+
+    // Verify ownership
+    if (originalMessage.email_accounts.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const emailAccount = originalMessage.email_accounts;
+    const replySubject = originalMessage.subject.startsWith('Re:')
+      ? originalMessage.subject
+      : `Re: ${originalMessage.subject}`;
+
+    // Compose reply body with quote
+    const quotedOriginal = `\n\n---\nOn ${new Date(originalMessage.received_at).toLocaleString()}, ${originalMessage.from_name || originalMessage.from_address} wrote:\n> ${(originalMessage.snippet || '').split('\n').join('\n> ')}`;
+    const fullBody = body + quotedOriginal;
+
+    // Use emailService to send the reply
+    const emailService = require('./services/emailService');
+
+    console.log(`[${requestId}] Sending reply from ${emailAccount.email_address} to ${originalMessage.from_address}`);
+
+    await emailService.sendEmail({
+      emailAccountId: emailAccount.id,
+      to: originalMessage.from_address,
+      subject: replySubject,
+      body: fullBody.replace(/\n/g, '<br/>'),
+      campaignId: null,
+      contactId: null,
+      trackOpens: false,
+      trackClicks: false
+    });
+
+    console.log(`[${requestId}] ✅ Reply sent successfully`);
+    res.json({ success: true, message: 'Reply sent successfully' });
+  } catch (error) {
+    console.error(`[${requestId}] Error sending reply:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Cleanup old inbox messages (admin/maintenance endpoint)
+app.post('/api/inbox/cleanup', authenticateUser, async (req, res) => {
+  try {
+    const imapMonitor = require('./services/imapMonitor');
+
+    // Get user's email accounts
+    const { data: accounts } = await supabase
+      .from('email_accounts')
+      .select('id')
+      .eq('user_id', req.user.id);
+
+    if (!accounts || accounts.length === 0) {
+      return res.json({ message: 'No accounts to clean up' });
+    }
+
+    // Run cleanup for each account
+    for (const account of accounts) {
+      await imapMonitor.cleanupOldMessages(account.id);
+      await imapMonitor.enforceMessageLimit(account.id);
+    }
+
+    res.json({ message: 'Cleanup complete' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============================================================================
 // CONTACT LISTS ROUTES
 // ============================================================================

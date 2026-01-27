@@ -7,6 +7,85 @@ class ImapMonitor {
   constructor() {
     this.connections = new Map();
     this.monitoring = false;
+    // Storage limits
+    this.maxMessagesPerAccount = 500;
+    this.maxAgeDays = 30;
+  }
+
+  // Cleanup old messages to prevent database bloat
+  async cleanupOldMessages(accountId = null) {
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - this.maxAgeDays);
+
+      let deleteQuery = supabase
+        .from('inbox_messages')
+        .delete()
+        .lt('received_at', cutoffDate.toISOString());
+
+      if (accountId) {
+        deleteQuery = deleteQuery.eq('email_account_id', accountId);
+      }
+
+      const { count, error } = await deleteQuery;
+
+      if (error) {
+        console.error('[IMAP] Error cleaning up old messages:', error);
+      } else {
+        console.log(`[IMAP] Cleaned up ${count || 0} messages older than ${this.maxAgeDays} days`);
+      }
+    } catch (error) {
+      console.error('[IMAP] Cleanup error:', error);
+    }
+  }
+
+  // Enforce max messages per account limit
+  async enforceMessageLimit(accountId) {
+    try {
+      // Count messages for this account
+      const { count, error: countError } = await supabase
+        .from('inbox_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('email_account_id', accountId);
+
+      if (countError) {
+        console.error('[IMAP] Error counting messages:', countError);
+        return;
+      }
+
+      if (count > this.maxMessagesPerAccount) {
+        const excess = count - this.maxMessagesPerAccount;
+        console.log(`[IMAP] Account ${accountId} has ${count} messages, removing ${excess} oldest...`);
+
+        // Get oldest messages to delete
+        const { data: oldestMessages, error: fetchError } = await supabase
+          .from('inbox_messages')
+          .select('id')
+          .eq('email_account_id', accountId)
+          .order('received_at', { ascending: true })
+          .limit(excess);
+
+        if (fetchError) {
+          console.error('[IMAP] Error fetching oldest messages:', fetchError);
+          return;
+        }
+
+        const idsToDelete = oldestMessages.map(m => m.id);
+
+        const { error: deleteError } = await supabase
+          .from('inbox_messages')
+          .delete()
+          .in('id', idsToDelete);
+
+        if (deleteError) {
+          console.error('[IMAP] Error deleting excess messages:', deleteError);
+        } else {
+          console.log(`[IMAP] Removed ${idsToDelete.length} old messages from account ${accountId}`);
+        }
+      }
+    } catch (error) {
+      console.error('[IMAP] Enforce limit error:', error);
+    }
   }
 
   // Start monitoring all active email accounts
@@ -274,6 +353,9 @@ class ImapMonitor {
                 }
               }
 
+              // Cleanup: enforce message limit per account
+              await this.enforceMessageLimit(account.id);
+
               console.log(`[${requestId}] ✅ Inbox sync complete. Saved ${messages.length} messages.`);
               imap.end();
               resolve(messages);
@@ -293,6 +375,104 @@ class ImapMonitor {
         imap.connect();
       } catch (error) {
         console.error(`[${requestId}] Sync error:`, error);
+        reject(error);
+      }
+    });
+  }
+
+  // Fetch a specific email's full content from IMAP (on-demand, not stored)
+  async fetchEmailContent(accountId, messageId) {
+    return new Promise(async (resolve, reject) => {
+      const requestId = `FETCH-${Date.now()}`;
+      console.log(`[${requestId}] Fetching full content for message ${messageId}...`);
+
+      try {
+        // Get account details
+        const { data: account, error: accountError } = await supabase
+          .from('email_accounts')
+          .select('*')
+          .eq('id', accountId)
+          .single();
+
+        if (accountError || !account) {
+          return reject(new Error('Email account not found'));
+        }
+
+        const imap = new Imap({
+          user: account.imap_username,
+          password: decrypt(account.imap_password),
+          host: account.imap_host,
+          port: account.imap_port,
+          tls: account.imap_port === 993,
+          tlsOptions: { rejectUnauthorized: false }
+        });
+
+        imap.once('ready', () => {
+          imap.openBox('INBOX', true, (err, box) => {
+            if (err) {
+              imap.end();
+              return reject(err);
+            }
+
+            // Search for the message by Message-ID header
+            imap.search([['HEADER', 'MESSAGE-ID', messageId]], (err, results) => {
+              if (err || !results || results.length === 0) {
+                imap.end();
+                return reject(new Error('Message not found on server'));
+              }
+
+              const fetch = imap.fetch(results, { bodies: '' });
+              let emailContent = null;
+
+              fetch.on('message', (msg) => {
+                msg.on('body', (stream) => {
+                  simpleParser(stream, (err, parsed) => {
+                    if (err) {
+                      console.error(`[${requestId}] Parse error:`, err);
+                      return;
+                    }
+                    emailContent = {
+                      from_name: parsed.from?.value?.[0]?.name || '',
+                      from_address: parsed.from?.value?.[0]?.address || '',
+                      to: parsed.to?.text || '',
+                      subject: parsed.subject || '(No Subject)',
+                      body_html: parsed.html || '',
+                      body_text: parsed.text || '',
+                      received_at: parsed.date?.toISOString() || new Date().toISOString(),
+                      attachments: (parsed.attachments || []).map(a => ({
+                        filename: a.filename,
+                        contentType: a.contentType,
+                        size: a.size
+                      }))
+                    };
+                  });
+                });
+              });
+
+              fetch.once('end', () => {
+                imap.end();
+                if (emailContent) {
+                  console.log(`[${requestId}] ✅ Fetched full email content`);
+                  resolve(emailContent);
+                } else {
+                  reject(new Error('Failed to parse email content'));
+                }
+              });
+
+              fetch.once('error', (err) => {
+                imap.end();
+                reject(err);
+              });
+            });
+          });
+        });
+
+        imap.once('error', (err) => {
+          reject(err);
+        });
+
+        imap.connect();
+      } catch (error) {
         reject(error);
       }
     });

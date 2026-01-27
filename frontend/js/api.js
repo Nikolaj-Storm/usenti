@@ -217,6 +217,14 @@ const api = {
     return this.get(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${id}/stats`);
   },
 
+  async deleteCampaign(id) {
+    return this.delete(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${id}`);
+  },
+
+  async getCampaignContacts(id) {
+    return this.get(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${id}/contacts`);
+  },
+
   // Dashboard
   async getDashboardStats() {
     return this.get(APP_CONFIG.ENDPOINTS.DASHBOARD_STATS);
@@ -237,5 +245,23 @@ const api = {
       account_id: accountId,
       limit
     });
+  },
+
+  // Fetch full email content (on-demand from IMAP if needed)
+  async getEmailContent(messageId) {
+    console.log('📧 [API] Fetching email content...');
+    return this.get(`/api/inbox/${messageId}/content`);
+  },
+
+  // Cleanup old inbox messages
+  async cleanupInbox() {
+    console.log('🧹 [API] Cleaning up old inbox messages...');
+    return this.post('/api/inbox/cleanup');
+  },
+
+  // Send reply to an inbox message
+  async sendReply(messageId, body) {
+    console.log('📤 [API] Sending reply...');
+    return this.post(`/api/inbox/${messageId}/reply`, { body });
   }
 };
