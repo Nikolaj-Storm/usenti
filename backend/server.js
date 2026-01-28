@@ -629,7 +629,13 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
       });
     }
 
-    const transporter = nodemailer.createTransport({
+    // Determine if this is a Zoho account (needs special handling)
+    const isZoho = account.smtp_host?.toLowerCase().includes('zoho');
+    if (isZoho) {
+      console.log(`[TEST-SMTP] Detected Zoho account - using optimized settings`);
+    }
+
+    const transporterConfig = {
       host: account.smtp_host,
       port: smtpPort,
       secure: isSecure,
@@ -637,8 +643,19 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
         user: account.smtp_username,
         pass: decryptedPassword
       },
-      tls: { rejectUnauthorized: false }
-    });
+      tls: {
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1.2'
+      }
+    };
+
+    // Zoho works better with AUTH LOGIN instead of AUTH PLAIN
+    if (isZoho) {
+      transporterConfig.authMethod = 'LOGIN';
+    }
+
+    console.log(`[TEST-SMTP] Transport config: authMethod=${transporterConfig.authMethod || 'default'}`);
+    const transporter = nodemailer.createTransport(transporterConfig);
 
     console.log(`[TEST-SMTP] Verifying connection...`);
     await transporter.verify();

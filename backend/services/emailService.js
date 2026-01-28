@@ -56,7 +56,14 @@ class EmailService {
     }
 
     console.log(`[EMAIL]    🔧 Creating SMTP transporter...`);
-    const transporter = nodemailer.createTransport({
+
+    // Determine if this is a Zoho account (needs special handling)
+    const isZoho = account.smtp_host?.toLowerCase().includes('zoho');
+    if (isZoho) {
+      console.log(`[EMAIL]    📧 Detected Zoho account - using optimized settings`);
+    }
+
+    const transporterConfig = {
       host: account.smtp_host,
       port: smtpPort,
       secure: isSecure,
@@ -65,9 +72,20 @@ class EmailService {
         pass: decryptedPassword
       },
       tls: {
-        rejectUnauthorized: false
+        rejectUnauthorized: false,
+        // Zoho requires proper TLS cipher handling
+        minVersion: 'TLSv1.2'
       }
-    });
+    };
+
+    // Zoho works better with AUTH LOGIN instead of AUTH PLAIN
+    if (isZoho) {
+      transporterConfig.authMethod = 'LOGIN';
+    }
+
+    console.log(`[EMAIL]    🔧 Transport config: host=${transporterConfig.host}, port=${transporterConfig.port}, secure=${transporterConfig.secure}, authMethod=${transporterConfig.authMethod || 'default'}`);
+
+    const transporter = nodemailer.createTransport(transporterConfig);
 
     console.log(`[EMAIL]    ✅ Transporter created and cached`);
     this.transporters.set(emailAccountId, transporter);
