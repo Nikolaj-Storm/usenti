@@ -5,9 +5,54 @@ const crypto = require('crypto');
 const gmailService = require('./gmailService');
 const microsoftService = require('./microsoftService');
 
+// Zoho SMTP hosts for different data centers
+const ZOHO_SMTP_HOSTS = [
+  'smtp.zoho.com',      // US
+  'smtp.zoho.eu',       // EU
+  'smtp.zoho.in',       // India
+  'smtp.zoho.com.au',   // Australia
+  'smtp.zoho.com.cn'    // China
+];
+
 class EmailService {
   constructor() {
     this.transporters = new Map();
+    this.zohoHostCache = new Map(); // Cache working Zoho hosts per account
+  }
+
+  // Check if a host is a Zoho SMTP host
+  isZohoHost(host) {
+    return host?.toLowerCase().includes('zoho');
+  }
+
+  // Create a transporter config for a given host
+  createTransporterConfig(host, port, isSecure, username, password, isZoho) {
+    const config = {
+      host,
+      port,
+      secure: isSecure,
+      auth: {
+        user: username,
+        pass: password
+      },
+      tls: {
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1.2'
+      }
+    };
+
+    if (isZoho) {
+      config.authMethod = 'LOGIN';
+    }
+
+    return config;
+  }
+
+  // Try to verify a transporter connection
+  async tryTransporter(config) {
+    const transporter = nodemailer.createTransport(config);
+    await transporter.verify();
+    return transporter;
   }
 
   // Get or create transporter for email account
@@ -55,35 +100,80 @@ class EmailService {
       throw new Error(`Password decryption failed: ${decryptError.message}`);
     }
 
+    const isZoho = this.isZohoHost(account.smtp_host) || account.account_type === 'zoho';
+
+    if (isZoho) {
+      console.log(`[EMAIL]    📧 Detected Zoho account - will try multiple data centers if needed`);
+    }
+
     console.log(`[EMAIL]    🔧 Creating SMTP transporter...`);
 
-    // Determine if this is a Zoho account (needs special handling)
-    const isZoho = account.smtp_host?.toLowerCase().includes('zoho');
+    // For Zoho accounts, try multiple data centers
     if (isZoho) {
-      console.log(`[EMAIL]    📧 Detected Zoho account - using optimized settings`);
-    }
+      // Check if we have a cached working host for this account
+      const cachedHost = this.zohoHostCache.get(emailAccountId);
 
-    const transporterConfig = {
-      host: account.smtp_host,
-      port: smtpPort,
-      secure: isSecure,
-      auth: {
-        user: account.smtp_username,
-        pass: decryptedPassword
-      },
-      tls: {
-        rejectUnauthorized: false,
-        // Zoho requires proper TLS cipher handling
-        minVersion: 'TLSv1.2'
+      // Build list of hosts to try - cached host first, then configured, then all others
+      const hostsToTry = [];
+      if (cachedHost) {
+        hostsToTry.push(cachedHost);
       }
-    };
+      if (account.smtp_host && !hostsToTry.includes(account.smtp_host)) {
+        hostsToTry.push(account.smtp_host);
+      }
+      for (const host of ZOHO_SMTP_HOSTS) {
+        if (!hostsToTry.includes(host)) {
+          hostsToTry.push(host);
+        }
+      }
 
-    // Zoho works better with AUTH LOGIN instead of AUTH PLAIN
-    if (isZoho) {
-      transporterConfig.authMethod = 'LOGIN';
+      console.log(`[EMAIL]    🌐 Will try Zoho hosts in order: ${hostsToTry.join(', ')}`);
+
+      let lastError;
+      for (const host of hostsToTry) {
+        console.log(`[EMAIL]    🔄 Trying Zoho host: ${host}...`);
+        const config = this.createTransporterConfig(
+          host, smtpPort, isSecure,
+          account.smtp_username, decryptedPassword, true
+        );
+
+        try {
+          const transporter = await this.tryTransporter(config);
+          console.log(`[EMAIL]    ✅ Connected successfully to ${host}`);
+
+          // Cache this working host for future use
+          this.zohoHostCache.set(emailAccountId, host);
+          this.transporters.set(emailAccountId, transporter);
+
+          // Update the account's SMTP host in the database if it changed
+          if (host !== account.smtp_host) {
+            console.log(`[EMAIL]    📝 Updating account SMTP host to ${host}`);
+            await supabase
+              .from('email_accounts')
+              .update({ smtp_host: host })
+              .eq('id', emailAccountId);
+          }
+
+          return transporter;
+        } catch (err) {
+          console.log(`[EMAIL]    ❌ Failed with ${host}: ${err.message} (code: ${err.code})`);
+          lastError = err;
+          // Continue to next host
+        }
+      }
+
+      // All hosts failed
+      console.error(`[EMAIL]    ❌ All Zoho SMTP hosts failed`);
+      throw lastError || new Error('Failed to connect to any Zoho SMTP server');
     }
 
-    console.log(`[EMAIL]    🔧 Transport config: host=${transporterConfig.host}, port=${transporterConfig.port}, secure=${transporterConfig.secure}, authMethod=${transporterConfig.authMethod || 'default'}`);
+    // Non-Zoho accounts: standard single-host connection
+    const transporterConfig = this.createTransporterConfig(
+      account.smtp_host, smtpPort, isSecure,
+      account.smtp_username, decryptedPassword, false
+    );
+
+    console.log(`[EMAIL]    🔧 Transport config: host=${transporterConfig.host}, port=${transporterConfig.port}, secure=${transporterConfig.secure}`);
 
     const transporter = nodemailer.createTransport(transporterConfig);
 
@@ -376,6 +466,10 @@ class EmailService {
   clearTransporter(emailAccountId) {
     if (this.transporters.has(emailAccountId)) {
       this.transporters.delete(emailAccountId);
+    }
+    // Also clear Zoho host cache so it will try all hosts again
+    if (this.zohoHostCache.has(emailAccountId)) {
+      this.zohoHostCache.delete(emailAccountId);
     }
   }
 
