@@ -15,14 +15,30 @@ const sanitizeCampaign = (c) => {
 
 const sanitizeStep = (s) => {
   if (!s || typeof s !== 'object') return null;
+
+  // Parse condition_branches - could be string (from DB) or array
+  let branches = [];
+  if (s.condition_branches) {
+    if (typeof s.condition_branches === 'string') {
+      try { branches = JSON.parse(s.condition_branches); } catch(e) { branches = []; }
+    } else if (Array.isArray(s.condition_branches)) {
+      branches = s.condition_branches;
+    }
+  }
+
   return {
     id: String(s.id || Math.random()), // Ensure ID exists
     step_type: String(s.step_type || 'email'),
     step_order: Number(s.step_order || 0),
     subject: String(s.subject || ''),
     body: String(s.body || ''),
-    wait_days: Number(s.wait_days || 1),
-    condition_type: String(s.condition_type || 'if_opened')
+    // Wait step fields - support days, hours, minutes
+    wait_days: Number(s.wait_days || 0),
+    wait_hours: Number(s.wait_hours || 0),
+    wait_minutes: Number(s.wait_minutes || 0),
+    // Condition step fields - support multiple branches
+    condition_type: String(s.condition_type || 'if_opened'), // Legacy support
+    condition_branches: branches // New multi-branch support
   };
 };
 
@@ -206,7 +222,7 @@ const CampaignBuilder = () => {
 
   const handleAddStep = async (stepType) => {
     if (isDemo || !selectedCampaign) return;
-    
+
     // Optimistic Update
     const tempId = 'temp-' + Date.now();
     const newStepRaw = {
@@ -215,8 +231,13 @@ const CampaignBuilder = () => {
       step_order: steps.length + 1,
       subject: stepType === 'email' ? 'New Email' : '',
       body: '',
-      wait_days: 2,
-      condition_type: 'if_opened'
+      // Wait step defaults
+      wait_days: 0,
+      wait_hours: 1,
+      wait_minutes: 0,
+      // Condition step defaults - start with one branch
+      condition_type: 'if_opened',
+      condition_branches: stepType === 'condition' ? [{ condition: 'if_opened', next_step_id: null }] : []
     };
     
     // Add to UI immediately
@@ -412,6 +433,37 @@ const CampaignBuilder = () => {
   );
 };
 
+// --- Helper Functions ---
+
+const formatWaitDuration = (step) => {
+    const parts = [];
+    if (step.wait_days > 0) parts.push(`${step.wait_days}d`);
+    if (step.wait_hours > 0) parts.push(`${step.wait_hours}h`);
+    if (step.wait_minutes > 0) parts.push(`${step.wait_minutes}m`);
+    return parts.length > 0 ? `Wait ${parts.join(' ')}` : 'Wait 1h';
+};
+
+const formatConditionLabel = (condition) => {
+    const labels = {
+        'if_opened': 'If Opened',
+        'if_not_opened': 'If NOT Opened',
+        'if_clicked': 'If Clicked',
+        'if_not_clicked': 'If NOT Clicked',
+        'if_replied': 'If Replied',
+        'if_not_replied': 'If NOT Replied'
+    };
+    return labels[condition] || condition;
+};
+
+const CONDITION_OPTIONS = [
+    { value: 'if_opened', label: 'If Opened' },
+    { value: 'if_not_opened', label: 'If NOT Opened' },
+    { value: 'if_clicked', label: 'If Clicked' },
+    { value: 'if_not_clicked', label: 'If NOT Clicked' },
+    { value: 'if_replied', label: 'If Replied' },
+    { value: 'if_not_replied', label: 'If NOT Replied' }
+];
+
 // --- Sub-Components ---
 
 const StatCard = ({ label, value, rate, icon: IconComponent }) => {
@@ -453,10 +505,18 @@ const TimelineStep = ({ step, index, isActive, onClick, onDelete }) => {
                 h('h4', { className: "font-serif font-semibold text-jaguar-900" }, step.subject || 'New Email'),
                 h('p', { className: "text-sm text-stone-500 line-clamp-2" }, (step.body || '').substring(0, 50) + '...')
             ),
-            isWait && h('h4', { className: "font-semibold text-jaguar-900" }, `Wait ${step.wait_days} Days`),
+            isWait && h('h4', { className: "font-semibold text-jaguar-900" }, formatWaitDuration(step)),
             isCondition && h('div', null,
-                h('span', { className: "text-sm font-semibold text-jaguar-900 block" }, 'Condition:'),
-                h('span', { className: "text-sm text-stone-600" }, step.condition_type.replace('if_', 'If ').replace('_', ' '))
+                h('span', { className: "text-sm font-semibold text-jaguar-900 block" }, 'Conditions:'),
+                step.condition_branches && step.condition_branches.length > 0
+                    ? h('div', { className: "text-xs text-stone-600 space-y-1 mt-1" },
+                        step.condition_branches.map((branch, i) =>
+                            h('span', { key: i, className: "block" },
+                                `${i + 1}. ${formatConditionLabel(branch.condition)}`
+                            )
+                        )
+                    )
+                    : h('span', { className: "text-sm text-stone-600" }, formatConditionLabel(step.condition_type))
             )
         )
     );
@@ -538,31 +598,208 @@ const StepEditor = ({ step, onUpdate, saving }) => {
             )
         ),
 
-        step.step_type === 'wait' && h('div', { className: "text-center py-10" },
-            h(Icons.Clock, { size: 48, className: "mx-auto text-gold-600 mb-4" }),
-            h('div', { className: "flex items-center justify-center gap-4" },
-                h('button', { onClick: () => { const v = Math.max(1, data.wait_days-1); handleChange('wait_days', v); onUpdate(step.id, {wait_days: v}); }, className: "w-10 h-10 border rounded-full" }, "-"),
-                h('span', { className: "text-4xl font-serif text-jaguar-900" }, data.wait_days),
-                h('button', { onClick: () => { const v = data.wait_days+1; handleChange('wait_days', v); onUpdate(step.id, {wait_days: v}); }, className: "w-10 h-10 border rounded-full" }, "+")
+        step.step_type === 'wait' && h(WaitStepEditor, { data, handleChange, onUpdate, step }),
+
+        step.step_type === 'condition' && h(ConditionStepEditor, { data, setData, onUpdate, step })
+    );
+};
+
+// Wait Step Editor - Days, Hours, Minutes inputs
+const WaitStepEditor = ({ data, handleChange, onUpdate, step }) => {
+    const updateWait = (field, value) => {
+        const v = Math.max(0, parseInt(value) || 0);
+        handleChange(field, v);
+        onUpdate(step.id, { [field]: v });
+    };
+
+    return h('div', { className: "text-center py-6" },
+        h(Icons.Clock, { size: 48, className: "mx-auto text-gold-600 mb-6" }),
+
+        h('div', { className: "flex justify-center gap-6" },
+            // Days
+            h('div', { className: "flex flex-col items-center" },
+                h('div', { className: "flex items-center gap-2" },
+                    h('button', {
+                        onClick: () => updateWait('wait_days', (data.wait_days || 0) - 1),
+                        className: "w-8 h-8 border rounded-full hover:bg-stone-100 text-lg"
+                    }, "-"),
+                    h('input', {
+                        type: "number",
+                        min: "0",
+                        value: data.wait_days || 0,
+                        onChange: e => updateWait('wait_days', e.target.value),
+                        className: "w-16 text-center text-2xl font-serif text-jaguar-900 border-b border-stone-300 focus:border-jaguar-900 outline-none"
+                    }),
+                    h('button', {
+                        onClick: () => updateWait('wait_days', (data.wait_days || 0) + 1),
+                        className: "w-8 h-8 border rounded-full hover:bg-stone-100 text-lg"
+                    }, "+")
+                ),
+                h('span', { className: "text-sm text-stone-500 mt-1" }, "Days")
             ),
-            h('p', { className: "text-stone-500 mt-2" }, "Days Delay")
+
+            // Hours
+            h('div', { className: "flex flex-col items-center" },
+                h('div', { className: "flex items-center gap-2" },
+                    h('button', {
+                        onClick: () => updateWait('wait_hours', (data.wait_hours || 0) - 1),
+                        className: "w-8 h-8 border rounded-full hover:bg-stone-100 text-lg"
+                    }, "-"),
+                    h('input', {
+                        type: "number",
+                        min: "0",
+                        max: "23",
+                        value: data.wait_hours || 0,
+                        onChange: e => updateWait('wait_hours', Math.min(23, e.target.value)),
+                        className: "w-16 text-center text-2xl font-serif text-jaguar-900 border-b border-stone-300 focus:border-jaguar-900 outline-none"
+                    }),
+                    h('button', {
+                        onClick: () => updateWait('wait_hours', Math.min(23, (data.wait_hours || 0) + 1)),
+                        className: "w-8 h-8 border rounded-full hover:bg-stone-100 text-lg"
+                    }, "+")
+                ),
+                h('span', { className: "text-sm text-stone-500 mt-1" }, "Hours")
+            ),
+
+            // Minutes
+            h('div', { className: "flex flex-col items-center" },
+                h('div', { className: "flex items-center gap-2" },
+                    h('button', {
+                        onClick: () => updateWait('wait_minutes', (data.wait_minutes || 0) - 5),
+                        className: "w-8 h-8 border rounded-full hover:bg-stone-100 text-lg"
+                    }, "-"),
+                    h('input', {
+                        type: "number",
+                        min: "0",
+                        max: "59",
+                        value: data.wait_minutes || 0,
+                        onChange: e => updateWait('wait_minutes', Math.min(59, e.target.value)),
+                        className: "w-16 text-center text-2xl font-serif text-jaguar-900 border-b border-stone-300 focus:border-jaguar-900 outline-none"
+                    }),
+                    h('button', {
+                        onClick: () => updateWait('wait_minutes', Math.min(59, (data.wait_minutes || 0) + 5)),
+                        className: "w-8 h-8 border rounded-full hover:bg-stone-100 text-lg"
+                    }, "+")
+                ),
+                h('span', { className: "text-sm text-stone-500 mt-1" }, "Minutes")
+            )
         ),
 
-        step.step_type === 'condition' && h('div', { className: "p-6 bg-cream-50 rounded-lg border border-stone-200" },
-            h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, "Condition Type"),
-            h('select', {
-                className: "w-full px-4 py-2 border border-stone-200 rounded-md bg-white",
-                value: data.condition_type,
-                onChange: e => { handleChange('condition_type', e.target.value); onUpdate(step.id, {condition_type: e.target.value}); }
-            },
-                h('option', { value: "if_opened" }, "If Opened"),
-                h('option', { value: "if_not_opened" }, "If NOT Opened"),
-                h('option', { value: "if_clicked" }, "If Clicked"),
-                h('option', { value: "if_replied" }, "If Replied"),
-                h('option', { value: "if_not_replied" }, "If NOT Replied")
+        h('p', { className: "text-stone-500 mt-6 text-sm" },
+            `Total delay: ${formatWaitDuration(data)}`
+        ),
+
+        h('div', { className: "mt-4 p-3 bg-cream-50 rounded-lg border border-stone-200" },
+            h('p', { className: "text-xs text-stone-500" },
+                "💡 After this delay, the campaign will proceed to the next step."
+            )
+        )
+    );
+};
+
+// Condition Step Editor - Multiple conditions with branches
+const ConditionStepEditor = ({ data, setData, onUpdate, step }) => {
+    // Initialize branches if empty
+    const branches = data.condition_branches && data.condition_branches.length > 0
+        ? data.condition_branches
+        : [{ condition: data.condition_type || 'if_opened', next_step_id: null }];
+
+    const updateBranches = (newBranches) => {
+        setData({ ...data, condition_branches: newBranches });
+        onUpdate(step.id, { condition_branches: newBranches });
+    };
+
+    const addBranch = () => {
+        // Find a condition that isn't already used
+        const usedConditions = branches.map(b => b.condition);
+        const availableCondition = CONDITION_OPTIONS.find(opt => !usedConditions.includes(opt.value));
+        if (availableCondition) {
+            updateBranches([...branches, { condition: availableCondition.value, next_step_id: null }]);
+        }
+    };
+
+    const removeBranch = (index) => {
+        if (branches.length > 1) {
+            const newBranches = branches.filter((_, i) => i !== index);
+            updateBranches(newBranches);
+        }
+    };
+
+    const updateBranchCondition = (index, condition) => {
+        const newBranches = [...branches];
+        newBranches[index] = { ...newBranches[index], condition };
+        updateBranches(newBranches);
+    };
+
+    // Get colors for branches
+    const branchColors = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-orange-500'];
+
+    return h('div', { className: "p-6" },
+        h('div', { className: "flex items-center gap-2 mb-4" },
+            h(Icons.Split, { size: 24, className: "text-gold-600" }),
+            h('h4', { className: "font-serif text-lg text-jaguar-900" }, "Condition Branches")
+        ),
+
+        h('p', { className: "text-sm text-stone-600 mb-4" },
+            "Create multiple branches based on recipient actions. Each condition is evaluated in order - the first match determines which branch to follow."
+        ),
+
+        // Branches list
+        h('div', { className: "space-y-3 mb-4" },
+            branches.map((branch, index) =>
+                h('div', {
+                    key: index,
+                    className: "flex items-center gap-3 p-3 bg-cream-50 rounded-lg border border-stone-200"
+                },
+                    // Branch color indicator
+                    h('div', { className: `w-3 h-3 rounded-full ${branchColors[index % branchColors.length]}` }),
+
+                    // Branch number
+                    h('span', { className: "text-sm font-medium text-stone-500 w-8" }, `${index + 1}.`),
+
+                    // Condition selector
+                    h('select', {
+                        className: "flex-1 px-3 py-2 border border-stone-200 rounded-md bg-white text-sm",
+                        value: branch.condition,
+                        onChange: e => updateBranchCondition(index, e.target.value)
+                    },
+                        CONDITION_OPTIONS.map(opt =>
+                            h('option', { key: opt.value, value: opt.value }, opt.label)
+                        )
+                    ),
+
+                    // Arrow indicator
+                    h('span', { className: "text-stone-400" }, "→"),
+
+                    // Branch destination label
+                    h('span', { className: "text-sm text-stone-600 w-24" }, "Next step"),
+
+                    // Remove button (only if more than one branch)
+                    branches.length > 1 && h('button', {
+                        onClick: () => removeBranch(index),
+                        className: "p-1 text-stone-400 hover:text-red-500",
+                        title: "Remove branch"
+                    }, h(Icons.X, { size: 16 }))
+                )
+            )
+        ),
+
+        // Add branch button
+        branches.length < CONDITION_OPTIONS.length && h('button', {
+            onClick: addBranch,
+            className: "flex items-center gap-2 px-4 py-2 border border-dashed border-stone-300 rounded-lg hover:border-jaguar-900 hover:bg-cream-50 text-sm text-stone-600 hover:text-jaguar-900 transition-colors w-full justify-center"
+        },
+            h(Icons.Plus, { size: 16 }),
+            "Add another condition branch"
+        ),
+
+        // Help text
+        h('div', { className: "mt-4 p-3 bg-stone-50 rounded-lg border border-stone-200" },
+            h('p', { className: "text-xs text-stone-500" },
+                "💡 Example: Add \"If Opened\" and \"If NOT Opened\" to send different follow-ups based on engagement."
             ),
-            h('p', { className: "text-xs text-stone-500 mt-2" },
-                "Contacts will continue to the next step only if this condition is met."
+            h('p', { className: "text-xs text-stone-500 mt-1" },
+                "Conditions are checked when the previous step completes. If no condition matches, the contact continues to the next sequential step."
             )
         )
     );
