@@ -5,6 +5,41 @@ const crypto = require('crypto');
 const gmailService = require('./gmailService');
 const microsoftService = require('./microsoftService');
 
+// Helper to extract domain from email address
+const getEmailDomain = (email) => {
+  const parts = email.split('@');
+  return parts.length > 1 ? parts[1] : 'localhost';
+};
+
+// Helper to convert HTML to plain text for multipart emails
+const htmlToPlainText = (html) => {
+  if (!html) return '';
+  return html
+    // Remove style and script tags and their content
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    // Convert line breaks and paragraphs to newlines
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    // Convert links to text with URL
+    .replace(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, '$2 ($1)')
+    // Remove remaining HTML tags
+    .replace(/<[^>]+>/g, '')
+    // Decode HTML entities
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    // Clean up whitespace
+    .replace(/\n\s*\n\s*\n/g, '\n\n')
+    .trim();
+};
+
 // Zoho SMTP hosts for different data centers
 const ZOHO_SMTP_HOSTS = [
   'smtp.zoho.com',      // US
@@ -203,12 +238,25 @@ class EmailService {
     return personalized;
   }
 
-  // Add tracking pixel to email body
+  // Add tracking pixel to email body - improved for deliverability
+  // Uses natural-looking image attributes and embeds within content
   addTrackingPixel(htmlBody, campaignId, contactId) {
     const trackingToken = crypto.randomBytes(16).toString('hex');
-    const trackingUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/track/open/${campaignId}/${contactId}/${trackingToken}`;
-    const trackingPixel = `<img src="${trackingUrl}" width="1" height="1" style="display:none;" alt="" />`;
-    
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    // Use a more natural-looking tracking URL that mimics a spacer/logo image
+    // The path looks like a standard image asset, not a tracking endpoint
+    const trackingUrl = `${baseUrl}/img/e/${campaignId.slice(0, 8)}/${contactId.slice(0, 8)}/${trackingToken.slice(0, 12)}.gif`;
+
+    // Use natural CSS properties instead of suspicious display:none or 1x1
+    // A transparent spacer that doesn't trigger spam filters
+    const trackingPixel = `<img src="${trackingUrl}" alt="" width="1" height="1" border="0" style="height:1px!important;width:1px!important;border-width:0!important;margin:0!important;padding:0!important" />`;
+
+    // Try to insert the pixel before the closing body tag or at the end
+    if (htmlBody.includes('</body>')) {
+      return htmlBody.replace('</body>', `${trackingPixel}</body>`);
+    }
+
     return htmlBody + trackingPixel;
   }
 
@@ -241,11 +289,11 @@ class EmailService {
     console.log(`[EMAIL]    Contact ID: ${contactId}`);
 
     try {
-      // Get account to check provider type
+      // Get account to check provider type and sender name
       console.log(`[EMAIL] 🔍 Getting email account to determine provider type...`);
       const { data: account, error: accountError } = await supabase
         .from('email_accounts')
-        .select('provider_type, email_address')
+        .select('provider_type, email_address, sender_name')
         .eq('id', emailAccountId)
         .single();
 
@@ -256,6 +304,7 @@ class EmailService {
       const providerType = account.provider_type || 'smtp';
       console.log(`[EMAIL]    Provider type: ${providerType}`);
       console.log(`[EMAIL]    From: ${account.email_address}`);
+      console.log(`[EMAIL]    Sender name: ${account.sender_name || '(not set)'}`);
 
       let finalBody = body;
 
@@ -294,17 +343,64 @@ class EmailService {
         console.log(`[EMAIL] 🔌 Getting SMTP transporter...`);
         const transporter = await this.getTransporter(emailAccountId);
 
-        console.log(`[EMAIL] 📤 Sending via SMTP...`);
+        console.log(`[EMAIL] 📤 Sending via SMTP with deliverability optimizations...`);
         console.log(`[EMAIL]    Body length: ${finalBody.length} characters`);
 
+        // Build the From address with display name if available
+        // Format: "Display Name <email@domain.com>" or just "email@domain.com"
+        const fromAddress = account.sender_name
+          ? `"${account.sender_name}" <${account.email_address}>`
+          : account.email_address;
+
+        // Get domain for Message-ID and unsubscribe URL
+        const domain = getEmailDomain(account.email_address);
+        const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+        // Generate a proper Message-ID with the sending domain
+        const messageIdLocal = crypto.randomBytes(16).toString('hex');
+        const messageId = `<${messageIdLocal}.${Date.now()}@${domain}>`;
+
+        // Build unsubscribe URL
+        const unsubscribeToken = crypto.randomBytes(16).toString('hex');
+        const unsubscribeUrl = `${baseUrl}/api/unsubscribe/${campaignId}/${contactId}/${unsubscribeToken}`;
+
+        // Convert HTML to plain text for multipart email
+        const plainTextBody = htmlToPlainText(finalBody);
+
+        // Build mail options with deliverability optimizations
         const mailOptions = {
-          from: account.email_address,
+          from: fromAddress,
           to,
           subject,
-          html: finalBody
+          // Multipart: both plain text and HTML
+          // Many spam filters prefer emails that have both versions
+          text: plainTextBody,
+          html: finalBody,
+          // Proper Message-ID with sending domain
+          messageId: messageId,
+          // Headers for better deliverability
+          headers: {
+            // List-Unsubscribe header - required by Gmail/Yahoo for bulk mail
+            'List-Unsubscribe': `<${unsubscribeUrl}>, <mailto:unsubscribe@${domain}?subject=Unsubscribe-${campaignId}>`,
+            // One-click unsubscribe for modern email clients (RFC 8058)
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            // Precedence header to indicate bulk mail
+            'Precedence': 'bulk',
+            // X-Mailer header (looks more legitimate than default nodemailer)
+            'X-Mailer': 'SnowmanMailer/2.0',
+            // Auto-submitted header to indicate automated message
+            'Auto-Submitted': 'auto-generated'
+          },
+          // Reply-To same as From for proper reply routing
+          replyTo: account.email_address
         };
 
         console.log(`[EMAIL] 🚀 Calling transporter.sendMail()...`);
+        console.log(`[EMAIL]    From: ${fromAddress}`);
+        console.log(`[EMAIL]    Message-ID: ${messageId}`);
+        console.log(`[EMAIL]    Has plain text: ${plainTextBody.length > 0}`);
+        console.log(`[EMAIL]    List-Unsubscribe: enabled`);
+
         const info = await transporter.sendMail(mailOptions);
 
         console.log(`[EMAIL] ✅ Email sent successfully via SMTP!`);

@@ -11,7 +11,7 @@ router.get('/', authenticateUser, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('email_accounts')
-      .select('id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
+      .select('id, email_address, account_type, sender_name, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false });
     
@@ -26,18 +26,19 @@ router.get('/', authenticateUser, async (req, res) => {
 // Add new email account
 router.post('/', authenticateUser, async (req, res) => {
   try {
-    const { 
-      email_address, 
-      account_type, 
-      imap_host, 
-      imap_port, 
-      imap_username, 
+    const {
+      email_address,
+      account_type,
+      sender_name, // Display name for From header
+      imap_host,
+      imap_port,
+      imap_username,
       imap_password,
-      smtp_host, 
-      smtp_port, 
-      smtp_username, 
-      smtp_password, 
-      daily_send_limit 
+      smtp_host,
+      smtp_port,
+      smtp_username,
+      smtp_password,
+      daily_send_limit
     } = req.body;
 
     // Validate required fields
@@ -64,6 +65,7 @@ router.post('/', authenticateUser, async (req, res) => {
         user_id: req.user.id,
         email_address: email_address.toLowerCase(),
         account_type,
+        sender_name: sender_name || null, // Display name for better deliverability
         imap_host,
         imap_port: imap_port || 993,
         imap_username: imap_username || email_address,
@@ -76,7 +78,7 @@ router.post('/', authenticateUser, async (req, res) => {
         is_active: true,
         health_score: 100
       })
-      .select('id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
+      .select('id, email_address, account_type, sender_name, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
       .single();
     
     if (error) throw error;
@@ -192,8 +194,9 @@ router.post('/:id/test-smtp', authenticateUser, async (req, res) => {
 // Update email account
 router.put('/:id', authenticateUser, async (req, res) => {
   try {
-    const { 
+    const {
       email_address,
+      sender_name,
       daily_send_limit,
       is_active,
       imap_password,
@@ -202,6 +205,7 @@ router.put('/:id', authenticateUser, async (req, res) => {
 
     const updates = {};
     if (email_address) updates.email_address = email_address.toLowerCase();
+    if (sender_name !== undefined) updates.sender_name = sender_name || null;
     if (daily_send_limit !== undefined) updates.daily_send_limit = daily_send_limit;
     if (is_active !== undefined) updates.is_active = is_active;
     if (imap_password) updates.imap_password = encrypt(imap_password);
@@ -212,7 +216,7 @@ router.put('/:id', authenticateUser, async (req, res) => {
       .update(updates)
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
-      .select('id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
+      .select('id, email_address, account_type, sender_name, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
       .single();
     
     if (error) throw error;

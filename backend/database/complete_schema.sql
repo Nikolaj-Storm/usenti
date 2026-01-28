@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS email_accounts (
   oauth_scope TEXT,
 
   -- Account Settings
+  sender_name TEXT, -- Display name for From header, e.g., "John Smith"
   daily_send_limit INTEGER DEFAULT 500,
   is_active BOOLEAN DEFAULT true,
   health_score INTEGER DEFAULT 100 CHECK (health_score >= 0 AND health_score <= 100),
@@ -162,6 +163,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   company TEXT DEFAULT '',
   custom_fields JSONB DEFAULT '{}',
   status TEXT DEFAULT 'active' CHECK (status IN ('active', 'unsubscribed', 'bounced', 'invalid')),
+  unsubscribed_at TIMESTAMP WITH TIME ZONE, -- Timestamp when contact unsubscribed
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
 
