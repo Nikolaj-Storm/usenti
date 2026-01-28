@@ -138,10 +138,17 @@ const AccountCard = ({ account, onRefresh }) => {
           account.email_address[0].toUpperCase()
         ),
         h('div', { className: "flex-1 min-w-0" },
-          h('h3', { className: "font-medium text-jaguar-900 truncate", title: account.email_address },
-            account.email_address
-          ),
-          h('div', { className: "flex items-center gap-1 text-xs text-green-600" },
+          account.sender_name
+            ? h('div', null,
+                h('h3', { className: "font-medium text-jaguar-900 truncate", title: `${account.sender_name} <${account.email_address}>` },
+                  account.sender_name
+                ),
+                h('p', { className: "text-xs text-stone-500 truncate" }, account.email_address)
+              )
+            : h('h3', { className: "font-medium text-jaguar-900 truncate", title: account.email_address },
+                account.email_address
+              ),
+          h('div', { className: "flex items-center gap-1 text-xs text-green-600 mt-1" },
             h(Icons.ShieldCheck, { size: 12 }),
             h('span', null, 'Verified')
           )
@@ -198,6 +205,10 @@ const AccountCard = ({ account, onRefresh }) => {
       )
     ),
     expanded && h('div', { className: "mt-4 pt-4 border-t border-stone-100 space-y-2 text-sm animate-fade-in" },
+      account.sender_name && h('div', { className: "flex justify-between" },
+        h('span', { className: "text-stone-500" }, 'Sender Name'),
+        h('span', { className: "text-jaguar-900" }, account.sender_name)
+      ),
       h('div', { className: "flex justify-between" },
         h('span', { className: "text-stone-500" }, 'SMTP Host'),
         h('span', { className: "text-jaguar-900 font-mono text-xs" }, account.smtp_host || 'smtp.example.com')
@@ -407,6 +418,7 @@ const AddAccountModal = ({ onClose, onAdd }) => {
   const [accountType, setAccountType] = React.useState('');
   const [formData, setFormData] = React.useState({
     email_address: '',
+    sender_name: '', // Display name for From header (improves deliverability)
     smtp_host: '',
     smtp_port: '587',
     smtp_username: '',
@@ -488,6 +500,7 @@ const AddAccountModal = ({ onClose, onAdd }) => {
 
     console.log(`\n[${requestId}] === FORM DATA ===`);
     console.log(`[${requestId}] Email Address: ${formData.email_address}`);
+    console.log(`[${requestId}] Sender Name: ${formData.sender_name || '(not set)'}`);
     console.log(`[${requestId}] Account Type: ${accountType}`);
     console.log(`[${requestId}] SMTP Host: ${formData.smtp_host}`);
     console.log(`[${requestId}] SMTP Port: ${formData.smtp_port}`);
@@ -693,6 +706,17 @@ const AddAccountModal = ({ onClose, onAdd }) => {
             className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20",
             placeholder: "john@company.com"
           })
+        ),
+        h('div', null,
+          h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Sender Display Name'),
+          h('input', {
+            type: "text",
+            value: formData.sender_name,
+            onChange: (e) => setFormData({ ...formData, sender_name: e.target.value }),
+            className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20",
+            placeholder: "John Smith"
+          }),
+          h('p', { className: "text-xs text-stone-500 mt-1" }, 'How your name appears in the From field. E.g., "John Smith" results in "John Smith <john@company.com>". Improves deliverability.')
         ),
         h('div', { className: "p-4 bg-cream-50 rounded-lg space-y-4" },
           h('h4', { className: "font-medium text-jaguar-900" }, 'SMTP Settings (Outgoing)'),

@@ -2107,21 +2107,210 @@ app.get('/api/track/open/:campaign_id/:contact_id/:token', async (req, res) => {
 app.get('/api/track/click/:campaign_id/:contact_id/:token', async (req, res) => {
   try {
     const { url } = req.query;
-    
+
     await supabase.from('email_events').insert({
       campaign_id: req.params.campaign_id,
       contact_id: req.params.contact_id,
       event_type: 'clicked',
-      event_data: { 
+      event_data: {
         url: decodeURIComponent(url),
         timestamp: new Date().toISOString()
       }
     });
-    
+
     res.redirect(decodeURIComponent(url));
   } catch (error) {
     console.error('Click tracking error:', error);
     res.status(500).json({ error: 'Tracking failed' });
+  }
+});
+
+// Improved open tracking - looks like a regular image asset for better deliverability
+// URL format: /img/e/{campaign_short}/{contact_short}/{token}.gif
+app.get('/img/e/:campaign_short/:contact_short/:token', async (req, res) => {
+  try {
+    const { campaign_short, contact_short } = req.params;
+
+    // Find the campaign and contact by partial ID match
+    // This is less precise but matches the shortened URL format for deliverability
+    const { data: campaignContact } = await supabase
+      .from('campaign_contacts')
+      .select('campaign_id, contact_id')
+      .ilike('campaign_id', `${campaign_short}%`)
+      .ilike('contact_id', `${contact_short}%`)
+      .limit(1)
+      .single();
+
+    if (campaignContact) {
+      await supabase.from('email_events').insert({
+        campaign_id: campaignContact.campaign_id,
+        contact_id: campaignContact.contact_id,
+        event_type: 'opened',
+        event_data: {
+          user_agent: req.headers['user-agent'],
+          ip: req.ip,
+          timestamp: new Date().toISOString(),
+          tracking_type: 'improved_pixel'
+        }
+      });
+    }
+
+    // Return transparent 1x1 GIF
+    const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+    res.set({
+      'Content-Type': 'image/gif',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+    res.send(pixel);
+  } catch (error) {
+    console.error('Improved tracking error:', error);
+    // Still return pixel even on error
+    const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+    res.type('image/gif').send(pixel);
+  }
+});
+
+// ============================================================================
+// UNSUBSCRIBE ROUTES
+// ============================================================================
+
+// One-click unsubscribe (RFC 8058) - POST request
+app.post('/api/unsubscribe/:campaign_id/:contact_id/:token', async (req, res) => {
+  try {
+    const { campaign_id, contact_id, token } = req.params;
+    console.log(`[UNSUBSCRIBE] Processing one-click unsubscribe for contact ${contact_id}`);
+
+    // Update contact status to unsubscribed
+    const { error } = await supabase
+      .from('contacts')
+      .update({
+        status: 'unsubscribed',
+        unsubscribed_at: new Date().toISOString()
+      })
+      .eq('id', contact_id);
+
+    if (error) {
+      console.error('[UNSUBSCRIBE] Error updating contact:', error);
+      throw error;
+    }
+
+    // Log unsubscribe event
+    await supabase.from('email_events').insert({
+      campaign_id,
+      contact_id,
+      event_type: 'unsubscribed',
+      event_data: {
+        method: 'one-click',
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    // Stop any ongoing campaigns for this contact
+    await supabase
+      .from('campaign_contacts')
+      .update({ status: 'unsubscribed' })
+      .eq('contact_id', contact_id);
+
+    console.log(`[UNSUBSCRIBE] Contact ${contact_id} unsubscribed successfully`);
+    res.status(200).send('You have been unsubscribed successfully.');
+  } catch (error) {
+    console.error('[UNSUBSCRIBE] Error:', error);
+    res.status(500).send('An error occurred while processing your unsubscribe request.');
+  }
+});
+
+// Unsubscribe landing page - GET request
+app.get('/api/unsubscribe/:campaign_id/:contact_id/:token', async (req, res) => {
+  try {
+    const { campaign_id, contact_id, token } = req.params;
+    const { confirm } = req.query;
+
+    // If confirm=true, process the unsubscribe
+    if (confirm === 'true') {
+      console.log(`[UNSUBSCRIBE] Processing confirmed unsubscribe for contact ${contact_id}`);
+
+      const { error } = await supabase
+        .from('contacts')
+        .update({
+          status: 'unsubscribed',
+          unsubscribed_at: new Date().toISOString()
+        })
+        .eq('id', contact_id);
+
+      if (error) throw error;
+
+      // Log unsubscribe event
+      await supabase.from('email_events').insert({
+        campaign_id,
+        contact_id,
+        event_type: 'unsubscribed',
+        event_data: {
+          method: 'link',
+          timestamp: new Date().toISOString()
+        }
+      });
+
+      // Stop any ongoing campaigns for this contact
+      await supabase
+        .from('campaign_contacts')
+        .update({ status: 'unsubscribed' })
+        .eq('contact_id', contact_id);
+
+      // Show success page
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Unsubscribed</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
+            .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
+            h1 { color: #333; margin-bottom: 16px; }
+            p { color: #666; }
+            .check { font-size: 48px; margin-bottom: 16px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="check">✓</div>
+            <h1>Unsubscribed</h1>
+            <p>You have been successfully unsubscribed and will no longer receive emails from this campaign.</p>
+          </div>
+        </body>
+        </html>
+      `);
+      return;
+    }
+
+    // Show confirmation page
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Unsubscribe</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
+          .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
+          h1 { color: #333; margin-bottom: 16px; }
+          p { color: #666; margin-bottom: 24px; }
+          .btn { display: inline-block; background: #dc3545; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; }
+          .btn:hover { background: #c82333; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>Unsubscribe</h1>
+          <p>Click the button below to confirm that you want to unsubscribe from future emails.</p>
+          <a href="?confirm=true" class="btn">Confirm Unsubscribe</a>
+        </div>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('[UNSUBSCRIBE] Error:', error);
+    res.status(500).send('An error occurred while processing your request.');
   }
 });
 
