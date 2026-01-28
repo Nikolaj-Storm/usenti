@@ -53,7 +53,10 @@ class CampaignExecutor {
             subject,
             body,
             wait_days,
+            wait_hours,
+            wait_minutes,
             condition_type,
+            condition_branches,
             next_step_if_true,
             next_step_if_false
           )
@@ -254,11 +257,29 @@ class CampaignExecutor {
     }
   }
 
-  // Handle wait step
+  // Handle wait step - supports days, hours, and minutes
   async handleWaitStep(campaignContact, campaign, step) {
-    const waitDays = step.wait_days || 3;
-    const nextSendTime = new Date();
-    nextSendTime.setDate(nextSendTime.getDate() + waitDays);
+    // Get wait duration components (default to 1 hour if nothing set)
+    const waitDays = step.wait_days || 0;
+    const waitHours = step.wait_hours || 0;
+    const waitMinutes = step.wait_minutes || 0;
+
+    // Calculate total milliseconds
+    const totalMs = (waitDays * 24 * 60 * 60 * 1000) +
+                   (waitHours * 60 * 60 * 1000) +
+                   (waitMinutes * 60 * 1000);
+
+    // Default to 1 hour if total is 0
+    const actualDelayMs = totalMs > 0 ? totalMs : (60 * 60 * 1000);
+
+    const nextSendTime = new Date(Date.now() + actualDelayMs);
+
+    // Format duration for logging
+    const durationParts = [];
+    if (waitDays > 0) durationParts.push(`${waitDays}d`);
+    if (waitHours > 0) durationParts.push(`${waitHours}h`);
+    if (waitMinutes > 0) durationParts.push(`${waitMinutes}m`);
+    const durationStr = durationParts.length > 0 ? durationParts.join(' ') : '1h (default)';
 
     // Get next step
     const { data: nextStep } = await supabase
@@ -277,7 +298,8 @@ class CampaignExecutor {
         })
         .eq('id', campaignContact.id);
 
-      console.log(`[EXECUTOR] ⏱ Wait ${waitDays} days for contact ${campaignContact.contact_id}`);
+      console.log(`[EXECUTOR] ⏱ Wait ${durationStr} for contact ${campaignContact.contact_id}`);
+      console.log(`[EXECUTOR]   Next send time: ${nextSendTime.toISOString()}`);
     } else {
       // No more steps, mark as completed
       await supabase
@@ -289,7 +311,7 @@ class CampaignExecutor {
     }
   }
 
-  // Handle condition step
+  // Handle condition step - supports multiple condition branches
   async handleConditionStep(campaignContact, campaign, step) {
     // Get events for this contact
     const { data: events } = await supabase
@@ -298,29 +320,70 @@ class CampaignExecutor {
       .eq('campaign_id', campaign.id)
       .eq('contact_id', campaignContact.contact_id);
 
-    let conditionMet = false;
+    const eventTypes = events?.map(e => e.event_type) || [];
+    const hasOpened = eventTypes.includes('opened');
+    const hasClicked = eventTypes.includes('clicked');
+    const hasReplied = eventTypes.includes('replied');
 
-    // Evaluate condition
-    switch (step.condition_type) {
-      case 'if_opened':
-        conditionMet = events.some(e => e.event_type === 'opened');
-        break;
-      case 'if_not_opened':
-        conditionMet = !events.some(e => e.event_type === 'opened');
-        break;
-      case 'if_clicked':
-        conditionMet = events.some(e => e.event_type === 'clicked');
-        break;
-      case 'if_replied':
-        conditionMet = events.some(e => e.event_type === 'replied');
-        break;
-      default:
-        conditionMet = false;
+    console.log(`[EXECUTOR] 🔀 Evaluating conditions for contact ${campaignContact.contact_id}`);
+    console.log(`[EXECUTOR]   Events: ${eventTypes.join(', ') || 'none'}`);
+
+    // Helper function to evaluate a single condition
+    const evaluateCondition = (condition) => {
+      switch (condition) {
+        case 'if_opened': return hasOpened;
+        case 'if_not_opened': return !hasOpened;
+        case 'if_clicked': return hasClicked;
+        case 'if_not_clicked': return !hasClicked;
+        case 'if_replied': return hasReplied;
+        case 'if_not_replied': return !hasReplied;
+        default: return false;
+      }
+    };
+
+    // Check if we have new-style condition_branches
+    let branches = step.condition_branches;
+    if (typeof branches === 'string') {
+      try { branches = JSON.parse(branches); } catch(e) { branches = null; }
     }
 
-    const nextStepId = conditionMet 
-      ? step.next_step_if_true 
-      : step.next_step_if_false;
+    let nextStepId = null;
+    let matchedCondition = null;
+
+    if (branches && Array.isArray(branches) && branches.length > 0) {
+      // New multi-branch evaluation
+      console.log(`[EXECUTOR]   Evaluating ${branches.length} condition branches...`);
+
+      for (const branch of branches) {
+        const conditionMet = evaluateCondition(branch.condition);
+        console.log(`[EXECUTOR]   - ${branch.condition}: ${conditionMet ? '✅ MATCH' : '❌ no match'}`);
+
+        if (conditionMet) {
+          matchedCondition = branch.condition;
+          nextStepId = branch.next_step_id;
+          break; // First match wins
+        }
+      }
+    } else {
+      // Legacy single-condition evaluation
+      const conditionMet = evaluateCondition(step.condition_type);
+      console.log(`[EXECUTOR]   Legacy condition ${step.condition_type}: ${conditionMet ? 'TRUE' : 'FALSE'}`);
+
+      matchedCondition = step.condition_type;
+      nextStepId = conditionMet ? step.next_step_if_true : step.next_step_if_false;
+    }
+
+    // If no next_step_id from condition, get next sequential step
+    if (!nextStepId) {
+      const { data: nextSeqStep } = await supabase
+        .from('campaign_steps')
+        .select('id')
+        .eq('campaign_id', campaign.id)
+        .eq('step_order', step.step_order + 1)
+        .single();
+
+      nextStepId = nextSeqStep?.id || null;
+    }
 
     if (nextStepId) {
       await supabase
@@ -331,13 +394,15 @@ class CampaignExecutor {
         })
         .eq('id', campaignContact.id);
 
-      console.log(`[EXECUTOR] 🔀 Condition ${step.condition_type}: ${conditionMet ? 'TRUE' : 'FALSE'}`);
+      console.log(`[EXECUTOR]   → Moving to step ${nextStepId} (matched: ${matchedCondition || 'default'})`);
     } else {
-      // No next step defined, mark as completed
+      // No next step, mark as completed
       await supabase
         .from('campaign_contacts')
         .update({ status: 'completed' })
         .eq('id', campaignContact.id);
+
+      console.log(`[EXECUTOR]   ✓ Campaign completed for contact ${campaignContact.contact_id}`);
     }
   }
 

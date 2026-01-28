@@ -221,15 +221,20 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
-    const { 
-      step_type, 
-      subject, 
-      body, 
-      wait_days, 
+    const {
+      step_type,
+      subject,
+      body,
+      // Wait step fields
+      wait_days,
+      wait_hours,
+      wait_minutes,
+      // Condition step fields (legacy + new)
       condition_type,
+      condition_branches,
       next_step_if_true,
       next_step_if_false,
-      step_order 
+      step_order
     } = req.body;
 
     // Validate step type
@@ -244,8 +249,13 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
         step_type,
         subject: step_type === 'email' ? subject : null,
         body: step_type === 'email' ? body : null,
-        wait_days: step_type === 'wait' ? wait_days : null,
+        // Wait step fields
+        wait_days: step_type === 'wait' ? (wait_days || 0) : null,
+        wait_hours: step_type === 'wait' ? (wait_hours || 0) : null,
+        wait_minutes: step_type === 'wait' ? (wait_minutes || 0) : null,
+        // Condition step fields
         condition_type: step_type === 'condition' ? condition_type : null,
+        condition_branches: step_type === 'condition' ? (condition_branches || null) : null,
         next_step_if_true: step_type === 'condition' ? next_step_if_true : null,
         next_step_if_false: step_type === 'condition' ? next_step_if_false : null,
         step_order: step_order || 1
@@ -276,13 +286,29 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
-    const { subject, body, wait_days, condition_type, step_order } = req.body;
+    const {
+      subject,
+      body,
+      // Wait step fields
+      wait_days,
+      wait_hours,
+      wait_minutes,
+      // Condition step fields
+      condition_type,
+      condition_branches,
+      step_order
+    } = req.body;
 
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
     if (body !== undefined) updates.body = body;
+    // Wait step fields
     if (wait_days !== undefined) updates.wait_days = wait_days;
+    if (wait_hours !== undefined) updates.wait_hours = wait_hours;
+    if (wait_minutes !== undefined) updates.wait_minutes = wait_minutes;
+    // Condition step fields
     if (condition_type !== undefined) updates.condition_type = condition_type;
+    if (condition_branches !== undefined) updates.condition_branches = condition_branches;
     if (step_order !== undefined) updates.step_order = step_order;
 
     const { data, error } = await supabase

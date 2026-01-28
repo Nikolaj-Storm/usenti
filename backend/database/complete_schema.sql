@@ -230,13 +230,18 @@ CREATE TABLE IF NOT EXISTS campaign_steps (
   subject TEXT,
   body TEXT,
 
-  -- Wait step fields
-  wait_days INTEGER,
+  -- Wait step fields (supports days, hours, and minutes)
+  wait_days INTEGER DEFAULT 0,
+  wait_hours INTEGER DEFAULT 0,
+  wait_minutes INTEGER DEFAULT 0,
 
   -- Condition step fields
-  condition_type TEXT CHECK (condition_type IN ('if_opened', 'if_not_opened', 'if_clicked', 'if_replied', 'if_not_replied')),
+  -- Legacy single condition support
+  condition_type TEXT CHECK (condition_type IN ('if_opened', 'if_not_opened', 'if_clicked', 'if_not_clicked', 'if_replied', 'if_not_replied')),
   next_step_if_true UUID REFERENCES campaign_steps(id) ON DELETE SET NULL,
   next_step_if_false UUID REFERENCES campaign_steps(id) ON DELETE SET NULL,
+  -- Multi-branch condition support: [{condition: 'if_opened', next_step_id: 'uuid'}, ...]
+  condition_branches JSONB,
 
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
