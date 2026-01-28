@@ -591,6 +591,15 @@ app.post('/api/email-accounts/:id/test-imap', authenticateUser, async (req, res)
   }
 });
 
+// Zoho SMTP hosts for different data centers
+const ZOHO_SMTP_HOSTS = [
+  'smtp.zoho.com',      // US
+  'smtp.zoho.eu',       // EU
+  'smtp.zoho.in',       // India
+  'smtp.zoho.com.au',   // Australia
+  'smtp.zoho.com.cn'    // China
+];
+
 app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res) => {
   try {
     console.log(`[TEST-SMTP] Testing SMTP for account ${req.params.id}...`);
@@ -630,13 +639,11 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
     }
 
     // Determine if this is a Zoho account (needs special handling)
-    const isZoho = account.smtp_host?.toLowerCase().includes('zoho');
-    if (isZoho) {
-      console.log(`[TEST-SMTP] Detected Zoho account - using optimized settings`);
-    }
+    const isZoho = account.smtp_host?.toLowerCase().includes('zoho') || account.account_type === 'zoho';
 
-    const transporterConfig = {
-      host: account.smtp_host,
+    // Helper to create transporter config
+    const createConfig = (host) => ({
+      host,
       port: smtpPort,
       secure: isSecure,
       auth: {
@@ -646,16 +653,65 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
       tls: {
         rejectUnauthorized: false,
         minVersion: 'TLSv1.2'
-      }
-    };
+      },
+      ...(isZoho && { authMethod: 'LOGIN' })
+    });
 
-    // Zoho works better with AUTH LOGIN instead of AUTH PLAIN
+    // For Zoho accounts, try multiple data centers
     if (isZoho) {
-      transporterConfig.authMethod = 'LOGIN';
+      console.log(`[TEST-SMTP] Detected Zoho account - will try multiple data centers`);
+
+      // Build list of hosts to try
+      const hostsToTry = [account.smtp_host];
+      for (const host of ZOHO_SMTP_HOSTS) {
+        if (!hostsToTry.includes(host)) {
+          hostsToTry.push(host);
+        }
+      }
+
+      console.log(`[TEST-SMTP] Will try hosts: ${hostsToTry.join(', ')}`);
+
+      let lastError;
+      for (const host of hostsToTry) {
+        console.log(`[TEST-SMTP] Trying ${host}...`);
+        try {
+          const transporter = nodemailer.createTransport(createConfig(host));
+          await transporter.verify();
+          console.log(`[TEST-SMTP] ✅ Connected to ${host}!`);
+
+          // Update account if we found a working host different from configured
+          if (host !== account.smtp_host) {
+            console.log(`[TEST-SMTP] Updating account SMTP host to ${host}`);
+            await supabase
+              .from('email_accounts')
+              .update({ smtp_host: host })
+              .eq('id', req.params.id);
+          }
+
+          return res.json({
+            success: true,
+            message: `SMTP connection successful (${host})`,
+            host
+          });
+        } catch (err) {
+          console.log(`[TEST-SMTP] ❌ Failed with ${host}: ${err.message}`);
+          lastError = err;
+        }
+      }
+
+      // All hosts failed
+      console.error(`[TEST-SMTP] All Zoho hosts failed`);
+      return res.status(400).json({
+        success: false,
+        error: `SMTP failed on all Zoho data centers: ${lastError?.message}`,
+        errorCode: lastError?.code,
+        triedHosts: hostsToTry
+      });
     }
 
-    console.log(`[TEST-SMTP] Transport config: authMethod=${transporterConfig.authMethod || 'default'}`);
-    const transporter = nodemailer.createTransport(transporterConfig);
+    // Non-Zoho: standard single host test
+    console.log(`[TEST-SMTP] Testing non-Zoho SMTP...`);
+    const transporter = nodemailer.createTransport(createConfig(account.smtp_host));
 
     console.log(`[TEST-SMTP] Verifying connection...`);
     await transporter.verify();
