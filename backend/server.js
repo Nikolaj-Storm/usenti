@@ -513,82 +513,161 @@ app.post('/api/email-accounts/test', async (req, res) => {
 
 app.post('/api/email-accounts/:id/test-imap', authenticateUser, async (req, res) => {
   try {
+    console.log(`[TEST-IMAP] Testing IMAP for account ${req.params.id}...`);
+
     const { data: account } = await supabase
       .from('email_accounts')
       .select('*')
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
       .single();
-    
+
     if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    // Ensure port is a number
+    const imapPort = parseInt(account.imap_port, 10) || 993;
+
+    console.log(`[TEST-IMAP] Account: ${account.email_address}`);
+    console.log(`[TEST-IMAP] IMAP Host: ${account.imap_host}:${imapPort}`);
+    console.log(`[TEST-IMAP] IMAP User: ${account.imap_username}`);
+
+    // Decrypt password with debug logging
+    console.log(`[TEST-IMAP] Encrypted password length: ${account.imap_password?.length || 0}`);
+    console.log(`[TEST-IMAP] Encrypted password has separator: ${account.imap_password?.includes(':')}`);
+
+    let decryptedPassword;
+    try {
+      decryptedPassword = decrypt(account.imap_password);
+      console.log(`[TEST-IMAP] Decrypted password length: ${decryptedPassword?.length || 0}`);
+    } catch (decryptError) {
+      console.error(`[TEST-IMAP] Decryption failed: ${decryptError.message}`);
+      return res.status(400).json({
+        success: false,
+        error: `Password decryption failed: ${decryptError.message}`
+      });
+    }
 
     const imap = new Imap({
       user: account.imap_username,
-      password: decrypt(account.imap_password),
+      password: decryptedPassword,
       host: account.imap_host,
-      port: account.imap_port,
+      port: imapPort,
       tls: true,
       tlsOptions: { rejectUnauthorized: false }
     });
 
     return new Promise((resolve) => {
       let timeout = setTimeout(() => {
+        console.log(`[TEST-IMAP] ⏱️ Connection timeout`);
         imap.end();
-        resolve(res.status(400).json({ 
-          success: false, 
-          error: 'Connection timeout' 
+        resolve(res.status(400).json({
+          success: false,
+          error: 'Connection timeout'
         }));
       }, 10000);
 
       imap.once('ready', () => {
         clearTimeout(timeout);
+        console.log(`[TEST-IMAP] ✅ Connection successful!`);
         imap.end();
         resolve(res.json({ success: true, message: 'IMAP connection successful' }));
       });
 
       imap.once('error', (err) => {
         clearTimeout(timeout);
-        resolve(res.status(400).json({ 
-          success: false, 
-          error: `IMAP failed: ${err.message}` 
+        console.error(`[TEST-IMAP] ❌ Connection failed: ${err.message}`);
+        resolve(res.status(400).json({
+          success: false,
+          error: `IMAP failed: ${err.message}`
         }));
       });
 
+      console.log(`[TEST-IMAP] Connecting...`);
       imap.connect();
     });
   } catch (error) {
+    console.error(`[TEST-IMAP] Error: ${error.message}`);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res) => {
   try {
+    console.log(`[TEST-SMTP] Testing SMTP for account ${req.params.id}...`);
+
     const { data: account } = await supabase
       .from('email_accounts')
       .select('*')
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
       .single();
-    
+
     if (!account) return res.status(404).json({ error: 'Account not found' });
 
-    const transporter = nodemailer.createTransporter({
+    // Ensure port is a number
+    const smtpPort = parseInt(account.smtp_port, 10) || 587;
+    const isSecure = smtpPort === 465;
+
+    console.log(`[TEST-SMTP] Account: ${account.email_address}`);
+    console.log(`[TEST-SMTP] SMTP Host: ${account.smtp_host}:${smtpPort}`);
+    console.log(`[TEST-SMTP] SMTP User: ${account.smtp_username}`);
+    console.log(`[TEST-SMTP] Secure: ${isSecure ? 'YES (SSL)' : 'NO (TLS/STARTTLS)'}`);
+
+    // Decrypt password with debug logging
+    console.log(`[TEST-SMTP] Encrypted password length: ${account.smtp_password?.length || 0}`);
+    console.log(`[TEST-SMTP] Encrypted password has separator: ${account.smtp_password?.includes(':')}`);
+
+    let decryptedPassword;
+    try {
+      decryptedPassword = decrypt(account.smtp_password);
+      console.log(`[TEST-SMTP] Decrypted password length: ${decryptedPassword?.length || 0}`);
+    } catch (decryptError) {
+      console.error(`[TEST-SMTP] Decryption failed: ${decryptError.message}`);
+      return res.status(400).json({
+        success: false,
+        error: `Password decryption failed: ${decryptError.message}`
+      });
+    }
+
+    // Determine if this is a Zoho account (needs special handling)
+    const isZoho = account.smtp_host?.toLowerCase().includes('zoho');
+    if (isZoho) {
+      console.log(`[TEST-SMTP] Detected Zoho account - using optimized settings`);
+    }
+
+    const transporterConfig = {
       host: account.smtp_host,
-      port: account.smtp_port,
-      secure: account.smtp_port === 465,
+      port: smtpPort,
+      secure: isSecure,
       auth: {
         user: account.smtp_username,
-        pass: decrypt(account.smtp_password)
+        pass: decryptedPassword
       },
-      tls: { rejectUnauthorized: false }
-    });
+      tls: {
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1.2'
+      }
+    };
 
+    // Zoho works better with AUTH LOGIN instead of AUTH PLAIN
+    if (isZoho) {
+      transporterConfig.authMethod = 'LOGIN';
+    }
+
+    console.log(`[TEST-SMTP] Transport config: authMethod=${transporterConfig.authMethod || 'default'}`);
+    const transporter = nodemailer.createTransport(transporterConfig);
+
+    console.log(`[TEST-SMTP] Verifying connection...`);
     await transporter.verify();
+    console.log(`[TEST-SMTP] ✅ Connection successful!`);
     res.json({ success: true, message: 'SMTP connection successful' });
   } catch (error) {
-    res.status(400).json({ 
-      success: false, 
-      error: `SMTP failed: ${error.message}` 
+    console.error(`[TEST-SMTP] ❌ Connection failed: ${error.message}`);
+    console.error(`[TEST-SMTP] Error code: ${error.code}`);
+    res.status(400).json({
+      success: false,
+      error: `SMTP failed: ${error.message}`,
+      errorCode: error.code
     });
   }
 });

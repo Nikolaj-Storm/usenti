@@ -31,24 +31,61 @@ class EmailService {
       throw new Error('Email account not found');
     }
 
+    // Ensure port is a number for proper comparison and nodemailer
+    const smtpPort = parseInt(account.smtp_port, 10) || 587;
+    const isSecure = smtpPort === 465;
+
     console.log(`[EMAIL]    📧 Account: ${account.email_address}`);
-    console.log(`[EMAIL]    🌐 SMTP Host: ${account.smtp_host}:${account.smtp_port}`);
+    console.log(`[EMAIL]    🌐 SMTP Host: ${account.smtp_host}:${smtpPort}`);
     console.log(`[EMAIL]    👤 SMTP User: ${account.smtp_username}`);
-    console.log(`[EMAIL]    🔒 Secure: ${account.smtp_port === 465 ? 'YES (SSL)' : 'NO (TLS/STARTTLS)'}`);
+    console.log(`[EMAIL]    🔒 Secure: ${isSecure ? 'YES (SSL)' : 'NO (TLS/STARTTLS)'}`);
+
+    // Decrypt the password and log debug info (without exposing the actual password)
+    console.log(`[EMAIL]    🔐 Decrypting SMTP password...`);
+    console.log(`[EMAIL]       Encrypted password length: ${account.smtp_password?.length || 0}`);
+    console.log(`[EMAIL]       Encrypted password format check: ${account.smtp_password?.includes(':') ? 'Valid (contains separator)' : 'INVALID (no separator)'}`);
+
+    let decryptedPassword;
+    try {
+      decryptedPassword = decrypt(account.smtp_password);
+      console.log(`[EMAIL]       Decrypted password length: ${decryptedPassword?.length || 0}`);
+      console.log(`[EMAIL]       Decryption: ✅ SUCCESS`);
+    } catch (decryptError) {
+      console.error(`[EMAIL]       Decryption: ❌ FAILED - ${decryptError.message}`);
+      throw new Error(`Password decryption failed: ${decryptError.message}`);
+    }
 
     console.log(`[EMAIL]    🔧 Creating SMTP transporter...`);
-    const transporter = nodemailer.createTransport({
+
+    // Determine if this is a Zoho account (needs special handling)
+    const isZoho = account.smtp_host?.toLowerCase().includes('zoho');
+    if (isZoho) {
+      console.log(`[EMAIL]    📧 Detected Zoho account - using optimized settings`);
+    }
+
+    const transporterConfig = {
       host: account.smtp_host,
-      port: account.smtp_port,
-      secure: account.smtp_port === 465,
+      port: smtpPort,
+      secure: isSecure,
       auth: {
         user: account.smtp_username,
-        pass: decrypt(account.smtp_password)
+        pass: decryptedPassword
       },
       tls: {
-        rejectUnauthorized: false
+        rejectUnauthorized: false,
+        // Zoho requires proper TLS cipher handling
+        minVersion: 'TLSv1.2'
       }
-    });
+    };
+
+    // Zoho works better with AUTH LOGIN instead of AUTH PLAIN
+    if (isZoho) {
+      transporterConfig.authMethod = 'LOGIN';
+    }
+
+    console.log(`[EMAIL]    🔧 Transport config: host=${transporterConfig.host}, port=${transporterConfig.port}, secure=${transporterConfig.secure}, authMethod=${transporterConfig.authMethod || 'default'}`);
+
+    const transporter = nodemailer.createTransport(transporterConfig);
 
     console.log(`[EMAIL]    ✅ Transporter created and cached`);
     this.transporters.set(emailAccountId, transporter);
@@ -212,6 +249,12 @@ class EmailService {
       console.error(`[EMAIL]    Error code: ${error.code}`);
       console.error(`[EMAIL]    Error command: ${error.command}`);
       console.error(`[EMAIL]    Full error:`, error);
+
+      // Clear cached transporter on authentication errors to allow retry with fresh credentials
+      if (error.code === 'EAUTH' || error.responseCode === 535) {
+        console.log(`[EMAIL] 🔄 Clearing cached transporter due to auth error...`);
+        this.clearTransporter(emailAccountId);
+      }
 
       // Log failed event
       console.log(`[EMAIL] 💾 Logging 'failed' event to database...`);
