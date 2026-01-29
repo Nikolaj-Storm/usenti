@@ -1,9 +1,128 @@
 const supabase = require('../config/supabase');
 const emailService = require('./emailService');
 
+// Configurable batch limit - can be set via environment variable
+// Default increased from 50 to 200 for better throughput
+const BATCH_LIMIT = parseInt(process.env.CAMPAIGN_BATCH_LIMIT, 10) || 200;
+
 class CampaignExecutor {
   constructor() {
     this.processing = false;
+    // Track round-robin state for multi-account campaigns (in-memory cache)
+    this.accountRotationIndex = new Map();
+  }
+
+  /**
+   * Get the next email account for a campaign using round-robin rotation
+   * Supports both legacy single-account and new multi-account campaigns
+   */
+  async getNextEmailAccount(campaignId, legacyEmailAccountId) {
+    // First, check if campaign uses the junction table (multi-account)
+    const { data: campaignAccounts, error } = await supabase
+      .from('campaign_email_accounts')
+      .select(`
+        id,
+        email_account_id,
+        emails_sent_today,
+        is_active,
+        email_accounts!inner(
+          id,
+          email_address,
+          daily_send_limit,
+          is_active
+        )
+      `)
+      .eq('campaign_id', campaignId)
+      .eq('is_active', true)
+      .eq('email_accounts.is_active', true);
+
+    if (error) {
+      console.error('[EXECUTOR] Error fetching campaign email accounts:', error);
+      // Fall back to legacy single account
+      return { accountId: legacyEmailAccountId, junctionId: null };
+    }
+
+    // If no junction table entries, use legacy single account
+    if (!campaignAccounts || campaignAccounts.length === 0) {
+      return { accountId: legacyEmailAccountId, junctionId: null };
+    }
+
+    // Filter accounts that haven't exceeded their daily limit
+    const availableAccounts = campaignAccounts.filter(ca => {
+      const dailyLimit = ca.email_accounts.daily_send_limit || 500;
+      return ca.emails_sent_today < dailyLimit;
+    });
+
+    if (availableAccounts.length === 0) {
+      console.log('[EXECUTOR] All email accounts have reached their daily limits');
+      return { accountId: null, junctionId: null, exhausted: true };
+    }
+
+    // Round-robin selection
+    let currentIndex = this.accountRotationIndex.get(campaignId) || 0;
+    currentIndex = currentIndex % availableAccounts.length;
+
+    const selected = availableAccounts[currentIndex];
+
+    // Update rotation index for next call
+    this.accountRotationIndex.set(campaignId, currentIndex + 1);
+
+    console.log(`[EXECUTOR] 🔄 Round-robin selected account ${selected.email_accounts.email_address} (${currentIndex + 1}/${availableAccounts.length})`);
+
+    return {
+      accountId: selected.email_account_id,
+      junctionId: selected.id,
+      emailAddress: selected.email_accounts.email_address
+    };
+  }
+
+  /**
+   * Increment the daily counter for a campaign email account
+   */
+  async incrementAccountCounter(junctionId) {
+    if (!junctionId) return;
+
+    await supabase
+      .from('campaign_email_accounts')
+      .update({
+        emails_sent_today: supabase.rpc('increment', { row_id: junctionId }),
+        last_used_at: new Date().toISOString()
+      })
+      .eq('id', junctionId);
+  }
+
+  /**
+   * Increment emails_sent_today using raw SQL increment
+   */
+  async incrementAccountCounterSafe(junctionId) {
+    if (!junctionId) return;
+
+    // Use a direct increment to avoid race conditions
+    const { error } = await supabase.rpc('increment_campaign_email_account_counter', {
+      junction_id: junctionId
+    });
+
+    // If RPC doesn't exist, fall back to regular update
+    if (error) {
+      await supabase
+        .from('campaign_email_accounts')
+        .update({ last_used_at: new Date().toISOString() })
+        .eq('id', junctionId);
+
+      // Do a separate increment query
+      const { data: current } = await supabase
+        .from('campaign_email_accounts')
+        .select('emails_sent_today')
+        .eq('id', junctionId)
+        .single();
+
+      if (current) {
+        await supabase
+          .from('campaign_email_accounts')
+          .update({ emails_sent_today: (current.emails_sent_today || 0) + 1 })
+          .eq('id', junctionId);
+      }
+    }
   }
 
   // Main execution loop - called by cron
@@ -64,7 +183,9 @@ class CampaignExecutor {
         .eq('status', 'in_progress')
         .eq('campaigns.status', 'running')
         .lte('next_send_time', new Date().toISOString())
-        .limit(50);
+        .limit(BATCH_LIMIT);
+
+      console.log(`[EXECUTOR] 📊 Using batch limit: ${BATCH_LIMIT} (set via CAMPAIGN_BATCH_LIMIT env var)`);
 
       if (error) {
         console.error('[EXECUTOR] ❌ Database query error:', error);
@@ -196,7 +317,7 @@ class CampaignExecutor {
     }
   }
 
-  // Handle email step
+  // Handle email step - with multi-account rotation support
   async handleEmailStep(campaignContact, campaign, contact, step) {
     try {
       console.log(`[EXECUTOR]      📝 Personalizing email content...`);
@@ -214,12 +335,38 @@ class CampaignExecutor {
       console.log(`[EXECUTOR]         Subject: "${personalizedSubject}"`);
       console.log(`[EXECUTOR]         Body length: ${personalizedBody.length} characters`);
       console.log(`[EXECUTOR]         To: ${contact.email}`);
-      console.log(`[EXECUTOR]         Email Account ID: ${campaign.email_account_id}`);
+
+      // Get the next email account using round-robin rotation
+      // This supports both legacy single-account and new multi-account campaigns
+      const accountSelection = await this.getNextEmailAccount(
+        campaign.id,
+        campaign.email_account_id // fallback for legacy campaigns
+      );
+
+      if (accountSelection.exhausted) {
+        // All accounts have reached their daily limits - reschedule for tomorrow
+        console.log(`[EXECUTOR]      ⏸️  All email accounts exhausted, rescheduling to tomorrow 9 AM`);
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(9, 0, 0, 0);
+        await this.updateNextSendTime(campaignContact.id, tomorrow);
+        return;
+      }
+
+      if (!accountSelection.accountId) {
+        throw new Error('No email account available for sending');
+      }
+
+      const emailAccountId = accountSelection.accountId;
+      console.log(`[EXECUTOR]         Email Account ID: ${emailAccountId}`);
+      if (accountSelection.emailAddress) {
+        console.log(`[EXECUTOR]         Sending from: ${accountSelection.emailAddress}`);
+      }
 
       // Send email
       console.log(`[EXECUTOR]      📤 Sending email via emailService...`);
       const result = await emailService.sendEmail({
-        emailAccountId: campaign.email_account_id,
+        emailAccountId: emailAccountId,
         to: contact.email,
         subject: personalizedSubject,
         body: personalizedBody,
@@ -232,13 +379,19 @@ class CampaignExecutor {
       console.log(`[EXECUTOR]      ✅ Email sent successfully!`);
       console.log(`[EXECUTOR]         Message ID: ${result.messageId}`);
 
-      // Increment emails_sent counter
+      // Increment emails_sent counter for the campaign contact
       const newEmailsSent = (campaignContact.emails_sent || 0) + 1;
       await supabase
         .from('campaign_contacts')
         .update({ emails_sent: newEmailsSent })
         .eq('id', campaignContact.id);
       console.log(`[EXECUTOR]      📊 Updated emails_sent to ${newEmailsSent}`);
+
+      // Increment the daily counter for the multi-account junction (if applicable)
+      if (accountSelection.junctionId) {
+        await this.incrementAccountCounterSafe(accountSelection.junctionId);
+        console.log(`[EXECUTOR]      📊 Incremented daily counter for account rotation`);
+      }
 
       // Move to next step
       console.log(`[EXECUTOR]      ➡️  Moving to next step...`);

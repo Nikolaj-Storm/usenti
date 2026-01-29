@@ -192,7 +192,9 @@ CREATE TABLE IF NOT EXISTS campaigns (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  email_account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+  -- email_account_id is nullable for multi-account campaigns (uses junction table)
+  -- Kept for backward compatibility with single-account campaigns
+  email_account_id UUID REFERENCES email_accounts(id) ON DELETE SET NULL,
   contact_list_id UUID NOT NULL REFERENCES contact_lists(id) ON DELETE CASCADE,
   status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'running', 'paused', 'completed', 'failed')),
 
@@ -216,6 +218,39 @@ CREATE POLICY "Users can manage own campaigns" ON campaigns
 CREATE INDEX idx_campaigns_user_id ON campaigns(user_id);
 CREATE INDEX idx_campaigns_status ON campaigns(status);
 CREATE INDEX idx_campaigns_email_account ON campaigns(email_account_id);
+
+-- ============================================================================
+-- SECTION 5B: CAMPAIGN EMAIL ACCOUNTS (Multi-Account Rotation)
+-- ============================================================================
+-- Junction table for campaigns to use multiple email accounts with rotation
+
+CREATE TABLE IF NOT EXISTS campaign_email_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  email_account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+  -- Round-robin tracking
+  emails_sent_today INTEGER DEFAULT 0,
+  last_used_at TIMESTAMP WITH TIME ZONE,
+  -- Allow disabling specific accounts for a campaign without removing
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+
+  -- Each email account can only be added once per campaign
+  UNIQUE(campaign_id, email_account_id)
+);
+
+ALTER TABLE campaign_email_accounts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage campaign email accounts" ON campaign_email_accounts
+  FOR ALL USING (
+    campaign_id IN (
+      SELECT id FROM campaigns WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE INDEX idx_campaign_email_accounts_campaign ON campaign_email_accounts(campaign_id);
+CREATE INDEX idx_campaign_email_accounts_email ON campaign_email_accounts(email_account_id);
+CREATE INDEX idx_campaign_email_accounts_last_used ON campaign_email_accounts(campaign_id, last_used_at);
 
 -- ============================================================================
 -- SECTION 6: CAMPAIGN STEPS
@@ -558,20 +593,21 @@ CREATE TRIGGER update_inbox_messages_updated_at
 -- SCHEMA SUMMARY
 -- ============================================================================
 --
--- Tables: 13
---   1. user_profiles      - User account profiles
---   2. email_accounts     - Connected email accounts (IMAP/SMTP/OAuth)
---   3. contact_lists      - Contact list organization
---   4. contacts           - Individual contacts
---   5. campaigns          - Email campaigns
---   6. campaign_steps     - Steps within campaigns
---   7. campaign_contacts  - Contact progress tracking
---   8. email_events       - Engagement tracking
---   9. warmup_configs     - Warmup configuration
---  10. warmup_seeds       - Warmup network seeds
---  11. warmup_threads     - Warmup conversations
---  12. warmup_messages    - Warmup messages
---  13. inbox_messages     - Unified inbox
+-- Tables: 14
+--   1. user_profiles            - User account profiles
+--   2. email_accounts           - Connected email accounts (IMAP/SMTP/OAuth)
+--   3. contact_lists            - Contact list organization
+--   4. contacts                 - Individual contacts
+--   5. campaigns                - Email campaigns
+--   5b. campaign_email_accounts - Multi-account rotation for campaigns
+--   6. campaign_steps           - Steps within campaigns
+--   7. campaign_contacts        - Contact progress tracking
+--   8. email_events             - Engagement tracking
+--   9. warmup_configs           - Warmup configuration
+--  10. warmup_seeds             - Warmup network seeds
+--  11. warmup_threads           - Warmup conversations
+--  12. warmup_messages          - Warmup messages
+--  13. inbox_messages           - Unified inbox
 --
 -- Functions: 2
 --   - handle_new_user()         - Auto-creates user profile on signup
@@ -581,10 +617,10 @@ CREATE TRIGGER update_inbox_messages_updated_at
 --   - 1 for auto-creating user profiles
 --   - 11 for auto-updating timestamps
 --
--- Indexes: 22
+-- Indexes: 25
 --   - Optimized for common query patterns
 --
--- RLS Policies: 14
+-- RLS Policies: 15
 --   - User isolation on all user-facing tables
 --
 -- ============================================================================

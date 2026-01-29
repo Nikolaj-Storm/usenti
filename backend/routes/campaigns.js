@@ -11,11 +11,17 @@ router.get('/', authenticateUser, async (req, res) => {
       .select(`
         *,
         email_accounts(id, email_address),
-        contact_lists(id, name, total_contacts)
+        contact_lists(id, name, total_contacts),
+        campaign_email_accounts(
+          id,
+          email_account_id,
+          is_active,
+          email_accounts(id, email_address)
+        )
       `)
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false });
-    
+
     if (error) throw error;
     res.json(data);
   } catch (error) {
@@ -32,14 +38,20 @@ router.get('/:id', authenticateUser, async (req, res) => {
       .select(`
         *,
         email_accounts(id, email_address),
-        contact_lists(id, name, total_contacts)
+        contact_lists(id, name, total_contacts),
+        campaign_email_accounts(
+          id,
+          email_account_id,
+          is_active,
+          email_accounts(id, email_address)
+        )
       `)
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
       .single();
-    
+
     if (error) throw error;
-    
+
     if (!data) {
       return res.status(404).json({ error: 'Campaign not found' });
     }
@@ -52,33 +64,41 @@ router.get('/:id', authenticateUser, async (req, res) => {
 });
 
 // Create new campaign
+// Supports both legacy single email_account_id and new email_account_ids array
 router.post('/', authenticateUser, async (req, res) => {
   try {
-    const { 
-      name, 
-      email_account_id, 
-      contact_list_id, 
-      send_schedule, 
-      daily_limit 
+    const {
+      name,
+      email_account_id,      // Legacy: single account
+      email_account_ids,     // New: array of accounts for rotation
+      contact_list_id,
+      send_schedule,
+      daily_limit
     } = req.body;
 
+    // Determine which accounts to use
+    const accountIds = email_account_ids && email_account_ids.length > 0
+      ? email_account_ids
+      : (email_account_id ? [email_account_id] : []);
+
     // Validate required fields
-    if (!name || !email_account_id || !contact_list_id) {
-      return res.status(400).json({ 
-        error: 'Name, email account, and contact list are required' 
+    if (!name || accountIds.length === 0 || !contact_list_id) {
+      return res.status(400).json({
+        error: 'Name, at least one email account, and contact list are required'
       });
     }
 
-    // Verify email account belongs to user
-    const { data: emailAccount } = await supabase
+    // Verify all email accounts belong to user
+    const { data: emailAccounts, error: accountsError } = await supabase
       .from('email_accounts')
       .select('id')
-      .eq('id', email_account_id)
-      .eq('user_id', req.user.id)
-      .single();
+      .in('id', accountIds)
+      .eq('user_id', req.user.id);
 
-    if (!emailAccount) {
-      return res.status(400).json({ error: 'Invalid email account' });
+    if (accountsError) throw accountsError;
+
+    if (!emailAccounts || emailAccounts.length !== accountIds.length) {
+      return res.status(400).json({ error: 'One or more email accounts are invalid' });
     }
 
     // Verify contact list belongs to user
@@ -94,12 +114,14 @@ router.post('/', authenticateUser, async (req, res) => {
     }
 
     // Create campaign
-    const { data, error } = await supabase
+    // For multi-account campaigns, email_account_id is set to the first account for backward compatibility
+    // The actual rotation uses the campaign_email_accounts junction table
+    const { data: campaign, error: campaignError } = await supabase
       .from('campaigns')
       .insert({
         user_id: req.user.id,
         name,
-        email_account_id,
+        email_account_id: accountIds[0], // First account for backward compatibility
         contact_list_id,
         status: 'draft',
         send_schedule: send_schedule || {
@@ -109,15 +131,49 @@ router.post('/', authenticateUser, async (req, res) => {
         },
         daily_limit: daily_limit || 500
       })
+      .select()
+      .single();
+
+    if (campaignError) throw campaignError;
+
+    // If multiple accounts, create junction table entries
+    if (accountIds.length > 0) {
+      const junctionEntries = accountIds.map(accountId => ({
+        campaign_id: campaign.id,
+        email_account_id: accountId,
+        is_active: true
+      }));
+
+      const { error: junctionError } = await supabase
+        .from('campaign_email_accounts')
+        .insert(junctionEntries);
+
+      if (junctionError) {
+        console.error('Error creating campaign_email_accounts:', junctionError);
+        // Don't fail the whole request, campaign is still usable with legacy single account
+      }
+    }
+
+    // Fetch the complete campaign with all relations
+    const { data: fullCampaign, error: fetchError } = await supabase
+      .from('campaigns')
       .select(`
         *,
         email_accounts(id, email_address),
-        contact_lists(id, name, total_contacts)
+        contact_lists(id, name, total_contacts),
+        campaign_email_accounts(
+          id,
+          email_account_id,
+          is_active,
+          email_accounts(id, email_address)
+        )
       `)
+      .eq('id', campaign.id)
       .single();
-    
-    if (error) throw error;
-    res.json(data);
+
+    if (fetchError) throw fetchError;
+
+    res.json(fullCampaign);
   } catch (error) {
     console.error('Error creating campaign:', error);
     res.status(500).json({ error: error.message });
@@ -168,11 +224,177 @@ router.delete('/:id', authenticateUser, async (req, res) => {
       .delete()
       .eq('id', req.params.id)
       .eq('user_id', req.user.id);
-    
+
     if (error) throw error;
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting campaign:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// CAMPAIGN EMAIL ACCOUNTS (Multi-Account Rotation)
+// ============================================================================
+
+// Get email accounts for a campaign
+router.get('/:id/email-accounts', authenticateUser, async (req, res) => {
+  try {
+    // Verify campaign belongs to user
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    const { data, error } = await supabase
+      .from('campaign_email_accounts')
+      .select(`
+        id,
+        email_account_id,
+        emails_sent_today,
+        last_used_at,
+        is_active,
+        email_accounts(id, email_address, daily_send_limit)
+      `)
+      .eq('campaign_id', req.params.id);
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (error) {
+    console.error('Error fetching campaign email accounts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add email account(s) to a campaign
+router.post('/:id/email-accounts', authenticateUser, async (req, res) => {
+  try {
+    const { email_account_ids } = req.body;
+
+    if (!email_account_ids || !Array.isArray(email_account_ids) || email_account_ids.length === 0) {
+      return res.status(400).json({ error: 'email_account_ids array is required' });
+    }
+
+    // Verify campaign belongs to user
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    // Verify all email accounts belong to user
+    const { data: emailAccounts } = await supabase
+      .from('email_accounts')
+      .select('id')
+      .in('id', email_account_ids)
+      .eq('user_id', req.user.id);
+
+    if (!emailAccounts || emailAccounts.length !== email_account_ids.length) {
+      return res.status(400).json({ error: 'One or more email accounts are invalid' });
+    }
+
+    // Insert new associations (ignore duplicates)
+    const entries = email_account_ids.map(accountId => ({
+      campaign_id: req.params.id,
+      email_account_id: accountId,
+      is_active: true
+    }));
+
+    const { error } = await supabase
+      .from('campaign_email_accounts')
+      .upsert(entries, { onConflict: 'campaign_id,email_account_id' });
+
+    if (error) throw error;
+
+    // Return updated list
+    const { data: updatedList } = await supabase
+      .from('campaign_email_accounts')
+      .select(`
+        id,
+        email_account_id,
+        emails_sent_today,
+        last_used_at,
+        is_active,
+        email_accounts(id, email_address, daily_send_limit)
+      `)
+      .eq('campaign_id', req.params.id);
+
+    res.json(updatedList || []);
+  } catch (error) {
+    console.error('Error adding campaign email accounts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Remove email account from a campaign
+router.delete('/:campaignId/email-accounts/:accountId', authenticateUser, async (req, res) => {
+  try {
+    // Verify campaign belongs to user
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('id')
+      .eq('id', req.params.campaignId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    const { error } = await supabase
+      .from('campaign_email_accounts')
+      .delete()
+      .eq('campaign_id', req.params.campaignId)
+      .eq('email_account_id', req.params.accountId);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error removing campaign email account:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Toggle email account active status for a campaign
+router.patch('/:campaignId/email-accounts/:accountId', authenticateUser, async (req, res) => {
+  try {
+    const { is_active } = req.body;
+
+    // Verify campaign belongs to user
+    const { data: campaign } = await supabase
+      .from('campaigns')
+      .select('id')
+      .eq('id', req.params.campaignId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    const { data, error } = await supabase
+      .from('campaign_email_accounts')
+      .update({ is_active })
+      .eq('campaign_id', req.params.campaignId)
+      .eq('email_account_id', req.params.accountId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    console.error('Error updating campaign email account:', error);
     res.status(500).json({ error: error.message });
   }
 });
