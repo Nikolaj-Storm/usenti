@@ -874,7 +874,7 @@ const WorkflowCanvas = ({ steps, activeStep, setActiveStep, onAddStep, onDeleteS
       h('div', { className: "flex flex-col items-center mt-4" },
         h(Connector, { length: 30 }),
         h('div', { className: "w-12 h-12 rounded-full bg-stone-400 flex items-center justify-center shadow" },
-          h(Icons.Flag, { size: 18, className: "text-white" })
+          h(Icons.Check, { size: 18, className: "text-white" })
         ),
         h('span', { className: "mt-2 text-xs font-semibold text-stone-500" }, "END")
       )
