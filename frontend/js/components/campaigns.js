@@ -497,6 +497,24 @@ const CampaignBuilder = () => {
 
   const activeStepData = getActiveStepData();
 
+  // Helper to get email accounts display for a campaign
+  const getCampaignEmailAccounts = (campaign) => {
+    if (!campaign) return [];
+    // Check for multi-account setup first
+    if (campaign.campaign_email_accounts && campaign.campaign_email_accounts.length > 0) {
+      return campaign.campaign_email_accounts
+        .filter(cea => cea.is_active && cea.email_accounts)
+        .map(cea => cea.email_accounts.email_address);
+    }
+    // Fall back to legacy single account
+    if (campaign.email_accounts?.email_address) {
+      return [campaign.email_accounts.email_address];
+    }
+    return [];
+  };
+
+  const campaignEmails = getCampaignEmailAccounts(selectedCampaign);
+
   // Builder View
   return h('div', { className: "h-[calc(100vh-120px)] flex flex-col animate-fade-in" },
     // Header
@@ -508,6 +526,15 @@ const CampaignBuilder = () => {
           h('span', { className: "capitalize" }, selectedCampaign?.status),
           h('span', null, '•'),
           isDemo ? h('span', { className: "text-gold-600" }, "Demo Mode") : h('span', null, "Auto-saved")
+        ),
+        // Display email accounts
+        !isDemo && campaignEmails.length > 0 && h('div', { className: "flex items-center gap-2 mt-2 text-xs text-stone-500" },
+          h(Icons.Mail, { size: 14 }),
+          campaignEmails.length === 1
+            ? h('span', null, campaignEmails[0])
+            : h('span', { title: campaignEmails.join('\n') },
+                `${campaignEmails.length} accounts (rotation enabled)`
+              )
         )
       ),
       h('div', { className: "flex gap-3" },
@@ -1077,7 +1104,7 @@ const WaitStepEditor = ({ data, handleChange, onUpdate, step }) => {
 const NewCampaignModal = ({ onClose, onCreate }) => {
   const [formData, setFormData] = React.useState({
     name: '',
-    email_account_id: '',
+    email_account_ids: [], // Changed to array for multi-select
     contact_list_id: '',
     send_schedule: {
       days: ['mon', 'tue', 'wed', 'thu', 'fri'],
@@ -1121,8 +1148,30 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
     });
   };
 
+  // Toggle email account selection
+  const toggleEmailAccount = (accountId) => {
+    const current = formData.email_account_ids;
+    const newSelection = current.includes(accountId)
+      ? current.filter(id => id !== accountId)
+      : [...current, accountId];
+    setFormData({ ...formData, email_account_ids: newSelection });
+  };
+
+  // Select/deselect all email accounts
+  const toggleAllAccounts = () => {
+    if (formData.email_account_ids.length === emailAccounts.length) {
+      setFormData({ ...formData, email_account_ids: [] });
+    } else {
+      setFormData({ ...formData, email_account_ids: emailAccounts.map(a => a.id) });
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (formData.email_account_ids.length === 0) {
+      alert('Please select at least one email account');
+      return;
+    }
     onCreate(formData);
   };
 
@@ -1135,11 +1184,42 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
           h('label', { className: "block text-sm text-stone-700 mb-1" }, "Name"),
           h('input', { required: true, className: "w-full border p-2 rounded text-sm", value: formData.name, onChange: e => setFormData({...formData, name: e.target.value}) })
         ),
+        // Multi-select email accounts
         h('div', null,
-          h('label', { className: "block text-sm text-stone-700 mb-1" }, "Send From"),
-          h('select', { required: true, className: "w-full border p-2 rounded bg-white text-sm", value: formData.email_account_id, onChange: e => setFormData({...formData, email_account_id: e.target.value}) },
-            h('option', { value: "" }, "Select..."),
-            emailAccounts.map(a => h('option', { key: a.id, value: a.id }, String(a.email_address)))
+          h('div', { className: "flex items-center justify-between mb-1" },
+            h('label', { className: "block text-sm text-stone-700" }, "Send From"),
+            emailAccounts.length > 1 && h('button', {
+              type: "button",
+              onClick: toggleAllAccounts,
+              className: "text-xs text-jaguar-900 hover:underline"
+            }, formData.email_account_ids.length === emailAccounts.length ? "Deselect All" : "Select All")
+          ),
+          emailAccounts.length > 1 && h('p', { className: "text-xs text-stone-500 mb-2" },
+            "Select multiple accounts to rotate sending across them"
+          ),
+          h('div', { className: "border rounded-lg max-h-40 overflow-y-auto" },
+            emailAccounts.length === 0 ?
+              h('div', { className: "p-3 text-center text-stone-500 text-sm" }, "No email accounts found") :
+              emailAccounts.map(account =>
+                h('label', {
+                  key: account.id,
+                  className: `flex items-center gap-2 p-2 hover:bg-stone-50 cursor-pointer border-b last:border-b-0 ${
+                    formData.email_account_ids.includes(account.id) ? 'bg-cream-50' : ''
+                  }`
+                },
+                  h('input', {
+                    type: "checkbox",
+                    checked: formData.email_account_ids.includes(account.id),
+                    onChange: () => toggleEmailAccount(account.id),
+                    className: "w-4 h-4 rounded border-stone-300"
+                  }),
+                  h('span', { className: "text-sm text-stone-700 truncate" }, account.email_address)
+                )
+              )
+          ),
+          formData.email_account_ids.length > 0 && h('p', { className: "text-xs text-stone-600 mt-1" },
+            `${formData.email_account_ids.length} account${formData.email_account_ids.length > 1 ? 's' : ''} selected`,
+            formData.email_account_ids.length > 1 && " - emails will rotate across accounts"
           )
         ),
         h('div', null,
