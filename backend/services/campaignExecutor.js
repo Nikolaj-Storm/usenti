@@ -407,23 +407,23 @@ class CampaignExecutor {
     }
   }
 
-  // Handle wait step - supports days, hours, and minutes
+// Handle wait step - supports days, hours, and minutes
   async handleWaitStep(campaignContact, campaign, step) {
-    // Get wait duration components (default to 1 day if nothing set)
-    const waitDays = step.wait_days || 0;
-    const waitHours = step.wait_hours || 0;
-    const waitMinutes = step.wait_minutes || 0;
+    // Get wait duration components (ensure they are numbers)
+    const waitDays = parseInt(step.wait_days) || 0;
+    const waitHours = parseInt(step.wait_hours) || 0;
+    const waitMinutes = parseInt(step.wait_minutes) || 0;
 
-    console.log(`[EXECUTOR]      ⏱️  Wait step configuration:`);
-    console.log(`[EXECUTOR]         - Days: ${waitDays}, Hours: ${waitHours}, Minutes: ${waitMinutes}`);
+    console.log(`[EXECUTOR]      ⏱️  Wait step configuration: D:${waitDays} H:${waitHours} M:${waitMinutes}`);
 
     // Calculate total milliseconds
     const totalMs = (waitDays * 24 * 60 * 60 * 1000) +
                    (waitHours * 60 * 60 * 1000) +
                    (waitMinutes * 60 * 1000);
 
-    // Default to 1 day if total is 0 (more reasonable for follow-up emails)
-    const actualDelayMs = totalMs > 0 ? totalMs : (24 * 60 * 60 * 1000);
+    // FIX: Only default to 1 hour if the user literally provided NO time at all (all 0s)
+    // and ensure we don't accidentally force a 24h wait.
+    const actualDelayMs = totalMs > 0 ? totalMs : (60 * 60 * 1000); // Default to 1 hour instead of 1 day if empty
 
     const nextSendTime = new Date(Date.now() + actualDelayMs);
 
