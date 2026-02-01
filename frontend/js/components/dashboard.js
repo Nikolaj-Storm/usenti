@@ -137,7 +137,7 @@ const Dashboard = () => {
             )
           ) : h('div', { className: "h-full flex items-center justify-center text-stone-400" },
             h('div', { className: "text-center" },
-              h(Icons.BarChart2, { size: 48, className: "mx-auto mb-2 opacity-30" }),
+              h(Icons.BarChart3, { size: 48, className: "mx-auto mb-2 opacity-30" }),
               h('p', null, 'No activity data yet'),
               h('p', { className: "text-sm" }, 'Start a campaign to see metrics here')
             )
