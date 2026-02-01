@@ -254,12 +254,12 @@ class CampaignExecutor {
     console.log(`[EXECUTOR]   🚀 Send immediately: ${campaign.send_immediately ? 'YES' : 'NO'}`);
     console.log(`[EXECUTOR]   📬 Emails sent so far: ${campaignContact.emails_sent || 0}`);
 
-    // Check if this is the first email and send_immediately is enabled
-    const isFirstEmail = step.step_order === 1 && (campaignContact.emails_sent || 0) === 0;
-    const shouldSkipSchedule = campaign.send_immediately && isFirstEmail;
+    // Check if "Ignore schedules" is enabled (stored in send_immediately column)
+    // If true, we skip schedule checks for ALL steps and send 24/7
+    const shouldSkipSchedule = campaign.send_immediately;
 
     if (shouldSkipSchedule) {
-      console.log(`[EXECUTOR]   ⚡ Skipping schedule check (send_immediately + first email)`);
+      console.log(`[EXECUTOR]   ⚡ Skipping schedule check (Global override enabled)`);
     } else {
       // Check if within send schedule
       console.log(`[EXECUTOR]   🕐 Checking send schedule...`);
