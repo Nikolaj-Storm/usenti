@@ -172,10 +172,7 @@ class CampaignExecutor {
             subject,
             body,
             wait_days,
-            wait_hours,
-            wait_minutes,
             condition_type,
-            condition_branches,
             next_step_if_true,
             next_step_if_false
           )
