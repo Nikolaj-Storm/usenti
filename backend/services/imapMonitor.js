@@ -3,6 +3,18 @@ const { simpleParser } = require('mailparser');
 const supabase = require('../config/supabase');
 const { decrypt } = require('../utils/encryption');
 
+// Zoho IMAP hosts for different data centers (same regions as SMTP)
+const ZOHO_IMAP_HOSTS = [
+  'imap.zoho.com',      // US
+  'imap.zoho.eu',       // EU
+  'imap.zoho.in',       // India
+  'imap.zoho.com.au',   // Australia
+  'imap.zoho.com.cn',   // China
+  'imappro.zoho.com',   // US Pro
+  'imappro.zoho.eu',    // EU Pro
+  'imappro.zoho.in',    // India Pro
+];
+
 class ImapMonitor {
   constructor() {
     this.connections = new Map();
@@ -10,6 +22,16 @@ class ImapMonitor {
     // Storage limits
     this.maxMessagesPerAccount = 500;
     this.maxAgeDays = 30;
+    // Cache working Zoho hosts per account
+    this.zohoHostCache = new Map();
+  }
+
+  // Check if a host is a Zoho IMAP host
+  isZohoHost(host) {
+    if (!host) return false;
+    const lowerHost = host.toLowerCase();
+    return lowerHost.includes('zoho') ||
+           ZOHO_IMAP_HOSTS.some(zh => lowerHost.includes(zh.replace('imap.', '').replace('imappro.', '')));
   }
 
   // Cleanup old messages to prevent database bloat
@@ -119,43 +141,146 @@ class ImapMonitor {
 
   // Start monitoring a single email account
   startMonitoring(account) {
+    // Skip if already monitoring
+    if (this.connections.has(account.id)) {
+      return;
+    }
+
+    // Decrypt password with error handling
+    let decryptedPassword;
     try {
-      // Skip if already monitoring
-      if (this.connections.has(account.id)) {
+      if (!account.imap_password) {
+        console.error(`[IMAP] ✗ No IMAP password stored for ${account.email_address}`);
         return;
       }
+      decryptedPassword = decrypt(account.imap_password);
+      if (!decryptedPassword) {
+        console.error(`[IMAP] ✗ Password decryption returned empty for ${account.email_address}`);
+        return;
+      }
+    } catch (decryptError) {
+      console.error(`[IMAP] ✗ Password decryption failed for ${account.email_address}:`);
+      console.error(`[IMAP]   - Error: ${decryptError.message}`);
+      return;
+    }
 
-      // Detailed logging for debugging connection issues
+    // Check if this is a Zoho account - if so, try multiple regional hosts
+    const isZoho = this.isZohoHost(account.imap_host) ||
+                   account.email_address?.toLowerCase().includes('@zoho') ||
+                   account.account_type === 'zoho';
+
+    if (isZoho) {
+      // Try Zoho hosts with regional fallback
+      this.startMonitoringZoho(account, decryptedPassword);
+    } else {
+      // Standard single-host connection
+      this.startMonitoringSingleHost(account, account.imap_host, decryptedPassword);
+    }
+  }
+
+  // Start monitoring with Zoho regional host fallback
+  async startMonitoringZoho(account, decryptedPassword) {
+    console.log(`[IMAP] 🌐 Zoho account detected for ${account.email_address}`);
+
+    // Check cache first
+    const cachedHost = this.zohoHostCache.get(account.id);
+
+    // Build list of hosts to try (cached first, then configured, then all others)
+    let hostsToTry = [...ZOHO_IMAP_HOSTS];
+    if (cachedHost) {
+      hostsToTry = [cachedHost, ...hostsToTry.filter(h => h !== cachedHost)];
+    }
+    if (account.imap_host && !hostsToTry.includes(account.imap_host)) {
+      hostsToTry.unshift(account.imap_host);
+    }
+
+    console.log(`[IMAP]    Will try Zoho hosts: ${hostsToTry.slice(0, 4).join(', ')}...`);
+
+    for (const host of hostsToTry) {
+      console.log(`[IMAP]    🔄 Trying Zoho host: ${host}...`);
+
+      const success = await this.tryConnectHost(account, host, decryptedPassword);
+
+      if (success) {
+        // Cache the working host
+        this.zohoHostCache.set(account.id, host);
+        console.log(`[IMAP]    ✅ Connected via ${host} - cached for future connections`);
+        return;
+      }
+    }
+
+    console.error(`[IMAP] ❌ All Zoho IMAP hosts failed for ${account.email_address}`);
+    console.error(`[IMAP]    Please verify:`);
+    console.error(`[IMAP]    1. IMAP is enabled in Zoho Mail settings`);
+    console.error(`[IMAP]    2. Using App-Specific Password if 2FA is enabled`);
+    console.error(`[IMAP]    3. Account is active and not locked`);
+  }
+
+  // Try connecting to a specific host - returns promise that resolves to success boolean
+  tryConnectHost(account, host, decryptedPassword) {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        console.log(`[IMAP]       ⏱️ Connection timeout for ${host}`);
+        resolve(false);
+      }, 10000); // 10 second timeout
+
+      try {
+        const imap = new Imap({
+          user: account.imap_username,
+          password: decryptedPassword,
+          host: host,
+          port: account.imap_port || 993,
+          tls: true,
+          tlsOptions: { rejectUnauthorized: false },
+          keepalive: true,
+          connTimeout: 10000,
+          authTimeout: 10000
+        });
+
+        imap.once('ready', () => {
+          clearTimeout(timeout);
+          console.log(`[IMAP] ✓ Connected to ${account.email_address} via ${host}`);
+          this.connections.set(account.id, { imap, account, host });
+          this.openInbox(imap, account);
+          resolve(true);
+        });
+
+        imap.once('error', (err) => {
+          clearTimeout(timeout);
+          console.log(`[IMAP]       ❌ ${host}: ${err.message}`);
+          resolve(false);
+        });
+
+        imap.once('end', () => {
+          if (this.connections.has(account.id)) {
+            console.log(`[IMAP] Connection ended for ${account.email_address}`);
+            this.connections.delete(account.id);
+          }
+        });
+
+        imap.connect();
+      } catch (error) {
+        clearTimeout(timeout);
+        console.log(`[IMAP]       ❌ ${host}: ${error.message}`);
+        resolve(false);
+      }
+    });
+  }
+
+  // Start monitoring with a single host (non-Zoho accounts)
+  startMonitoringSingleHost(account, host, decryptedPassword) {
+    try {
       console.log(`[IMAP] Attempting connection for ${account.email_address}:`);
-      console.log(`[IMAP]   - Host: ${account.imap_host}`);
+      console.log(`[IMAP]   - Host: ${host}`);
       console.log(`[IMAP]   - Port: ${account.imap_port}`);
       console.log(`[IMAP]   - Username: ${account.imap_username}`);
       console.log(`[IMAP]   - TLS: enabled`);
-
-      // Decrypt password with error handling
-      let decryptedPassword;
-      try {
-        if (!account.imap_password) {
-          console.error(`[IMAP] ✗ No IMAP password stored for ${account.email_address}`);
-          return;
-        }
-        decryptedPassword = decrypt(account.imap_password);
-        if (!decryptedPassword) {
-          console.error(`[IMAP] ✗ Password decryption returned empty for ${account.email_address}`);
-          return;
-        }
-        console.log(`[IMAP]   - Password: decrypted successfully (${decryptedPassword.length} chars)`);
-      } catch (decryptError) {
-        console.error(`[IMAP] ✗ Password decryption failed for ${account.email_address}:`);
-        console.error(`[IMAP]   - Error: ${decryptError.message}`);
-        console.error(`[IMAP]   - This usually means the ENCRYPTION_KEY changed or password was not properly encrypted`);
-        return;
-      }
+      console.log(`[IMAP]   - Password: decrypted (${decryptedPassword.length} chars)`);
 
       const imap = new Imap({
         user: account.imap_username,
         password: decryptedPassword,
-        host: account.imap_host,
+        host: host,
         port: account.imap_port,
         tls: true,
         tlsOptions: { rejectUnauthorized: false },
@@ -183,7 +308,7 @@ class ImapMonitor {
           console.error(`[IMAP]     5. For custom domains: Check mail server auth settings`);
         }
         if (err.message.includes('ENOTFOUND') || err.message.includes('ECONNREFUSED')) {
-          console.error(`[IMAP]   - Network issue: Cannot reach ${account.imap_host}:${account.imap_port}`);
+          console.error(`[IMAP]   - Network issue: Cannot reach ${host}:${account.imap_port}`);
         }
         this.connections.delete(account.id);
       });
@@ -193,7 +318,7 @@ class ImapMonitor {
         this.connections.delete(account.id);
       });
 
-      console.log(`[IMAP] Initiating connection to ${account.imap_host}...`);
+      console.log(`[IMAP] Initiating connection to ${host}...`);
       imap.connect();
       this.connections.set(account.id, { imap, account });
     } catch (error) {
