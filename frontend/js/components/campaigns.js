@@ -1172,7 +1172,16 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
       alert('Please select at least one email account');
       return;
     }
-    onCreate(formData);
+    if (!formData.contact_list_id) {
+      alert('Please select a contact list');
+      return;
+    }
+    // Send both email_account_id (legacy) and email_account_ids (new) for backward compatibility
+    const payload = {
+      ...formData,
+      email_account_id: formData.email_account_ids[0]
+    };
+    onCreate(payload);
   };
 
   return h('div', { className: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in", onClick: onClose },
