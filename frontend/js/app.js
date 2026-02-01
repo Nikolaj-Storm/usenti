@@ -187,12 +187,7 @@ const App = () => {
           privateView === 'inbox' && 'Unified Inbox',
           privateView === 'settings' && 'System Settings'
         ),
-        h('div', { className: "flex items-center gap-4" },
-          h('button', { className: "relative p-2 text-stone-400 hover:text-jaguar-900 transition-colors" },
-            h(Icons.Inbox, { size: 20 }),
-            h('span', { className: "absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" })
-          )
-        )
+        h('div', { className: "flex items-center gap-4" })
       ),
       h('div', { className: "flex-1 overflow-y-auto p-8 scroll-smooth" },
         h('div', { className: "max-w-7xl mx-auto" },
