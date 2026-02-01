@@ -36,67 +36,7 @@ A full-stack SaaS application for automating email campaigns with multi-step seq
 
 ## Quick Start
 
-### 1. Clone Repository
 
-```bash
-git clone https://github.com/Nikolaj-Storm/Snowman.2.0.git
-cd Snowman.2.0
-```
-
-### 2. Set Up Database
-
-1. Create a Supabase project at [supabase.com](https://supabase.com)
-2. Run the SQL in `backend/database/schema.sql` in the Supabase SQL Editor
-3. Get your API credentials from Project Settings → API
-
-### 3. Configure Backend
-
-```bash
-cd backend
-cp .env.example .env
-# Edit .env with your Supabase credentials
-npm install
-npm run dev    # Development mode with auto-reload
-# OR
-npm start      # Production mode
-```
-
-### 4. Configure Frontend
-
-Update `frontend/js/config.js` with your backend URL:
-
-```javascript
-API_BASE_URL: 'http://localhost:3001'  // or your production URL
-```
-
-### 5. Run Frontend
-
-```bash
-# Install dependencies (if not already done)
-npm install
-
-# Start Vite development server
-npm run dev
-```
-
-Visit `http://localhost:3000`
-
-Alternatively, for quick testing:
-```bash
-# Serve with Python
-python3 -m http.server 3000
-# or with npx
-npx http-server -p 3000
-```
-
-## Deployment
-
-See **[SETUP.md](./SETUP.md)** for complete deployment instructions including:
-- Supabase database setup
-- Render backend deployment
-- GitHub Pages frontend deployment
-- Environment variable configuration
-- DNS and custom domain setup
 
 ## Project Structure
 
