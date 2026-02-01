@@ -125,14 +125,42 @@ class ImapMonitor {
         return;
       }
 
+      // Detailed logging for debugging connection issues
+      console.log(`[IMAP] Attempting connection for ${account.email_address}:`);
+      console.log(`[IMAP]   - Host: ${account.imap_host}`);
+      console.log(`[IMAP]   - Port: ${account.imap_port}`);
+      console.log(`[IMAP]   - Username: ${account.imap_username}`);
+      console.log(`[IMAP]   - TLS: enabled`);
+
+      // Decrypt password with error handling
+      let decryptedPassword;
+      try {
+        if (!account.imap_password) {
+          console.error(`[IMAP] ✗ No IMAP password stored for ${account.email_address}`);
+          return;
+        }
+        decryptedPassword = decrypt(account.imap_password);
+        if (!decryptedPassword) {
+          console.error(`[IMAP] ✗ Password decryption returned empty for ${account.email_address}`);
+          return;
+        }
+        console.log(`[IMAP]   - Password: decrypted successfully (${decryptedPassword.length} chars)`);
+      } catch (decryptError) {
+        console.error(`[IMAP] ✗ Password decryption failed for ${account.email_address}:`);
+        console.error(`[IMAP]   - Error: ${decryptError.message}`);
+        console.error(`[IMAP]   - This usually means the ENCRYPTION_KEY changed or password was not properly encrypted`);
+        return;
+      }
+
       const imap = new Imap({
         user: account.imap_username,
-        password: decrypt(account.imap_password),
+        password: decryptedPassword,
         host: account.imap_host,
         port: account.imap_port,
         tls: true,
         tlsOptions: { rejectUnauthorized: false },
-        keepalive: true
+        keepalive: true,
+        debug: (msg) => console.log(`[IMAP DEBUG ${account.email_address}] ${msg}`)
       });
 
       imap.once('ready', () => {
@@ -141,7 +169,22 @@ class ImapMonitor {
       });
 
       imap.once('error', (err) => {
-        console.error(`[IMAP] ✗ Error for ${account.email_address}:`, err.message);
+        console.error(`[IMAP] ✗ Error for ${account.email_address}:`);
+        console.error(`[IMAP]   - Message: ${err.message}`);
+        console.error(`[IMAP]   - Error type: ${err.type || 'unknown'}`);
+        console.error(`[IMAP]   - Error source: ${err.source || 'unknown'}`);
+        console.error(`[IMAP]   - Text code: ${err.textCode || 'none'}`);
+        if (err.message.includes('Invalid credentials')) {
+          console.error(`[IMAP]   - Troubleshooting tips:`);
+          console.error(`[IMAP]     1. Verify IMAP username matches email: ${account.imap_username}`);
+          console.error(`[IMAP]     2. Check if "Less secure apps" or "App password" is required`);
+          console.error(`[IMAP]     3. Verify IMAP is enabled in email provider settings`);
+          console.error(`[IMAP]     4. For Gmail: Use App Password, not account password`);
+          console.error(`[IMAP]     5. For custom domains: Check mail server auth settings`);
+        }
+        if (err.message.includes('ENOTFOUND') || err.message.includes('ECONNREFUSED')) {
+          console.error(`[IMAP]   - Network issue: Cannot reach ${account.imap_host}:${account.imap_port}`);
+        }
         this.connections.delete(account.id);
       });
 
@@ -150,10 +193,13 @@ class ImapMonitor {
         this.connections.delete(account.id);
       });
 
+      console.log(`[IMAP] Initiating connection to ${account.imap_host}...`);
       imap.connect();
       this.connections.set(account.id, { imap, account });
     } catch (error) {
-      console.error(`[IMAP] Failed to connect ${account.email_address}:`, error);
+      console.error(`[IMAP] Failed to connect ${account.email_address}:`);
+      console.error(`[IMAP]   - Error: ${error.message}`);
+      console.error(`[IMAP]   - Stack: ${error.stack}`);
     }
   }
 
@@ -235,21 +281,46 @@ class ImapMonitor {
           return reject(new Error('Email account not found'));
         }
 
-        console.log(`[${requestId}] Connecting to ${account.imap_host}:${account.imap_port}...`);
+        // Detailed connection logging
+        console.log(`[${requestId}] Connection details for ${account.email_address}:`);
+        console.log(`[${requestId}]   - Host: ${account.imap_host}`);
+        console.log(`[${requestId}]   - Port: ${account.imap_port}`);
+        console.log(`[${requestId}]   - Username: ${account.imap_username}`);
+        console.log(`[${requestId}]   - TLS: ${account.imap_port === 993 ? 'enabled' : 'disabled'}`);
+
+        // Decrypt password with error handling
+        let decryptedPassword;
+        try {
+          if (!account.imap_password) {
+            console.error(`[${requestId}] ✗ No IMAP password stored for ${account.email_address}`);
+            return reject(new Error('No IMAP password configured'));
+          }
+          decryptedPassword = decrypt(account.imap_password);
+          if (!decryptedPassword) {
+            console.error(`[${requestId}] ✗ Password decryption returned empty`);
+            return reject(new Error('Password decryption failed'));
+          }
+          console.log(`[${requestId}]   - Password: decrypted successfully (${decryptedPassword.length} chars)`);
+        } catch (decryptError) {
+          console.error(`[${requestId}] ✗ Password decryption failed:`);
+          console.error(`[${requestId}]   - Error: ${decryptError.message}`);
+          return reject(new Error(`Password decryption failed: ${decryptError.message}`));
+        }
 
         const imap = new Imap({
           user: account.imap_username,
-          password: decrypt(account.imap_password),
+          password: decryptedPassword,
           host: account.imap_host,
           port: account.imap_port,
           tls: account.imap_port === 993,
-          tlsOptions: { rejectUnauthorized: false }
+          tlsOptions: { rejectUnauthorized: false },
+          debug: (msg) => console.log(`[${requestId} DEBUG] ${msg}`)
         });
 
         const messages = [];
 
         imap.once('ready', () => {
-          console.log(`[${requestId}] Connected, opening INBOX...`);
+          console.log(`[${requestId}] ✓ Connected, opening INBOX...`);
 
           imap.openBox('INBOX', true, (err, box) => {
             if (err) {
@@ -364,7 +435,19 @@ class ImapMonitor {
         });
 
         imap.once('error', (err) => {
-          console.error(`[${requestId}] IMAP connection error:`, err);
+          console.error(`[${requestId}] ✗ IMAP connection error for ${account.email_address}:`);
+          console.error(`[${requestId}]   - Message: ${err.message}`);
+          console.error(`[${requestId}]   - Error type: ${err.type || 'unknown'}`);
+          console.error(`[${requestId}]   - Error source: ${err.source || 'unknown'}`);
+          console.error(`[${requestId}]   - Text code: ${err.textCode || 'none'}`);
+          if (err.message.includes('Invalid credentials')) {
+            console.error(`[${requestId}]   - Troubleshooting tips:`);
+            console.error(`[${requestId}]     1. Verify IMAP username matches email: ${account.imap_username}`);
+            console.error(`[${requestId}]     2. Check if "Less secure apps" or "App password" is required`);
+            console.error(`[${requestId}]     3. Verify IMAP is enabled in email provider settings`);
+            console.error(`[${requestId}]     4. For Gmail: Use App Password, not account password`);
+            console.error(`[${requestId}]     5. For custom domains: Check mail server auth settings`);
+          }
           reject(err);
         });
 
@@ -398,9 +481,32 @@ class ImapMonitor {
           return reject(new Error('Email account not found'));
         }
 
+        // Detailed connection logging
+        console.log(`[${requestId}] Connection details for ${account.email_address}:`);
+        console.log(`[${requestId}]   - Host: ${account.imap_host}:${account.imap_port}`);
+        console.log(`[${requestId}]   - Username: ${account.imap_username}`);
+
+        // Decrypt password with error handling
+        let decryptedPassword;
+        try {
+          if (!account.imap_password) {
+            console.error(`[${requestId}] ✗ No IMAP password stored`);
+            return reject(new Error('No IMAP password configured'));
+          }
+          decryptedPassword = decrypt(account.imap_password);
+          if (!decryptedPassword) {
+            console.error(`[${requestId}] ✗ Password decryption returned empty`);
+            return reject(new Error('Password decryption failed'));
+          }
+          console.log(`[${requestId}]   - Password: decrypted successfully`);
+        } catch (decryptError) {
+          console.error(`[${requestId}] ✗ Password decryption failed: ${decryptError.message}`);
+          return reject(new Error(`Password decryption failed: ${decryptError.message}`));
+        }
+
         const imap = new Imap({
           user: account.imap_username,
-          password: decrypt(account.imap_password),
+          password: decryptedPassword,
           host: account.imap_host,
           port: account.imap_port,
           tls: account.imap_port === 993,
@@ -408,6 +514,7 @@ class ImapMonitor {
         });
 
         imap.once('ready', () => {
+          console.log(`[${requestId}] ✓ Connected to IMAP`);
           imap.openBox('INBOX', true, (err, box) => {
             if (err) {
               imap.end();
@@ -468,11 +575,18 @@ class ImapMonitor {
         });
 
         imap.once('error', (err) => {
+          console.error(`[${requestId}] ✗ IMAP connection error:`);
+          console.error(`[${requestId}]   - Message: ${err.message}`);
+          console.error(`[${requestId}]   - Error type: ${err.type || 'unknown'}`);
+          if (err.message.includes('Invalid credentials')) {
+            console.error(`[${requestId}]   - Credentials issue detected for ${account.imap_username}`);
+          }
           reject(err);
         });
 
         imap.connect();
       } catch (error) {
+        console.error(`[${requestId}] ✗ Unexpected error: ${error.message}`);
         reject(error);
       }
     });
