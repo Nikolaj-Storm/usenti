@@ -2,10 +2,10 @@
 
 
 const EmailAccounts = () => {
-  const [activeTab, setActiveTab] = React.useState('accounts');
   const [accounts, setAccounts] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
-  const [showAddAccountModal, setShowAddAccountModal] = React.useState(false);
+  const [showModal, setShowModal] = React.useState(false);
+  const [editingAccount, setEditingAccount] = React.useState(null);
 
   React.useEffect(() => {
     loadAccounts();
@@ -22,14 +22,30 @@ const EmailAccounts = () => {
     }
   };
 
-  const handleAddAccount = async (accountData) => {
+  const handleAddAccount = () => {
+    setEditingAccount(null);
+    setShowModal(true);
+  };
+
+  const handleEditAccount = (account) => {
+    setEditingAccount(account);
+    setShowModal(true);
+  };
+
+  const handleSaveAccount = async (accountData) => {
     try {
-      const newAccount = await api.createEmailAccount(accountData);
-      setAccounts([...accounts, newAccount]);
-      setShowAddAccountModal(false);
-      alert('Account added successfully!');
+      if (editingAccount) {
+        await api.updateEmailAccount(editingAccount.id, accountData);
+        alert('Account updated successfully!');
+      } else {
+        await api.createEmailAccount(accountData);
+        alert('Account added successfully!');
+      }
+      setShowModal(false);
+      setEditingAccount(null);
+      loadAccounts();
     } catch (error) {
-      console.error('Failed to add account:', error);
+      console.error('Failed to save account:', error);
       throw error;
     }
   };
@@ -38,51 +54,31 @@ const EmailAccounts = () => {
     h('div', { className: "flex justify-between items-end" },
       h('div', null,
         h('h2', { className: "font-serif text-3xl text-jaguar-900" }, 'Infrastructure'),
-        h('p', { className: "text-stone-500 mt-2 font-light" }, 'Manage your email accounts and warm-up engine.')
+        h('p', { className: "text-stone-500 mt-2 font-light" }, 'Manage your connected email accounts.')
       ),
-      activeTab === 'accounts' && h('button', {
-        onClick: () => setShowAddAccountModal(true),
+      h('button', {
+        onClick: handleAddAccount,
         className: "px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 font-medium flex items-center gap-2 transition-colors"
       },
         h(Icons.Plus, { size: 18 }),
         ' Add Account'
       )
     ),
-    h('div', { className: "border-b border-stone-200" },
-      h('div', { className: "flex gap-8" },
-        h('button', {
-          onClick: () => setActiveTab('accounts'),
-          className: `pb-3 border-b-2 font-medium transition-all ${
-            activeTab === 'accounts'
-              ? 'border-jaguar-900 text-jaguar-900'
-              : 'border-transparent text-stone-500 hover:text-jaguar-900 hover:border-stone-300'
-          }`
-        }, 'Connected Accounts'),
-        h('button', {
-          onClick: () => setActiveTab('warmup'),
-          className: `pb-3 border-b-2 font-medium transition-all ${
-            activeTab === 'warmup'
-              ? 'border-jaguar-900 text-jaguar-900'
-              : 'border-transparent text-stone-500 hover:text-jaguar-900 hover:border-stone-300'
-          }`
-        }, 'Warm-up Engine')
-      )
-    ),
+    h('div', { className: "border-b border-stone-200" }),
     loading
       ? h('div', { className: "flex justify-center py-12" },
           h(Icons.Loader2, { size: 48, className: "text-jaguar-900" })
         )
-      : activeTab === 'accounts'
-        ? h(AccountsTab, { accounts: accounts, onRefresh: loadAccounts })
-        : h(WarmupTab, { accounts: accounts }),
-    showAddAccountModal && h(AddAccountModal, {
-      onClose: () => setShowAddAccountModal(false),
-      onAdd: handleAddAccount
+      : h(AccountsTab, { accounts: accounts, onEdit: handleEditAccount }),
+    showModal && h(AccountModal, {
+      account: editingAccount,
+      onClose: () => { setShowModal(false); setEditingAccount(null); },
+      onSave: handleSaveAccount
     })
   );
 };
 
-const AccountsTab = ({ accounts, onRefresh }) => {
+const AccountsTab = ({ accounts, onEdit }) => {
   if (accounts.length === 0) {
     return h('div', { className: "flex flex-col items-center justify-center py-16 text-center" },
       h(Icons.Server, { size: 64, className: "text-stone-300 mb-4" }),
@@ -93,12 +89,12 @@ const AccountsTab = ({ accounts, onRefresh }) => {
 
   return h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
     ...accounts.map((account) =>
-      h(AccountCard, { key: account.id, account: account, onRefresh: onRefresh })
+      h(AccountCard, { key: account.id, account: account, onEdit: onEdit })
     )
   );
 };
 
-const AccountCard = ({ account, onRefresh }) => {
+const AccountCard = ({ account, onEdit }) => {
   const [expanded, setExpanded] = React.useState(false);
 
   const getStatusColor = (status) => {
@@ -133,25 +129,21 @@ const AccountCard = ({ account, onRefresh }) => {
 
   return h('div', { className: "bg-white border border-stone-200 rounded-lg p-6 hover:shadow-lg transition-all group" },
     h('div', { className: "flex justify-between items-start mb-4" },
-      h('div', { className: "flex items-center gap-3" },
-        h('div', { className: "w-12 h-12 rounded-full bg-jaguar-900 text-cream-50 flex items-center justify-center font-serif text-xl" },
+      h('div', { className: "flex items-center gap-3 w-full overflow-hidden" },
+        h('div', { className: "w-12 h-12 rounded-full bg-jaguar-900 text-cream-50 flex items-center justify-center font-serif text-xl shrink-0" },
           account.email_address[0].toUpperCase()
         ),
         h('div', { className: "flex-1 min-w-0" },
           account.sender_name
             ? h('div', null,
-                h('h3', { className: "font-medium text-jaguar-900 truncate", title: `${account.sender_name} <${account.email_address}>` },
+                h('h3', { className: "font-medium text-jaguar-900 truncate", title: account.sender_name },
                   account.sender_name
                 ),
-                h('p', { className: "text-xs text-stone-500 truncate" }, account.email_address)
+                h('p', { className: "text-xs text-stone-500 truncate", title: account.email_address }, account.email_address)
               )
             : h('h3', { className: "font-medium text-jaguar-900 truncate", title: account.email_address },
                 account.email_address
-              ),
-          h('div', { className: "flex items-center gap-1 text-xs text-green-600 mt-1" },
-            h(Icons.ShieldCheck, { size: 12 }),
-            h('span', null, 'Verified')
-          )
+              )
         )
       )
     ),
@@ -183,16 +175,6 @@ const AccountCard = ({ account, onRefresh }) => {
             width: `${Math.min(100, ((account.sent_today || 0) / (account.daily_send_limit || 500)) * 100)}%`
           }
         })
-      ),
-      h('div', { className: "flex justify-between text-sm" },
-        h('span', { className: "text-stone-500" }, 'Health Score'),
-        h('span', {
-          className: `font-medium ${
-            (account.health_score || 100) >= 80 ? 'text-green-600' :
-            (account.health_score || 100) >= 60 ? 'text-amber-600' :
-            'text-red-600'
-          }`
-        }, `${account.health_score || 100}%`)
       )
     ),
     h('div', { className: "mt-4 pt-4 border-t border-stone-100 flex gap-2" },
@@ -200,7 +182,10 @@ const AccountCard = ({ account, onRefresh }) => {
         onClick: () => setExpanded(!expanded),
         className: "flex-1 px-3 py-2 text-sm border border-stone-200 rounded-md hover:bg-stone-50 transition-colors"
       }, expanded ? 'Less' : 'Details'),
-      h('button', { className: "px-3 py-2 text-sm text-stone-400 hover:text-stone-600 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors" },
+      h('button', {
+        onClick: () => onEdit(account),
+        className: "px-3 py-2 text-sm text-stone-400 hover:text-stone-600 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors"
+      },
         h(Icons.Settings, { size: 16 })
       )
     ),
@@ -220,214 +205,27 @@ const AccountCard = ({ account, onRefresh }) => {
       h('div', { className: "flex justify-between" },
         h('span', { className: "text-stone-500" }, 'IMAP Host'),
         h('span', { className: "text-jaguar-900 font-mono text-xs" }, account.imap_host || 'imap.example.com')
-      ),
-      h('div', { className: "flex justify-between" },
-        h('span', { className: "text-stone-500" }, 'Warm-up Status'),
-        h('span', { className: "text-jaguar-900" }, account.is_warming_up ? 'Active' : 'Inactive')
       )
     )
   );
 };
 
-const WarmupTab = ({ accounts }) => {
-  const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } = window.Recharts;
-
-  const volumeData = [
-    { day: 'Day 1', sent: 10, target: 10 },
-    { day: 'Day 2', sent: 15, target: 15 },
-    { day: 'Day 3', sent: 22, target: 25 },
-    { day: 'Day 4', sent: 35, target: 35 },
-    { day: 'Day 5', sent: 48, target: 50 },
-    { day: 'Day 6', sent: 68, target: 70 },
-    { day: 'Day 7', sent: 95, target: 100 },
-  ];
-
-  const replyRateData = [
-    { day: 'Day 1', rate: 85 },
-    { day: 'Day 2', rate: 82 },
-    { day: 'Day 3', rate: 88 },
-    { day: 'Day 4', rate: 90 },
-    { day: 'Day 5', rate: 87 },
-    { day: 'Day 6', rate: 92 },
-    { day: 'Day 7', rate: 94 },
-  ];
-
-  const warmupAccounts = accounts.filter(a => a.is_warming_up);
-  const activeWarmups = warmupAccounts.filter(a => a.status === 'warming').length;
-
-  return h('div', { className: "space-y-6" },
-    h('div', { className: "grid grid-cols-1 md:grid-cols-4 gap-6" },
-      h('div', { className: "bg-white p-6 rounded-lg border border-stone-200" },
-        h('div', { className: "flex items-center gap-3 mb-2" },
-          h('div', { className: "w-10 h-10 rounded-full bg-jaguar-100 flex items-center justify-center" },
-            h(Icons.Flame, { size: 20, className: "text-gold-600" })
-          ),
-          h('div', null,
-            h('p', { className: "text-sm text-stone-500" }, 'Active Warmups'),
-            h('h3', { className: "text-2xl font-serif text-jaguar-900" }, activeWarmups)
-          )
-        )
-      ),
-      h('div', { className: "bg-white p-6 rounded-lg border border-stone-200" },
-        h('div', { className: "flex items-center gap-3 mb-2" },
-          h('div', { className: "w-10 h-10 rounded-full bg-green-100 flex items-center justify-center" },
-            h(Icons.Mail, { size: 20, className: "text-green-600" })
-          ),
-          h('div', null,
-            h('p', { className: "text-sm text-stone-500" }, 'Emails Sent'),
-            h('h3', { className: "text-2xl font-serif text-jaguar-900" }, '1,247')
-          )
-        )
-      ),
-      h('div', { className: "bg-white p-6 rounded-lg border border-stone-200" },
-        h('div', { className: "flex items-center gap-3 mb-2" },
-          h('div', { className: "w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center" },
-            h(Icons.ArrowUpRight, { size: 20, className: "text-blue-600" })
-          ),
-          h('div', null,
-            h('p', { className: "text-sm text-stone-500" }, 'Avg Reply Rate'),
-            h('h3', { className: "text-2xl font-serif text-jaguar-900" }, '88%')
-          )
-        )
-      ),
-      h('div', { className: "bg-white p-6 rounded-lg border border-stone-200" },
-        h('div', { className: "flex items-center gap-3 mb-2" },
-          h('div', { className: "w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center" },
-            h(Icons.Zap, { size: 20, className: "text-amber-600" })
-          ),
-          h('div', null,
-            h('p', { className: "text-sm text-stone-500" }, 'Avg Health'),
-            h('h3', { className: "text-2xl font-serif text-jaguar-900" }, '92%')
-          )
-        )
-      )
-    ),
-    h('div', { className: "grid grid-cols-1 lg:grid-cols-2 gap-6" },
-      h('div', { className: "bg-white border border-stone-200 rounded-lg p-6" },
-        h('h3', { className: "font-serif text-xl text-jaguar-900 mb-4" }, 'Volume Progression'),
-        h('div', { className: "h-[300px]" },
-          h(ResponsiveContainer, { width: "100%", height: "100%" },
-            h(LineChart, { data: volumeData, margin: { top: 5, right: 20, left: 0, bottom: 5 } },
-              h(CartesianGrid, { strokeDasharray: "3 3", vertical: false, stroke: "#E5E7EB" }),
-              h(XAxis, { dataKey: "day", axisLine: false, tickLine: false, tick: { fill: '#9CA3AF', fontSize: 12 } }),
-              h(YAxis, { axisLine: false, tickLine: false, tick: { fill: '#9CA3AF', fontSize: 12 } }),
-              h(Tooltip, {
-                contentStyle: {
-                  backgroundColor: '#FFF',
-                  border: '1px solid #E5E7EB',
-                  borderRadius: '8px',
-                  fontSize: '12px'
-                }
-              }),
-              h(Line, { type: "monotone", dataKey: "target", stroke: "#D1D5DB", strokeWidth: 2, strokeDasharray: "5 5", dot: false }),
-              h(Line, { type: "monotone", dataKey: "sent", stroke: "#0B2B26", strokeWidth: 2, dot: { fill: '#0B2B26', r: 4 } })
-            )
-          )
-        )
-      ),
-      h('div', { className: "bg-white border border-stone-200 rounded-lg p-6" },
-        h('h3', { className: "font-serif text-xl text-jaguar-900 mb-4" }, 'Reply Rate Trend'),
-        h('div', { className: "h-[300px]" },
-          h(ResponsiveContainer, { width: "100%", height: "100%" },
-            h(BarChart, { data: replyRateData, margin: { top: 5, right: 20, left: 0, bottom: 5 } },
-              h(CartesianGrid, { strokeDasharray: "3 3", vertical: false, stroke: "#E5E7EB" }),
-              h(XAxis, { dataKey: "day", axisLine: false, tickLine: false, tick: { fill: '#9CA3AF', fontSize: 12 } }),
-              h(YAxis, { axisLine: false, tickLine: false, tick: { fill: '#9CA3AF', fontSize: 12 } }),
-              h(Tooltip, {
-                contentStyle: {
-                  backgroundColor: '#FFF',
-                  border: '1px solid #E5E7EB',
-                  borderRadius: '8px',
-                  fontSize: '12px'
-                }
-              }),
-              h(Bar, { dataKey: "rate", fill: "#C5A065", radius: [4, 4, 0, 0] })
-            )
-          )
-        )
-      )
-    ),
-    h('div', { className: "bg-white border border-stone-200 rounded-lg overflow-hidden" },
-      h('div', { className: "px-6 py-4 bg-cream-50 border-b border-stone-200" },
-        h('h3', { className: "font-serif text-xl text-jaguar-900" }, 'Account Warmup Status')
-      ),
-      h('div', { className: "divide-y divide-stone-100" },
-        warmupAccounts.length === 0
-          ? h('div', { className: "px-6 py-12 text-center text-stone-500" },
-              h(Icons.Flame, { size: 48, className: "mx-auto mb-3 text-stone-300" }),
-              h('p', null, 'No accounts with warmup enabled')
-            )
-          : warmupAccounts.map((account) =>
-              h(WarmupAccountRow, { key: account.id, account: account })
-            )
-      )
-    ),
-    h('div', { className: "bg-cream-50 border border-stone-200 rounded-lg p-6" },
-      h('div', { className: "flex gap-4" },
-        h(Icons.AlertCircle, { size: 24, className: "text-gold-600 shrink-0" }),
-        h('div', null,
-          h('h4', { className: "font-medium text-jaguar-900 mb-2" }, 'How Warmup Works'),
-          h('p', { className: "text-sm text-stone-600 leading-relaxed mb-3" },
-            'Our AI-driven warmup engine gradually increases your sending volume while maintaining natural conversation patterns. This helps establish a positive sender reputation with email providers.'
-          ),
-          h('ul', { className: "text-sm text-stone-600 space-y-1 list-disc list-inside" },
-            h('li', null, 'Starts with 10-15 emails per day'),
-            h('li', null, 'Gradually increases to your target limit over 14-21 days'),
-            h('li', null, 'Monitors reply rates and engagement'),
-            h('li', null, 'Automatically adjusts based on deliverability signals')
-          )
-        )
-      )
-    )
-  );
-};
-
-const WarmupAccountRow = ({ account }) => {
-  const daysActive = 7;
-  const currentVolume = account.sent_today || 0;
-  const targetVolume = account.daily_send_limit || 500;
-  const progress = Math.min(100, (currentVolume / targetVolume) * 100);
-
-  return h('div', { className: "px-6 py-4 hover:bg-cream-50 transition-colors" },
-    h('div', { className: "flex items-center justify-between mb-3" },
-      h('div', { className: "flex items-center gap-3" },
-        h('div', { className: "w-10 h-10 rounded-full bg-jaguar-900 text-cream-50 flex items-center justify-center text-sm font-medium" },
-          account.email_address[0].toUpperCase()
-        ),
-        h('div', null,
-          h('h4', { className: "font-medium text-jaguar-900" }, account.email_address),
-          h('p', { className: "text-xs text-stone-500" }, `Day ${daysActive} of warmup`)
-        )
-      ),
-      h('div', { className: "text-right" },
-        h('div', { className: "text-sm font-medium text-jaguar-900" }, `${currentVolume} / ${targetVolume}`),
-        h('div', { className: "text-xs text-stone-500" }, 'emails today')
-      )
-    ),
-    h('div', { className: "w-full bg-stone-100 rounded-full h-2" },
-      h('div', {
-        className: "bg-gold-500 h-2 rounded-full transition-all",
-        style: { width: `${progress}%` }
-      })
-    )
-  );
-};
-
-const AddAccountModal = ({ onClose, onAdd }) => {
-  const [step, setStep] = React.useState('type');
-  const [accountType, setAccountType] = React.useState('');
+const AccountModal = ({ account, onClose, onSave }) => {
+  const isEditing = !!account;
+  const [step, setStep] = React.useState(isEditing ? 'details' : 'type');
+  const [accountType, setAccountType] = React.useState(account?.account_type || '');
   const [formData, setFormData] = React.useState({
-    email_address: '',
-    sender_name: '', // Display name for From header (improves deliverability)
-    smtp_host: '',
-    smtp_port: '587',
-    smtp_username: '',
+    email_address: account?.email_address || '',
+    sender_name: account?.sender_name || '',
+    smtp_host: account?.smtp_host || '',
+    smtp_port: account?.smtp_port || '587',
+    smtp_username: account?.smtp_username || '',
     smtp_password: '',
-    imap_host: '',
-    imap_port: '993',
-    imap_username: '',
+    imap_host: account?.imap_host || '',
+    imap_port: account?.imap_port || '993',
+    imap_username: account?.imap_username || '',
     imap_password: '',
-    daily_send_limit: '500'
+    daily_send_limit: account?.daily_send_limit || '500'
   });
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState(null);
@@ -435,36 +233,34 @@ const AddAccountModal = ({ onClose, onAdd }) => {
   const handleTypeSelect = (type) => {
     setAccountType(type);
 
-    if (type === 'zoho') {
-      setFormData({
-        ...formData,
-        smtp_host: 'smtp.zoho.com',
-        smtp_port: '587',
-        imap_host: 'imap.zoho.com',
-        imap_port: '993'
-      });
-    } else if (type === 'gmail') {
-      setFormData({
-        ...formData,
-        smtp_host: 'smtp.gmail.com',
-        smtp_port: '587',
-        imap_host: 'imap.gmail.com',
-        imap_port: '993'
-      });
-
-      // Show app password info for Gmail
-      alert('⚠️ Important: Gmail requires App Passwords for third-party applications.\n\nTo connect your Gmail account:\n\n1. Enable 2-Step Verification on your Google account\n2. Go to https://myaccount.google.com/apppasswords\n3. Generate an app password for "Mail"\n4. Use that password (not your regular password) in the IMAP/SMTP password fields');
-    } else if (type === 'outlook') {
-      setFormData({
-        ...formData,
-        smtp_host: 'smtp.office365.com',
-        smtp_port: '587',
-        imap_host: 'outlook.office365.com',
-        imap_port: '993'
-      });
-
-      // Show OAuth 2.0 warning for Outlook
-      alert('⚠️ Important: Microsoft disabled basic authentication for Outlook/Office 365 in late 2022.\n\nTo connect your Outlook account, you MUST use an App Password:\n\n1. Go to https://account.microsoft.com/security\n2. Navigate to "Advanced security options"\n3. Create a new app password\n4. Use that password (not your regular password) in the IMAP/SMTP password fields\n\nIf app passwords are disabled by your organization, you will need to contact your IT administrator.');
+    if (!isEditing) {
+      if (type === 'zoho') {
+        setFormData(prev => ({
+          ...prev,
+          smtp_host: 'smtp.zoho.com',
+          smtp_port: '587',
+          imap_host: 'imap.zoho.com',
+          imap_port: '993'
+        }));
+      } else if (type === 'gmail') {
+        setFormData(prev => ({
+          ...prev,
+          smtp_host: 'smtp.gmail.com',
+          smtp_port: '587',
+          imap_host: 'imap.gmail.com',
+          imap_port: '993'
+        }));
+        alert('⚠️ Important: Gmail requires App Passwords for third-party applications.\n\nTo connect your Gmail account:\n\n1. Enable 2-Step Verification on your Google account\n2. Go to https://myaccount.google.com/apppasswords\n3. Generate an app password for "Mail"\n4. Use that password (not your regular password) in the IMAP/SMTP password fields');
+      } else if (type === 'outlook') {
+        setFormData(prev => ({
+          ...prev,
+          smtp_host: 'smtp.office365.com',
+          smtp_port: '587',
+          imap_host: 'outlook.office365.com',
+          imap_port: '993'
+        }));
+        alert('⚠️ Important: Microsoft disabled basic authentication for Outlook/Office 365 in late 2022.\n\nTo connect your Outlook account, you MUST use an App Password:\n\n1. Go to https://account.microsoft.com/security\n2. Navigate to "Advanced security options"\n3. Create a new app password\n4. Use that password (not your regular password) in the IMAP/SMTP password fields\n\nIf app passwords are disabled by your organization, you will need to contact your IT administrator.');
+      }
     }
 
     setStep('details');
@@ -475,10 +271,8 @@ const AddAccountModal = ({ onClose, onAdd }) => {
     setTestResult(null);
 
     try {
-      const result = await api.testEmailAccount({
-        ...formData,
-        account_type: accountType
-      });
+      const testData = { ...formData, account_type: accountType };
+      const result = await api.testEmailAccount(testData);
       setTestResult({ success: true, message: result.message || 'Connection successful!' });
     } catch (error) {
       setTestResult({ success: false, message: error.message || 'Connection failed' });
@@ -490,105 +284,21 @@ const AddAccountModal = ({ onClose, onAdd }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const requestId = `FRONTEND-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    console.log(`\n${'='.repeat(80)}`);
-    console.log(`[${requestId}] FRONTEND: Starting email account submission`);
-    console.log(`${'='.repeat(80)}`);
-    console.log(`[${requestId}] Timestamp: ${new Date().toISOString()}`);
-    console.log(`[${requestId}] Account Type Selected: ${accountType}`);
-
-    console.log(`\n[${requestId}] === FORM DATA ===`);
-    console.log(`[${requestId}] Email Address: ${formData.email_address}`);
-    console.log(`[${requestId}] Sender Name: ${formData.sender_name || '(not set)'}`);
-    console.log(`[${requestId}] Account Type: ${accountType}`);
-    console.log(`[${requestId}] SMTP Host: ${formData.smtp_host}`);
-    console.log(`[${requestId}] SMTP Port: ${formData.smtp_port}`);
-    console.log(`[${requestId}] SMTP Username: ${formData.smtp_username}`);
-    console.log(`[${requestId}] SMTP Password Length: ${formData.smtp_password?.length || 0}`);
-    console.log(`[${requestId}] IMAP Host: ${formData.imap_host}`);
-    console.log(`[${requestId}] IMAP Port: ${formData.imap_port}`);
-    console.log(`[${requestId}] IMAP Username: ${formData.imap_username}`);
-    console.log(`[${requestId}] IMAP Password Length: ${formData.imap_password?.length || 0}`);
-    console.log(`[${requestId}] Daily Send Limit: ${formData.daily_send_limit}`);
-
     const payload = {
       ...formData,
       account_type: accountType
     };
 
-    console.log(`\n[${requestId}] === PAYLOAD PREPARED ===`);
-    console.log(`[${requestId}] Full payload (passwords redacted):`, {
-      ...payload,
-      smtp_password: '[REDACTED]',
-      imap_password: '[REDACTED]'
-    });
+    // Remove empty password fields when editing (to keep existing passwords)
+    if (isEditing) {
+      if (!payload.smtp_password) delete payload.smtp_password;
+      if (!payload.imap_password) delete payload.imap_password;
+    }
 
     try {
-      console.log(`\n[${requestId}] === CALLING API ===`);
-      console.log(`[${requestId}] API Base URL: ${APP_CONFIG.API_BASE_URL}`);
-      console.log(`[${requestId}] Endpoint: ${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}`);
-      console.log(`[${requestId}] Full URL: ${APP_CONFIG.API_BASE_URL}${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}`);
-
-      const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
-      console.log(`[${requestId}] Auth Token Present: ${!!token}`);
-      console.log(`[${requestId}] Auth Token Preview: ${token?.substring(0, 20)}...`);
-
-      console.log(`[${requestId}] Making API call...`);
-      const startTime = Date.now();
-
-      const response = await onAdd(payload);
-
-      const duration = Date.now() - startTime;
-      console.log(`\n[${requestId}] === API RESPONSE RECEIVED ===`);
-      console.log(`[${requestId}] Duration: ${duration}ms`);
-      console.log(`[${requestId}] Response:`, response);
-      console.log(`[${requestId}] ✅ SUCCESS: Account added`);
-      console.log(`${'='.repeat(80)}`);
-      console.log(`[${requestId}] FRONTEND REQUEST COMPLETED`);
-      console.log(`${'='.repeat(80)}\n`);
-
+      await onSave(payload);
     } catch (err) {
-      console.log(`\n[${requestId}] === ERROR CAUGHT ===`);
-      console.log(`[${requestId}] ❌ Error Type: ${err.constructor.name}`);
-      console.log(`[${requestId}] ❌ Error Message: ${err.message}`);
-      console.log(`[${requestId}] ❌ Error Stack:`, err.stack);
-
-      // Check if it's a network error
-      if (err.message.includes('fetch') || err.message.includes('network')) {
-        console.log(`[${requestId}] 🔍 NETWORK ERROR DETECTED`);
-        console.log(`[${requestId}] Possible causes:`);
-        console.log(`[${requestId}]    - Backend is down`);
-        console.log(`[${requestId}]    - CORS issue`);
-        console.log(`[${requestId}]    - Wrong API URL`);
-        console.log(`[${requestId}]    - Network connectivity issue`);
-      }
-
-      // Check if it's an auth error
-      if (err.message.includes('401') || err.message.includes('Unauthorized')) {
-        console.log(`[${requestId}] 🔍 AUTHENTICATION ERROR`);
-        console.log(`[${requestId}] Session may have expired`);
-        console.log(`[${requestId}] Token in localStorage:`, !!localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN));
-      }
-
-      // Check if it's a validation error
-      if (err.message.includes('400') || err.message.includes('validation')) {
-        console.log(`[${requestId}] 🔍 VALIDATION ERROR`);
-        console.log(`[${requestId}] Request may be missing required fields`);
-      }
-
-      // Check if it's a database error
-      if (err.message.includes('constraint') || err.message.includes('23514') || err.message.includes('23505')) {
-        console.log(`[${requestId}] 🔍 DATABASE CONSTRAINT ERROR`);
-        console.log(`[${requestId}] This is likely a schema issue`);
-        console.log(`[${requestId}] Account type sent: ${accountType}`);
-      }
-
-      console.log(`${'='.repeat(80)}`);
-      console.log(`[${requestId}] FRONTEND REQUEST FAILED`);
-      console.log(`${'='.repeat(80)}\n`);
-
-      alert('Failed to add account: ' + err.message);
+      alert('Failed to save account: ' + err.message);
     }
   };
 
@@ -601,7 +311,7 @@ const AddAccountModal = ({ onClose, onAdd }) => {
       onClick: (e) => e.stopPropagation()
     },
       h('div', { className: "flex justify-between items-center mb-6" },
-        h('h3', { className: "font-serif text-2xl text-jaguar-900" }, 'Add Email Account'),
+        h('h3', { className: "font-serif text-2xl text-jaguar-900" }, isEditing ? 'Edit Email Account' : 'Add Email Account'),
         h('button', {
           onClick: onClose,
           className: "text-stone-400 hover:text-stone-600 transition-colors"
@@ -758,7 +468,8 @@ const AddAccountModal = ({ onClose, onAdd }) => {
               h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'SMTP Password'),
               h('input', {
                 type: "password",
-                required: true,
+                required: !isEditing,
+                placeholder: isEditing ? '(Leave blank to keep unchanged)' : '',
                 value: formData.smtp_password,
                 onChange: (e) => setFormData({ ...formData, smtp_password: e.target.value }),
                 className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
@@ -806,7 +517,8 @@ const AddAccountModal = ({ onClose, onAdd }) => {
               h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'IMAP Password'),
               h('input', {
                 type: "password",
-                required: true,
+                required: !isEditing,
+                placeholder: isEditing ? '(Leave blank to keep unchanged)' : '',
                 value: formData.imap_password,
                 onChange: (e) => setFormData({ ...formData, imap_password: e.target.value }),
                 className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
@@ -837,7 +549,7 @@ const AddAccountModal = ({ onClose, onAdd }) => {
           )
         ),
         h('div', { className: "flex gap-3" },
-          h('button', {
+          !isEditing && h('button', {
             type: "button",
             onClick: () => setStep('type'),
             className: "px-4 py-2 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors"
@@ -848,13 +560,13 @@ const AddAccountModal = ({ onClose, onAdd }) => {
             disabled: testing,
             className: "px-4 py-2 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors flex items-center gap-2"
           },
-            testing ? h(Icons.Loader2, { size: 16 }) : h(Icons.Zap, { size: 16 }),
+            testing ? h(Icons.Loader2, { size: 16, className: "animate-spin" }) : h(Icons.Zap, { size: 16 }),
             'Test Connection'
           ),
           h('button', {
             type: "submit",
             className: "flex-1 px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 transition-colors"
-          }, 'Add Account')
+          }, isEditing ? 'Save Changes' : 'Add Account')
         )
       )
     )

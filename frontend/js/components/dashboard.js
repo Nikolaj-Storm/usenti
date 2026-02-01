@@ -111,8 +111,8 @@ const Dashboard = () => {
         )
       )
     ),
-    h('div', { className: "grid grid-cols-1 lg:grid-cols-3 gap-8" },
-      h(Card, { title: "Activity Volume", className: "lg:col-span-2" },
+    h('div', { className: "grid grid-cols-1 gap-8" },
+      h(Card, { title: "Activity Volume", className: "w-full" },
         h('div', { className: "h-[300px] w-full" },
           h(ResponsiveContainer, { width: "100%", height: "100%" },
             h(AreaChart, { data: data, margin: { top: 10, right: 30, left: 0, bottom: 0 } },
@@ -134,45 +134,6 @@ const Dashboard = () => {
               }),
               h(Area, { type: "monotone", dataKey: "sent", stroke: "#0B2B26", strokeWidth: 2, fillOpacity: 1, fill: "url(#colorSent)" }),
               h(Area, { type: "monotone", dataKey: "opened", stroke: "#C5A065", strokeWidth: 2, fillOpacity: 1, fill: "url(#colorOpened)" })
-            )
-          )
-        )
-      ),
-      h(Card, { title: "Infrastructure Health" },
-        h('div', { className: "space-y-6" },
-          h('div', { className: "flex items-center justify-between p-4 border border-stone-100 rounded-lg bg-cream-50" },
-            h('div', { className: "flex items-center gap-3" },
-              h('div', { className: "w-10 h-10 rounded-full bg-jaguar-100 flex items-center justify-center text-jaguar-900" },
-                h('span', { className: "font-bold text-sm" }, 'AWS')
-              ),
-              h('div', null,
-                h('h4', { className: "font-medium text-jaguar-900" }, 'WorkMail IMAP'),
-                h('p', { className: "text-xs text-stone-500" }, 'Listening • 45ms latency')
-              )
-            ),
-            h('div', { className: "w-2 h-2 rounded-full bg-green-500" })
-          ),
-          h('div', { className: "flex items-center justify-between p-4 border border-stone-100 rounded-lg bg-cream-50" },
-            h('div', { className: "flex items-center gap-3" },
-              h('div', { className: "w-10 h-10 rounded-full bg-jaguar-100 flex items-center justify-center text-jaguar-900" },
-                h('span', { className: "font-bold text-sm" }, 'ST')
-              ),
-              h('div', null,
-                h('h4', { className: "font-medium text-jaguar-900" }, 'Stalwart SMTP'),
-                h('p', { className: "text-xs text-stone-500" }, 'Relaying • 99.9% Uptime')
-              )
-            ),
-            h('div', { className: "w-2 h-2 rounded-full bg-green-500" })
-          ),
-          h('div', { className: "mt-4 p-4 bg-amber-50 rounded-lg border border-amber-100 flex gap-3" },
-            h(Icons.AlertCircle, { className: "text-amber-600 shrink-0", size: 20 }),
-            h('div', null,
-              h('h5', { className: "text-sm font-medium text-amber-800" }, 'Warm-up Recommendation'),
-              h('p', { className: "text-xs text-amber-700 mt-1" },
-                'Account ',
-                h('em', null, 'marketing@domain.com'),
-                ' is ready to increase daily volume to 250.'
-              )
             )
           )
         )

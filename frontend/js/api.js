@@ -175,6 +175,11 @@ const api = {
     }
   },
 
+  async updateEmailAccount(id, accountData) {
+    console.log(`[API] Updating email account ${id}...`);
+    return this.put(`${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}/${id}`, accountData);
+  },
+
   async testEmailAccount(accountData) {
     return this.post(APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS_TEST, accountData);
   },

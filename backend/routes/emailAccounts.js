@@ -11,10 +11,10 @@ router.get('/', authenticateUser, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('email_accounts')
-      .select('id, email_address, account_type, sender_name, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
+      .select('id, email_address, account_type, sender_name, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at, smtp_host, smtp_port, smtp_username, imap_host, imap_port, imap_username')
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false });
-    
+
     if (error) throw error;
     res.json(data);
   } catch (error) {
@@ -191,7 +191,7 @@ router.post('/:id/test-smtp', authenticateUser, async (req, res) => {
   }
 });
 
-// Update email account
+// Update email account - supports all account fields
 router.put('/:id', authenticateUser, async (req, res) => {
   try {
     const {
@@ -200,7 +200,14 @@ router.put('/:id', authenticateUser, async (req, res) => {
       daily_send_limit,
       is_active,
       imap_password,
-      smtp_password
+      smtp_password,
+      account_type,
+      imap_host,
+      imap_port,
+      imap_username,
+      smtp_host,
+      smtp_port,
+      smtp_username
     } = req.body;
 
     const updates = {};
@@ -211,16 +218,25 @@ router.put('/:id', authenticateUser, async (req, res) => {
     if (imap_password) updates.imap_password = encrypt(imap_password);
     if (smtp_password) updates.smtp_password = encrypt(smtp_password);
 
+    // Expanded fields
+    if (account_type) updates.account_type = account_type;
+    if (imap_host) updates.imap_host = imap_host;
+    if (imap_port) updates.imap_port = imap_port;
+    if (imap_username) updates.imap_username = imap_username;
+    if (smtp_host) updates.smtp_host = smtp_host;
+    if (smtp_port) updates.smtp_port = smtp_port;
+    if (smtp_username) updates.smtp_username = smtp_username;
+
     const { data, error } = await supabase
       .from('email_accounts')
       .update(updates)
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
-      .select('id, email_address, account_type, sender_name, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
+      .select('id, email_address, account_type, sender_name, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at, smtp_host, smtp_port, smtp_username, imap_host, imap_port, imap_username')
       .single();
-    
+
     if (error) throw error;
-    
+
     if (!data) {
       return res.status(404).json({ error: 'Account not found' });
     }
