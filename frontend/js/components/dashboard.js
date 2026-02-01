@@ -113,8 +113,8 @@ const Dashboard = () => {
     ),
     h('div', { className: "grid grid-cols-1 gap-8" },
       h(Card, { title: "Activity Volume", className: "w-full" },
-        h('div', { className: "h-[300px] w-full" },
-          h(ResponsiveContainer, { width: "100%", height: "100%" },
+        h('div', { className: "h-[300px] w-full", style: { minHeight: '300px', minWidth: '100%' } },
+          data.length > 0 ? h(ResponsiveContainer, { width: "100%", height: "100%" },
             h(AreaChart, { data: data, margin: { top: 10, right: 30, left: 0, bottom: 0 } },
               h('defs', null,
                 h('linearGradient', { id: "colorSent", x1: "0", y1: "0", x2: "0", y2: "1" },
@@ -134,6 +134,12 @@ const Dashboard = () => {
               }),
               h(Area, { type: "monotone", dataKey: "sent", stroke: "#0B2B26", strokeWidth: 2, fillOpacity: 1, fill: "url(#colorSent)" }),
               h(Area, { type: "monotone", dataKey: "opened", stroke: "#C5A065", strokeWidth: 2, fillOpacity: 1, fill: "url(#colorOpened)" })
+            )
+          ) : h('div', { className: "h-full flex items-center justify-center text-stone-400" },
+            h('div', { className: "text-center" },
+              h(Icons.BarChart2, { size: 48, className: "mx-auto mb-2 opacity-30" }),
+              h('p', null, 'No activity data yet'),
+              h('p', { className: "text-sm" }, 'Start a campaign to see metrics here')
             )
           )
         )
