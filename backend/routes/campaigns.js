@@ -496,7 +496,7 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
 // Update campaign step
 router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   try {
-    // 1. Verify campaign ownership first
+    // 1. Verify campaign ownership
     const { data: campaign } = await supabase
       .from('campaigns')
       .select('id')
@@ -509,14 +509,8 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     }
 
     const {
-      subject,
-      body,
-      wait_days,
-      wait_hours,
-      wait_minutes,
-      condition_type,
-      condition_branches,
-      step_order
+      subject, body, wait_days, wait_hours, wait_minutes,
+      condition_type, condition_branches, step_order
     } = req.body;
 
     const updates = {};
@@ -533,7 +527,7 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       return res.json({ message: 'No updates provided' });
     }
 
-    // 2. Perform Update - removing .select() to avoid coercion errors
+    // 2. Perform Update without .single() to avoid coercion errors
     const { error: updateError } = await supabase
       .from('campaign_steps')
       .update(updates)
@@ -542,7 +536,7 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
 
     if (updateError) throw updateError;
 
-    // 3. Fetch the updated record explicitly
+    // 3. Fetch the updated record explicitly for the response
     const { data: updatedStep, error: fetchError } = await supabase
       .from('campaign_steps')
       .select('*')
