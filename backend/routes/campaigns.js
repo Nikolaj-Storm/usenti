@@ -496,7 +496,7 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
 // Update campaign step
 router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   try {
-    // Verify campaign belongs to user
+    // 1. Verify campaign ownership first
     const { data: campaign } = await supabase
       .from('campaigns')
       .select('id')
@@ -511,11 +511,9 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     const {
       subject,
       body,
-      // Wait step fields
       wait_days,
       wait_hours,
       wait_minutes,
-      // Condition step fields
       condition_type,
       condition_branches,
       step_order
@@ -524,44 +522,36 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
     if (body !== undefined) updates.body = body;
-    // Wait step fields (backward compatible - these columns may not exist in older schemas)
     if (wait_days !== undefined) updates.wait_days = wait_days;
     if (wait_hours !== undefined) updates.wait_hours = wait_hours;
     if (wait_minutes !== undefined) updates.wait_minutes = wait_minutes;
-    // Condition step fields
     if (condition_type !== undefined) updates.condition_type = condition_type;
     if (condition_branches !== undefined) updates.condition_branches = condition_branches;
     if (step_order !== undefined) updates.step_order = step_order;
 
-    // If no updates provided, return current step
     if (Object.keys(updates).length === 0) {
-      const { data: currentStep, error: fetchError } = await supabase
-        .from('campaign_steps')
-        .select('*')
-        .eq('id', req.params.stepId)
-        .eq('campaign_id', req.params.campaignId);
-
-      if (fetchError) throw fetchError;
-      if (!currentStep || currentStep.length === 0) {
-        return res.status(404).json({ error: 'Campaign step not found' });
-      }
-      return res.json(currentStep[0]);
+      return res.json({ message: 'No updates provided' });
     }
 
-    const { data, error } = await supabase
+    // 2. Perform Update - removing .select() to avoid coercion errors
+    const { error: updateError } = await supabase
       .from('campaign_steps')
       .update(updates)
       .eq('id', req.params.stepId)
-      .eq('campaign_id', req.params.campaignId)
-      .select();
+      .eq('campaign_id', req.params.campaignId);
 
-    if (error) throw error;
+    if (updateError) throw updateError;
 
-    if (!data || data.length === 0) {
-      return res.status(404).json({ error: 'Campaign step not found' });
-    }
+    // 3. Fetch the updated record explicitly
+    const { data: updatedStep, error: fetchError } = await supabase
+      .from('campaign_steps')
+      .select('*')
+      .eq('id', req.params.stepId)
+      .single();
 
-    res.json(data[0]);
+    if (fetchError) throw fetchError;
+
+    res.json(updatedStep);
   } catch (error) {
     console.error('Error updating campaign step:', error);
     res.status(500).json({ error: error.message });
