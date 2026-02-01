@@ -465,10 +465,6 @@ const CampaignBuilder = () => {
           onClick: () => setShowNewCampaignModal(true),
           className: "px-6 py-3 bg-jaguar-900 text-cream-50 rounded-lg hover:bg-jaguar-800 flex items-center gap-2 text-white"
         }, h(Icons.Plus, { size: 20 }), 'Create Campaign'),
-        h('button', {
-          onClick: loadDemoMode,
-          className: "px-6 py-3 bg-white border border-stone-200 rounded-lg hover:bg-stone-50 flex items-center gap-2 text-stone-600"
-        }, h(Icons.Eye, { size: 20 }), 'Preview UI')
       ),
       showNewCampaignModal && h(NewCampaignModal, { onClose: () => setShowNewCampaignModal(false), onCreate: handleCreateCampaign })
     );
