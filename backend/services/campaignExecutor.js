@@ -140,12 +140,55 @@ class CampaignExecutor {
     console.log('='.repeat(80));
 
     try {
-      // Get pending campaign contacts that are ready to send
+      // =======================================================================
+      // STEP 1: Identification
+      // Find candidate contacts, but don't fetch full data yet.
+      // This minimizes the initial query load.
+      // =======================================================================
       console.log('[EXECUTOR] 🔍 Querying for pending campaign contacts...');
       console.log(`[EXECUTOR] Query filters: status='in_progress', campaign.status='running', next_send_time <= ${now}`);
 
-      const { data: pending, error } = await supabase
+      const { data: candidates, error: scanError } = await supabase
         .from('campaign_contacts')
+        .select(`
+          id,
+          campaigns!inner (
+            status
+          )
+        `)
+        .eq('status', 'in_progress')
+        .eq('campaigns.status', 'running')
+        .lte('next_send_time', now)
+        .limit(BATCH_LIMIT);
+
+      if (scanError) {
+        console.error('[EXECUTOR] ❌ Database query error:', scanError);
+        throw scanError;
+      }
+
+      console.log(`[EXECUTOR] 📊 Found ${candidates?.length || 0} candidates for processing`);
+
+      if (!candidates || candidates.length === 0) {
+        console.log('[EXECUTOR] ℹ️  No pending emails to send at this time');
+        return;
+      }
+
+      const candidateIds = candidates.map(c => c.id);
+
+      // =======================================================================
+      // STEP 2: Atomic Claim (Lock & Fetch)
+      // We update status to 'processing' ONLY for rows that are still 'in_progress'.
+      // This prevents Race Conditions where two executors pick up the same row.
+      // The .select() returns only the rows that were successfully locked by THIS instance.
+      // =======================================================================
+      const { data: pending, error: claimError } = await supabase
+        .from('campaign_contacts')
+        .update({ 
+          status: 'processing',
+          updated_at: now 
+        })
+        .in('id', candidateIds)
+        .eq('status', 'in_progress') // Optimistic locking
         .select(`
           *,
           campaigns!inner(
@@ -172,36 +215,21 @@ class CampaignExecutor {
             subject,
             body,
             wait_days,
+            wait_hours,
+            wait_minutes,
             condition_type,
+            condition_branches,
             next_step_if_true,
             next_step_if_false
           )
-        `)
-        .eq('status', 'in_progress')
-        .eq('campaigns.status', 'running')
-        .lte('next_send_time', new Date().toISOString())
-        .limit(BATCH_LIMIT);
+        `);
 
-      console.log(`[EXECUTOR] 📊 Using batch limit: ${BATCH_LIMIT} (set via CAMPAIGN_BATCH_LIMIT env var)`);
-
-      if (error) {
-        console.error('[EXECUTOR] ❌ Database query error:', error);
-        throw error;
+      if (claimError) {
+        console.error('[EXECUTOR] ❌ Error claiming contacts:', claimError);
+        throw claimError;
       }
 
-      console.log(`[EXECUTOR] 📊 Query returned ${pending?.length || 0} pending campaign contacts`);
-
-      if (!pending || pending.length === 0) {
-        console.log('[EXECUTOR] ℹ️  No pending emails to send at this time');
-        console.log('[EXECUTOR] Possible reasons:');
-        console.log('  - No campaigns are running');
-        console.log('  - No contacts in in_progress status');
-        console.log('  - next_send_time is in the future');
-        console.log('='.repeat(80));
-        return;
-      }
-
-      console.log(`[EXECUTOR] ✅ Found ${pending.length} emails ready to process`);
+      console.log(`[EXECUTOR] ✅ Successfully claimed ${pending.length} emails to process (Race condition check passed)`);
       console.log('[EXECUTOR] Campaign breakdown:');
 
       // Log campaign summary
@@ -227,6 +255,17 @@ class CampaignExecutor {
         } catch (err) {
           console.error(`[EXECUTOR] ❌ Error processing contact ${item.id}:`, err.message);
           console.error('[EXECUTOR] Error stack:', err.stack);
+          
+          // Emergency cleanup: if processing threw an unexpected error, mark as failed
+          // so it doesn't get stuck in 'processing' forever
+          try {
+            await supabase
+              .from('campaign_contacts')
+              .update({ status: 'failed', updated_at: new Date().toISOString() })
+              .eq('id', item.id);
+          } catch (cleanupErr) {
+            console.error('[EXECUTOR] Failed to mark crashed contact as failed:', cleanupErr);
+          }
         }
 
         console.log(''); // Blank line for readability
@@ -407,7 +446,7 @@ class CampaignExecutor {
     }
   }
 
-// Handle wait step - supports days, hours, and minutes
+  // Handle wait step - supports days, hours, and minutes
   async handleWaitStep(campaignContact, campaign, step) {
     // Get wait duration components (ensure they are numbers)
     const waitDays = parseInt(step.wait_days) || 0;
@@ -456,11 +495,13 @@ class CampaignExecutor {
     if (nextStep) {
       console.log(`[EXECUTOR]      ✅ Found next step: ${nextStep.step_type} (order ${nextStep.step_order})`);
 
+      // IMPORTANT: Set status back to 'in_progress' to release the lock and allow future processing
       const { error: updateError } = await supabase
         .from('campaign_contacts')
         .update({
           current_step_id: nextStep.id,
-          next_send_time: nextSendTime.toISOString()
+          next_send_time: nextSendTime.toISOString(),
+          status: 'in_progress'
         })
         .eq('id', campaignContact.id);
 
@@ -563,11 +604,13 @@ class CampaignExecutor {
     }
 
     if (nextStepId) {
+      // IMPORTANT: Set status back to 'in_progress' to release the lock
       await supabase
         .from('campaign_contacts')
         .update({
           current_step_id: nextStepId,
-          next_send_time: new Date().toISOString()
+          next_send_time: new Date().toISOString(),
+          status: 'in_progress'
         })
         .eq('id', campaignContact.id);
 
@@ -603,11 +646,13 @@ class CampaignExecutor {
     if (nextStep) {
       console.log(`[EXECUTOR]      ✅ Found next step: ${nextStep.step_type} (order ${nextStep.step_order}, id: ${nextStep.id})`);
 
+      // IMPORTANT: Set status back to 'in_progress' to release the lock
       const { error: updateError } = await supabase
         .from('campaign_contacts')
         .update({
           current_step_id: nextStep.id,
-          next_send_time: new Date().toISOString()
+          next_send_time: new Date().toISOString(),
+          status: 'in_progress'
         })
         .eq('id', campaignContact.id);
 
@@ -635,9 +680,13 @@ class CampaignExecutor {
 
   // Helper to update next send time
   async updateNextSendTime(campaignContactId, nextTime) {
+    // IMPORTANT: Set status back to 'in_progress' to release the lock
     await supabase
       .from('campaign_contacts')
-      .update({ next_send_time: nextTime.toISOString() })
+      .update({ 
+        next_send_time: nextTime.toISOString(),
+        status: 'in_progress'
+      })
       .eq('id', campaignContactId);
   }
 }
