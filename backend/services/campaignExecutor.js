@@ -409,18 +409,21 @@ class CampaignExecutor {
 
   // Handle wait step - supports days, hours, and minutes
   async handleWaitStep(campaignContact, campaign, step) {
-    // Get wait duration components (default to 1 hour if nothing set)
+    // Get wait duration components (default to 1 day if nothing set)
     const waitDays = step.wait_days || 0;
     const waitHours = step.wait_hours || 0;
     const waitMinutes = step.wait_minutes || 0;
+
+    console.log(`[EXECUTOR]      ⏱️  Wait step configuration:`);
+    console.log(`[EXECUTOR]         - Days: ${waitDays}, Hours: ${waitHours}, Minutes: ${waitMinutes}`);
 
     // Calculate total milliseconds
     const totalMs = (waitDays * 24 * 60 * 60 * 1000) +
                    (waitHours * 60 * 60 * 1000) +
                    (waitMinutes * 60 * 1000);
 
-    // Default to 1 hour if total is 0
-    const actualDelayMs = totalMs > 0 ? totalMs : (60 * 60 * 1000);
+    // Default to 1 day if total is 0 (more reasonable for follow-up emails)
+    const actualDelayMs = totalMs > 0 ? totalMs : (24 * 60 * 60 * 1000);
 
     const nextSendTime = new Date(Date.now() + actualDelayMs);
 
@@ -429,18 +432,31 @@ class CampaignExecutor {
     if (waitDays > 0) durationParts.push(`${waitDays}d`);
     if (waitHours > 0) durationParts.push(`${waitHours}h`);
     if (waitMinutes > 0) durationParts.push(`${waitMinutes}m`);
-    const durationStr = durationParts.length > 0 ? durationParts.join(' ') : '1h (default)';
+    const durationStr = durationParts.length > 0 ? durationParts.join(' ') : '1d (default)';
 
-    // Get next step
-    const { data: nextStep } = await supabase
+    console.log(`[EXECUTOR]         - Calculated wait: ${durationStr} (${actualDelayMs}ms)`);
+    console.log(`[EXECUTOR]         - Next send time will be: ${nextSendTime.toISOString()}`);
+
+    // Get next step (using array instead of .single() for better error handling)
+    console.log(`[EXECUTOR]      📍 Looking for step after wait (step_order ${step.step_order + 1})...`);
+
+    const { data: nextSteps, error } = await supabase
       .from('campaign_steps')
-      .select('id')
+      .select('id, step_type, step_order')
       .eq('campaign_id', campaign.id)
-      .eq('step_order', step.step_order + 1)
-      .single();
+      .eq('step_order', step.step_order + 1);
+
+    if (error) {
+      console.error(`[EXECUTOR]      ❌ Error finding next step:`, error);
+      return;
+    }
+
+    const nextStep = nextSteps && nextSteps.length > 0 ? nextSteps[0] : null;
 
     if (nextStep) {
-      await supabase
+      console.log(`[EXECUTOR]      ✅ Found next step: ${nextStep.step_type} (order ${nextStep.step_order})`);
+
+      const { error: updateError } = await supabase
         .from('campaign_contacts')
         .update({
           current_step_id: nextStep.id,
@@ -448,16 +464,27 @@ class CampaignExecutor {
         })
         .eq('id', campaignContact.id);
 
-      console.log(`[EXECUTOR] ⏱ Wait ${durationStr} for contact ${campaignContact.contact_id}`);
-      console.log(`[EXECUTOR]   Next send time: ${nextSendTime.toISOString()}`);
+      if (updateError) {
+        console.error(`[EXECUTOR]      ❌ Error updating contact for wait:`, updateError);
+      } else {
+        console.log(`[EXECUTOR]      ✅ Contact scheduled for ${durationStr} wait`);
+        console.log(`[EXECUTOR]         Next step ID: ${nextStep.id}`);
+        console.log(`[EXECUTOR]         Will resume at: ${nextSendTime.toISOString()}`);
+      }
     } else {
       // No more steps, mark as completed
-      await supabase
+      console.log(`[EXECUTOR]      🏁 No more steps after wait, marking as completed`);
+
+      const { error: completeError } = await supabase
         .from('campaign_contacts')
         .update({ status: 'completed' })
         .eq('id', campaignContact.id);
 
-      console.log(`[EXECUTOR] ✓ Campaign completed for contact ${campaignContact.contact_id}`);
+      if (completeError) {
+        console.error(`[EXECUTOR]      ❌ Error marking as completed:`, completeError);
+      } else {
+        console.log(`[EXECUTOR]      ✅ Contact marked as completed`);
+      }
     }
   }
 
@@ -558,27 +585,51 @@ class CampaignExecutor {
 
   // Move to next step in sequence
   async moveToNextStep(campaignContact, campaignId, currentStep) {
-    const { data: nextStep } = await supabase
+    console.log(`[EXECUTOR]      📍 Looking for next step after step_order ${currentStep.step_order}...`);
+
+    const { data: nextSteps, error } = await supabase
       .from('campaign_steps')
-      .select('id')
+      .select('id, step_type, step_order')
       .eq('campaign_id', campaignId)
-      .eq('step_order', currentStep.step_order + 1)
-      .single();
+      .eq('step_order', currentStep.step_order + 1);
+
+    if (error) {
+      console.error(`[EXECUTOR]      ❌ Error finding next step:`, error);
+      return;
+    }
+
+    const nextStep = nextSteps && nextSteps.length > 0 ? nextSteps[0] : null;
 
     if (nextStep) {
-      await supabase
+      console.log(`[EXECUTOR]      ✅ Found next step: ${nextStep.step_type} (order ${nextStep.step_order}, id: ${nextStep.id})`);
+
+      const { error: updateError } = await supabase
         .from('campaign_contacts')
         .update({
           current_step_id: nextStep.id,
           next_send_time: new Date().toISOString()
         })
         .eq('id', campaignContact.id);
+
+      if (updateError) {
+        console.error(`[EXECUTOR]      ❌ Error updating campaign_contact:`, updateError);
+      } else {
+        console.log(`[EXECUTOR]      ✅ Updated contact to next step, next_send_time: ${new Date().toISOString()}`);
+      }
     } else {
       // No more steps, mark as completed
-      await supabase
+      console.log(`[EXECUTOR]      🏁 No more steps found, marking contact as completed`);
+
+      const { error: completeError } = await supabase
         .from('campaign_contacts')
         .update({ status: 'completed' })
         .eq('id', campaignContact.id);
+
+      if (completeError) {
+        console.error(`[EXECUTOR]      ❌ Error marking as completed:`, completeError);
+      } else {
+        console.log(`[EXECUTOR]      ✅ Contact marked as completed`);
+      }
     }
   }
 
