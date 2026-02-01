@@ -524,7 +524,7 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
     if (body !== undefined) updates.body = body;
-    // Wait step fields
+    // Wait step fields (backward compatible - these columns may not exist in older schemas)
     if (wait_days !== undefined) updates.wait_days = wait_days;
     if (wait_hours !== undefined) updates.wait_hours = wait_hours;
     if (wait_minutes !== undefined) updates.wait_minutes = wait_minutes;
@@ -533,16 +533,35 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     if (condition_branches !== undefined) updates.condition_branches = condition_branches;
     if (step_order !== undefined) updates.step_order = step_order;
 
+    // If no updates provided, return current step
+    if (Object.keys(updates).length === 0) {
+      const { data: currentStep, error: fetchError } = await supabase
+        .from('campaign_steps')
+        .select('*')
+        .eq('id', req.params.stepId)
+        .eq('campaign_id', req.params.campaignId);
+
+      if (fetchError) throw fetchError;
+      if (!currentStep || currentStep.length === 0) {
+        return res.status(404).json({ error: 'Campaign step not found' });
+      }
+      return res.json(currentStep[0]);
+    }
+
     const { data, error } = await supabase
       .from('campaign_steps')
       .update(updates)
       .eq('id', req.params.stepId)
       .eq('campaign_id', req.params.campaignId)
-      .select()
-      .single();
-    
+      .select();
+
     if (error) throw error;
-    res.json(data);
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ error: 'Campaign step not found' });
+    }
+
+    res.json(data[0]);
   } catch (error) {
     console.error('Error updating campaign step:', error);
     res.status(500).json({ error: error.message });
