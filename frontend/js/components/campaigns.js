@@ -1242,8 +1242,13 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
             onChange: e => setFormData({...formData, send_immediately: e.target.checked}),
             className: "w-4 h-4"
           }),
-          h('label', { htmlFor: "send_immediately", className: "text-sm text-stone-700" },
-            "Send first email immediately"
+          h('div', null,
+            h('label', { htmlFor: "send_immediately", className: "block text-sm font-medium text-stone-700" },
+              "Ignore schedules - send anytime"
+            ),
+            h('p', { className: "text-xs text-stone-500" },
+              "If checked, emails will send 24/7 immediately after wait steps, ignoring the days/hours set below."
+            )
           )
         ),
         h('button', {
