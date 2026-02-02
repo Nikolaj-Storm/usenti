@@ -6,7 +6,17 @@ const { simpleParser } = require('mailparser');
 const nodemailer = require('nodemailer');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
+const multer = require('multer');
 require('dotenv').config();
+
+// Configure multer for file uploads (memory storage for email attachments)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max file size
+    files: 5 // Max 5 files per upload
+  }
+});
 
 // Import services
 const warmupEngine = require('./services/warmupEngine');
@@ -1039,19 +1049,26 @@ app.get('/api/inbox/:id/content', authenticateUser, async (req, res) => {
   }
 });
 
-// Send reply to an inbox message
-app.post('/api/inbox/:id/reply', authenticateUser, async (req, res) => {
+// Send reply to an inbox message (supports attachments via multipart form data)
+app.post('/api/inbox/:id/reply', authenticateUser, upload.any(), async (req, res) => {
   const requestId = `REPLY-${Date.now()}`;
 
   try {
     const { id } = req.params;
-    const { body } = req.body;
+    const body = req.body.body;
 
     if (!body || body.trim().length === 0) {
       return res.status(400).json({ error: 'Reply body is required' });
     }
 
-    console.log(`[${requestId}] Sending reply to message ${id}`);
+    // Extract attachments from uploaded files
+    const attachments = (req.files || []).map(file => ({
+      filename: file.originalname,
+      content: file.buffer,
+      contentType: file.mimetype
+    }));
+
+    console.log(`[${requestId}] Sending reply to message ${id} with ${attachments.length} attachment(s)`);
 
     // Get the original message
     const { data: originalMessage, error: msgError } = await supabase
@@ -1088,6 +1105,7 @@ app.post('/api/inbox/:id/reply', authenticateUser, async (req, res) => {
       to: originalMessage.from_address,
       subject: replySubject,
       body: fullBody.replace(/\n/g, '<br/>'),
+      attachments: attachments,
       campaignId: null,
       contactId: null,
       trackOpens: false,
