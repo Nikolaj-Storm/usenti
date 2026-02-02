@@ -242,7 +242,8 @@ class EmailService {
   // Uses natural-looking image attributes and embeds within content
   addTrackingPixel(htmlBody, campaignId, contactId) {
     const trackingToken = crypto.randomBytes(16).toString('hex');
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    // IMPORTANT: Use BACKEND_URL for tracking - the tracking endpoints are on the backend server
+    const baseUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:3001';
 
     // Use a more natural-looking tracking URL that mimics a spacer/logo image
     // The path looks like a standard image asset, not a tracking endpoint
@@ -263,7 +264,9 @@ class EmailService {
   // Rewrite links for click tracking
   rewriteLinksForTracking(htmlBody, campaignId, contactId) {
     const trackingToken = crypto.randomBytes(16).toString('hex');
-    const baseUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/track/click/${campaignId}/${contactId}/${trackingToken}`;
+    // IMPORTANT: Use BACKEND_URL for tracking - the tracking endpoints are on the backend server
+    const backendUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:3001';
+    const baseUrl = `${backendUrl}/api/track/click/${campaignId}/${contactId}/${trackingToken}`;
     
     return htmlBody.replace(
       /href="(https?:\/\/[^"]+)"/g,
@@ -354,7 +357,8 @@ class EmailService {
 
         // Get domain for Message-ID and unsubscribe URL
         const domain = getEmailDomain(account.email_address);
-        const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        // IMPORTANT: Use BACKEND_URL for unsubscribe - the endpoint is on the backend server
+        const backendUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:3001';
 
         // Generate a proper Message-ID with the sending domain
         const messageIdLocal = crypto.randomBytes(16).toString('hex');
@@ -362,7 +366,7 @@ class EmailService {
 
         // Build unsubscribe URL
         const unsubscribeToken = crypto.randomBytes(16).toString('hex');
-        const unsubscribeUrl = `${baseUrl}/api/unsubscribe/${campaignId}/${contactId}/${unsubscribeToken}`;
+        const unsubscribeUrl = `${backendUrl}/api/unsubscribe/${campaignId}/${contactId}/${unsubscribeToken}`;
 
         // Convert HTML to plain text for multipart email
         const plainTextBody = htmlToPlainText(finalBody);
