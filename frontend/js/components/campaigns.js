@@ -254,7 +254,7 @@ const CampaignBuilder = () => {
                 subject: stepType === 'email' ? 'New Email' : '',
                 body: '',
                 wait_days: 0,
-                wait_hours: stepType === 'wait' ? 1 : 0,
+                wait_hours: 0,
                 wait_minutes: 0,
                 condition_type: 'if_opened',
                 condition_branches: stepType === 'condition' ? [{ condition: 'if_opened', branch_steps: [] }] : [],
@@ -278,7 +278,7 @@ const CampaignBuilder = () => {
         subject: stepType === 'email' ? 'New Email' : '',
         body: '',
         wait_days: 0,
-        wait_hours: stepType === 'wait' ? 1 : 0,
+        wait_hours: 0,
         wait_minutes: 0,
         condition_branches: stepType === 'condition' ? [{ condition: 'if_opened', branch_steps: [] }, { condition: 'if_not_opened', branch_steps: [] }] : []
       });
@@ -296,7 +296,7 @@ const CampaignBuilder = () => {
       subject: stepType === 'email' ? 'New Email' : '',
       body: '',
       wait_days: 0,
-      wait_hours: stepType === 'wait' ? 1 : 0,
+      wait_hours: 0,
       wait_minutes: 0,
       condition_type: 'if_opened',
       condition_branches: stepType === 'condition' ? [
@@ -1019,7 +1019,13 @@ const WaitStepEditor = ({ data, handleChange, onUpdate, step }) => {
   const updateWait = (field, value) => {
     const v = Math.max(0, parseInt(value) || 0);
     handleChange(field, v);
-    onUpdate(step.id, { [field]: v });
+    // Send all wait fields together to prevent partial updates
+    // that leave stale default values (e.g., wait_hours defaulting to 1)
+    onUpdate(step.id, {
+      wait_days: field === 'wait_days' ? v : (data.wait_days || 0),
+      wait_hours: field === 'wait_hours' ? v : (data.wait_hours || 0),
+      wait_minutes: field === 'wait_minutes' ? v : (data.wait_minutes || 0)
+    });
   };
 
   return h('div', { className: "text-center py-4" },
