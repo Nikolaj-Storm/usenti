@@ -1019,8 +1019,6 @@ const WaitStepEditor = ({ data, handleChange, onUpdate, step }) => {
   const updateWait = (field, value) => {
     const v = Math.max(0, parseInt(value) || 0);
     handleChange(field, v);
-    // Send all wait fields together to prevent partial updates
-    // that leave stale default values (e.g., wait_hours defaulting to 1)
     onUpdate(step.id, {
       wait_days: field === 'wait_days' ? v : (data.wait_days || 0),
       wait_hours: field === 'wait_hours' ? v : (data.wait_hours || 0),
@@ -1028,68 +1026,58 @@ const WaitStepEditor = ({ data, handleChange, onUpdate, step }) => {
     });
   };
 
-  return h('div', { className: "wait-step-editor" },
-    h(Icons.Clock, { size: 40, className: "mx-auto text-purple-500 mb-4" }),
-    h('div', { className: "wait-step-controls" },
+  return h('div', { className: "p-4" },
+    // Header with icon
+    h('div', { className: "flex items-center gap-2 mb-6" },
+      h(Icons.Clock, { size: 24, className: "text-purple-500" }),
+      h('span', { className: "font-medium text-stone-700" }, "Wait Duration")
+    ),
+
+    // Simple stacked inputs
+    h('div', { className: "space-y-4" },
       // Days
-      h('div', { className: "wait-step-control" },
-        h('div', { className: "control-row" },
-          h('button', {
-            onClick: () => updateWait('wait_days', (data.wait_days || 0) - 1)
-          }, "-"),
-          h('input', {
-            type: "number",
-            min: "0",
-            value: data.wait_days || 0,
-            onChange: e => updateWait('wait_days', e.target.value)
-          }),
-          h('button', {
-            onClick: () => updateWait('wait_days', (data.wait_days || 0) + 1)
-          }, "+")
-        ),
-        h('span', { className: "control-label text-xs text-stone-500 mt-1" }, "Days")
+      h('div', { className: "flex items-center justify-between" },
+        h('label', { className: "text-sm text-stone-600" }, "Days"),
+        h('input', {
+          type: "number",
+          min: "0",
+          value: data.wait_days || 0,
+          onChange: e => updateWait('wait_days', e.target.value),
+          className: "w-20 px-3 py-2 text-center border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+        })
       ),
       // Hours
-      h('div', { className: "wait-step-control" },
-        h('div', { className: "control-row" },
-          h('button', {
-            onClick: () => updateWait('wait_hours', (data.wait_hours || 0) - 1)
-          }, "-"),
-          h('input', {
-            type: "number",
-            min: "0",
-            max: "23",
-            value: data.wait_hours || 0,
-            onChange: e => updateWait('wait_hours', Math.min(23, e.target.value))
-          }),
-          h('button', {
-            onClick: () => updateWait('wait_hours', Math.min(23, (data.wait_hours || 0) + 1))
-          }, "+")
-        ),
-        h('span', { className: "control-label text-xs text-stone-500 mt-1" }, "Hours")
+      h('div', { className: "flex items-center justify-between" },
+        h('label', { className: "text-sm text-stone-600" }, "Hours"),
+        h('input', {
+          type: "number",
+          min: "0",
+          max: "23",
+          value: data.wait_hours || 0,
+          onChange: e => updateWait('wait_hours', Math.min(23, e.target.value)),
+          className: "w-20 px-3 py-2 text-center border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+        })
       ),
       // Minutes
-      h('div', { className: "wait-step-control" },
-        h('div', { className: "control-row" },
-          h('button', {
-            onClick: () => updateWait('wait_minutes', (data.wait_minutes || 0) - 5)
-          }, "-"),
-          h('input', {
-            type: "number",
-            min: "0",
-            max: "59",
-            value: data.wait_minutes || 0,
-            onChange: e => updateWait('wait_minutes', Math.min(59, e.target.value))
-          }),
-          h('button', {
-            onClick: () => updateWait('wait_minutes', Math.min(59, (data.wait_minutes || 0) + 5))
-          }, "+")
-        ),
-        h('span', { className: "control-label text-xs text-stone-500 mt-1" }, "Minutes")
+      h('div', { className: "flex items-center justify-between" },
+        h('label', { className: "text-sm text-stone-600" }, "Minutes"),
+        h('input', {
+          type: "number",
+          min: "0",
+          max: "59",
+          value: data.wait_minutes || 0,
+          onChange: e => updateWait('wait_minutes', Math.min(59, e.target.value)),
+          className: "w-20 px-3 py-2 text-center border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+        })
       )
     ),
-    h('p', { className: "text-stone-500 mt-4 text-sm" },
-      `Total: ${formatWaitDuration(data)}`
+
+    // Total display
+    h('div', { className: "mt-6 pt-4 border-t border-stone-200" },
+      h('div', { className: "flex items-center justify-between" },
+        h('span', { className: "text-sm text-stone-500" }, "Total wait time:"),
+        h('span', { className: "font-semibold text-purple-600" }, formatWaitDuration(data))
+      )
     )
   );
 };
