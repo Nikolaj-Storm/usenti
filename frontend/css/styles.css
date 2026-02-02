@@ -54,25 +54,33 @@ html {
 
 .wait-step-controls {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 1rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
   width: 100%;
 }
 
 .wait-step-control {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  min-width: 0;
-  flex: 1 1 auto;
-  max-width: 100px;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 200px;
+  gap: 0.5rem;
 }
 
 .wait-step-control .control-row {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  order: 2;
+}
+
+.wait-step-control .control-label {
+  min-width: 50px;
+  text-align: left;
+  order: 1;
 }
 
 .wait-step-control input[type="number"] {
@@ -103,16 +111,8 @@ html {
   background-color: #f3f4f6;
 }
 
-/* Responsive adjustments for wait step */
-@media (max-width: 480px) {
-  .wait-step-controls {
-    gap: 0.5rem;
-  }
-
-  .wait-step-control {
-    max-width: 80px;
-  }
-
+/* Responsive adjustments for wait step - smaller buttons on very small screens */
+@media (max-width: 360px) {
   .wait-step-control input[type="number"] {
     width: 2.5rem;
     font-size: 1rem;
@@ -127,30 +127,6 @@ html {
 
   .wait-step-control .control-label {
     font-size: 0.65rem;
-  }
-}
-
-@media (max-width: 360px) {
-  .wait-step-controls {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .wait-step-control {
-    flex-direction: row;
-    max-width: 100%;
-    justify-content: space-between;
-    width: 100%;
-    padding: 0.25rem 0;
-  }
-
-  .wait-step-control .control-row {
-    order: 2;
-  }
-
-  .wait-step-control .control-label {
-    order: 1;
-    width: 60px;
-    text-align: left;
+    min-width: 40px;
   }
 }
