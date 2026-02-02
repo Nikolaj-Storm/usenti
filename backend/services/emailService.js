@@ -271,12 +271,13 @@ class EmailService {
     );
   }
 
-  // Send a single email
+  // Send a single email (supports attachments)
   async sendEmail({
     emailAccountId,
     to,
     subject,
     body,
+    attachments = [],
     campaignId,
     contactId,
     trackOpens = true,
@@ -287,6 +288,7 @@ class EmailService {
     console.log(`[EMAIL]    Subject: "${subject}"`);
     console.log(`[EMAIL]    Campaign ID: ${campaignId}`);
     console.log(`[EMAIL]    Contact ID: ${contactId}`);
+    console.log(`[EMAIL]    Attachments: ${attachments.length}`);
 
     try {
       // Get account to check provider type and sender name
@@ -392,10 +394,13 @@ class EmailService {
             'Auto-Submitted': 'auto-generated'
           },
           // Reply-To same as From for proper reply routing
-          replyTo: account.email_address
+          replyTo: account.email_address,
+          // Include attachments if provided
+          attachments: attachments.length > 0 ? attachments : undefined
         };
 
         console.log(`[EMAIL] 🚀 Calling transporter.sendMail()...`);
+        console.log(`[EMAIL]    Attachments: ${attachments.length > 0 ? attachments.map(a => a.filename).join(', ') : 'none'}`);
         console.log(`[EMAIL]    From: ${fromAddress}`);
         console.log(`[EMAIL]    Message-ID: ${messageId}`);
         console.log(`[EMAIL]    Has plain text: ${plainTextBody.length > 0}`);

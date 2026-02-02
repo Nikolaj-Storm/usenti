@@ -264,9 +264,37 @@ const api = {
     return this.post('/api/inbox/cleanup');
   },
 
-  // Send reply to an inbox message
-  async sendReply(messageId, body) {
-    console.log('📤 [API] Sending reply...');
+  // Send reply to an inbox message (supports attachments)
+  async sendReply(messageId, body, attachments = []) {
+    console.log('📤 [API] Sending reply...', { hasAttachments: attachments.length > 0 });
+
+    // If there are attachments, use FormData
+    if (attachments && attachments.length > 0) {
+      const formData = new FormData();
+      formData.append('body', body);
+
+      attachments.forEach((att, index) => {
+        formData.append(`attachment_${index}`, att.file, att.name);
+      });
+
+      const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+      const response = await fetch(`${APP_CONFIG.API_BASE_URL}/api/inbox/${messageId}/reply`, {
+        method: 'POST',
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      return response.json();
+    }
+
+    // No attachments, use regular JSON
     return this.post(`/api/inbox/${messageId}/reply`, { body });
   }
 };
