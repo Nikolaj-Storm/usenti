@@ -39,3 +39,118 @@ html {
   background-color: #C5A065;
   color: white;
 }
+
+/* Wait Step - Responsive Styles */
+.wait-step-editor {
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.wait-step-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+  width: 100%;
+}
+
+.wait-step-control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+  max-width: 100px;
+}
+
+.wait-step-control .control-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.wait-step-control input[type="number"] {
+  width: 3rem;
+  min-width: 2.5rem;
+  max-width: 4rem;
+  text-align: center;
+  font-size: 1.125rem;
+  font-weight: 600;
+  border: none;
+  border-bottom: 1px solid #d1d5db;
+  outline: none;
+  background: transparent;
+}
+
+.wait-step-control button {
+  width: 1.75rem;
+  height: 1.75rem;
+  min-width: 1.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.wait-step-control button:hover {
+  background-color: #f3f4f6;
+}
+
+/* Responsive adjustments for wait step */
+@media (max-width: 480px) {
+  .wait-step-controls {
+    gap: 0.5rem;
+  }
+
+  .wait-step-control {
+    max-width: 80px;
+  }
+
+  .wait-step-control input[type="number"] {
+    width: 2.5rem;
+    font-size: 1rem;
+  }
+
+  .wait-step-control button {
+    width: 1.5rem;
+    height: 1.5rem;
+    min-width: 1.5rem;
+    font-size: 0.75rem;
+  }
+
+  .wait-step-control .control-label {
+    font-size: 0.65rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .wait-step-controls {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .wait-step-control {
+    flex-direction: row;
+    max-width: 100%;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.25rem 0;
+  }
+
+  .wait-step-control .control-row {
+    order: 2;
+  }
+
+  .wait-step-control .control-label {
+    order: 1;
+    width: 60px;
+    text-align: left;
+  }
+}

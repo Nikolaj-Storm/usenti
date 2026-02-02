@@ -1028,73 +1028,64 @@ const WaitStepEditor = ({ data, handleChange, onUpdate, step }) => {
     });
   };
 
-  return h('div', { className: "text-center py-4" },
+  return h('div', { className: "wait-step-editor" },
     h(Icons.Clock, { size: 40, className: "mx-auto text-purple-500 mb-4" }),
-    h('div', { className: "flex justify-center gap-4" },
+    h('div', { className: "wait-step-controls" },
       // Days
-      h('div', { className: "flex flex-col items-center" },
-        h('div', { className: "flex items-center gap-1" },
+      h('div', { className: "wait-step-control" },
+        h('div', { className: "control-row" },
           h('button', {
-            onClick: () => updateWait('wait_days', (data.wait_days || 0) - 1),
-            className: "w-7 h-7 border rounded-full hover:bg-stone-100 text-sm"
+            onClick: () => updateWait('wait_days', (data.wait_days || 0) - 1)
           }, "-"),
           h('input', {
             type: "number",
             min: "0",
             value: data.wait_days || 0,
-            onChange: e => updateWait('wait_days', e.target.value),
-            className: "w-12 text-center text-lg font-semibold border-b border-stone-300 outline-none"
+            onChange: e => updateWait('wait_days', e.target.value)
           }),
           h('button', {
-            onClick: () => updateWait('wait_days', (data.wait_days || 0) + 1),
-            className: "w-7 h-7 border rounded-full hover:bg-stone-100 text-sm"
+            onClick: () => updateWait('wait_days', (data.wait_days || 0) + 1)
           }, "+")
         ),
-        h('span', { className: "text-xs text-stone-500 mt-1" }, "Days")
+        h('span', { className: "control-label text-xs text-stone-500 mt-1" }, "Days")
       ),
       // Hours
-      h('div', { className: "flex flex-col items-center" },
-        h('div', { className: "flex items-center gap-1" },
+      h('div', { className: "wait-step-control" },
+        h('div', { className: "control-row" },
           h('button', {
-            onClick: () => updateWait('wait_hours', (data.wait_hours || 0) - 1),
-            className: "w-7 h-7 border rounded-full hover:bg-stone-100 text-sm"
+            onClick: () => updateWait('wait_hours', (data.wait_hours || 0) - 1)
           }, "-"),
           h('input', {
             type: "number",
             min: "0",
             max: "23",
             value: data.wait_hours || 0,
-            onChange: e => updateWait('wait_hours', Math.min(23, e.target.value)),
-            className: "w-12 text-center text-lg font-semibold border-b border-stone-300 outline-none"
+            onChange: e => updateWait('wait_hours', Math.min(23, e.target.value))
           }),
           h('button', {
-            onClick: () => updateWait('wait_hours', Math.min(23, (data.wait_hours || 0) + 1)),
-            className: "w-7 h-7 border rounded-full hover:bg-stone-100 text-sm"
+            onClick: () => updateWait('wait_hours', Math.min(23, (data.wait_hours || 0) + 1))
           }, "+")
         ),
-        h('span', { className: "text-xs text-stone-500 mt-1" }, "Hours")
+        h('span', { className: "control-label text-xs text-stone-500 mt-1" }, "Hours")
       ),
       // Minutes
-      h('div', { className: "flex flex-col items-center" },
-        h('div', { className: "flex items-center gap-1" },
+      h('div', { className: "wait-step-control" },
+        h('div', { className: "control-row" },
           h('button', {
-            onClick: () => updateWait('wait_minutes', (data.wait_minutes || 0) - 5),
-            className: "w-7 h-7 border rounded-full hover:bg-stone-100 text-sm"
+            onClick: () => updateWait('wait_minutes', (data.wait_minutes || 0) - 5)
           }, "-"),
           h('input', {
             type: "number",
             min: "0",
             max: "59",
             value: data.wait_minutes || 0,
-            onChange: e => updateWait('wait_minutes', Math.min(59, e.target.value)),
-            className: "w-12 text-center text-lg font-semibold border-b border-stone-300 outline-none"
+            onChange: e => updateWait('wait_minutes', Math.min(59, e.target.value))
           }),
           h('button', {
-            onClick: () => updateWait('wait_minutes', Math.min(59, (data.wait_minutes || 0) + 5)),
-            className: "w-7 h-7 border rounded-full hover:bg-stone-100 text-sm"
+            onClick: () => updateWait('wait_minutes', Math.min(59, (data.wait_minutes || 0) + 5))
           }, "+")
         ),
-        h('span', { className: "text-xs text-stone-500 mt-1" }, "Minutes")
+        h('span', { className: "control-label text-xs text-stone-500 mt-1" }, "Minutes")
       )
     ),
     h('p', { className: "text-stone-500 mt-4 text-sm" },
