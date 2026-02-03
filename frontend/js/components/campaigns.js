@@ -348,9 +348,11 @@ const CampaignBuilder = () => {
 
     if (!isDemo) {
       try {
-        await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, updates);
+        console.log('[WAIT DEBUG] Calling API PUT for step', stepId, 'with updates:', JSON.stringify(updates));
+        const response = await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, updates);
+        console.log('[WAIT DEBUG] API response:', JSON.stringify(response));
       } catch (error) {
-        console.error('Update failed', error);
+        console.error('[WAIT DEBUG] Update failed:', error);
       }
     }
 
