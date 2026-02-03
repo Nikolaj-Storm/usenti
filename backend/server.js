@@ -2102,21 +2102,29 @@ app.get('/api/warmup/:email_account_id/stats', authenticateUser, async (req, res
 
 app.get('/api/track/open/:campaign_id/:contact_id/:token', async (req, res) => {
   try {
-    await supabase.from('email_events').insert({
+    console.log(`[TRACKING] API open tracking: campaign=${req.params.campaign_id}, contact=${req.params.contact_id}`);
+
+    const { error: insertError } = await supabase.from('email_events').insert({
       campaign_id: req.params.campaign_id,
       contact_id: req.params.contact_id,
       event_type: 'opened',
-      event_data: { 
-        user_agent: req.headers['user-agent'], 
+      event_data: {
+        user_agent: req.headers['user-agent'],
         ip: req.ip,
         timestamp: new Date().toISOString()
       }
     });
-    
+
+    if (insertError) {
+      console.error(`[TRACKING] Failed to insert open event:`, insertError);
+    } else {
+      console.log(`[TRACKING] ✅ Open event recorded for contact ${req.params.contact_id}`);
+    }
+
     const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
     res.type('image/gif').send(pixel);
   } catch (error) {
-    console.error('Tracking error:', error);
+    console.error('[TRACKING] Unexpected error:', error);
     const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
     res.type('image/gif').send(pixel);
   }
@@ -2144,33 +2152,61 @@ app.get('/api/track/click/:campaign_id/:contact_id/:token', async (req, res) => 
 });
 
 // Improved open tracking - looks like a regular image asset for better deliverability
-// URL format: /img/e/{campaign_short}/{contact_short}/{token}.gif
-app.get('/img/e/:campaign_short/:contact_short/:token', async (req, res) => {
+// URL format: /img/e/{campaign_id}/{contact_id}/{token}.gif
+// Supports both full UUIDs (new) and shortened IDs (legacy)
+app.get('/img/e/:campaign_id/:contact_id/:token', async (req, res) => {
   try {
-    const { campaign_short, contact_short } = req.params;
+    const { campaign_id, contact_id } = req.params;
 
-    // Find the campaign and contact by partial ID match
-    // This is less precise but matches the shortened URL format for deliverability
-    const { data: campaignContact } = await supabase
-      .from('campaign_contacts')
-      .select('campaign_id, contact_id')
-      .ilike('campaign_id', `${campaign_short}%`)
-      .ilike('contact_id', `${contact_short}%`)
-      .limit(1)
-      .single();
+    console.log(`[TRACKING] Open tracking pixel requested: campaign=${campaign_id}, contact=${contact_id}`);
 
-    if (campaignContact) {
-      await supabase.from('email_events').insert({
-        campaign_id: campaignContact.campaign_id,
-        contact_id: campaignContact.contact_id,
-        event_type: 'opened',
-        event_data: {
-          user_agent: req.headers['user-agent'],
-          ip: req.ip,
-          timestamp: new Date().toISOString(),
-          tracking_type: 'improved_pixel'
-        }
-      });
+    let campaignIdToUse = campaign_id;
+    let contactIdToUse = contact_id;
+
+    // Check if we have shortened IDs (8 chars) vs full UUIDs (36 chars)
+    const isShortened = campaign_id.length < 36;
+
+    if (isShortened) {
+      // Legacy: Find the full IDs by partial match using text cast
+      console.log(`[TRACKING] Using legacy shortened ID lookup`);
+      const { data: campaignContact, error: lookupError } = await supabase
+        .from('campaign_contacts')
+        .select('campaign_id, contact_id')
+        .filter('campaign_id::text', 'ilike', `${campaign_id}%`)
+        .filter('contact_id::text', 'ilike', `${contact_id}%`)
+        .limit(1)
+        .single();
+
+      if (lookupError) {
+        console.error(`[TRACKING] Lookup error for shortened IDs:`, lookupError);
+      }
+
+      if (campaignContact) {
+        campaignIdToUse = campaignContact.campaign_id;
+        contactIdToUse = campaignContact.contact_id;
+        console.log(`[TRACKING] Found full IDs: campaign=${campaignIdToUse}, contact=${contactIdToUse}`);
+      } else {
+        console.log(`[TRACKING] No match found for shortened IDs`);
+      }
+    }
+
+    // Insert the open event
+    const { error: insertError } = await supabase.from('email_events').insert({
+      campaign_id: campaignIdToUse,
+      contact_id: contactIdToUse,
+      event_type: 'opened',
+      event_data: {
+        user_agent: req.headers['user-agent'],
+        ip: req.ip,
+        timestamp: new Date().toISOString(),
+        tracking_type: isShortened ? 'legacy_pixel' : 'improved_pixel'
+      }
+    });
+
+    if (insertError) {
+      console.error(`[TRACKING] Failed to insert open event:`, insertError);
+    } else {
+      console.log(`[TRACKING] ✅ Open event recorded for contact ${contactIdToUse}`);
     }
 
     // Return transparent 1x1 GIF
@@ -2183,7 +2219,7 @@ app.get('/img/e/:campaign_short/:contact_short/:token', async (req, res) => {
     });
     res.send(pixel);
   } catch (error) {
-    console.error('Improved tracking error:', error);
+    console.error('[TRACKING] Unexpected error:', error);
     // Still return pixel even on error
     const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
     res.type('image/gif').send(pixel);
