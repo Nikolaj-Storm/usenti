@@ -1019,11 +1019,17 @@ const WaitStepEditor = ({ data, handleChange, onUpdate, step }) => {
   const updateWait = (field, value) => {
     const v = Math.max(0, parseInt(value) || 0);
     handleChange(field, v);
-    onUpdate(step.id, {
+    // Send all wait fields together to prevent partial updates
+    // that leave stale default values (e.g., wait_hours defaulting to 1)
+    const updatePayload = {
       wait_days: field === 'wait_days' ? v : (data.wait_days || 0),
       wait_hours: field === 'wait_hours' ? v : (data.wait_hours || 0),
       wait_minutes: field === 'wait_minutes' ? v : (data.wait_minutes || 0)
-    });
+    };
+    console.log('[WAIT DEBUG] Current data from state:', { wait_days: data.wait_days, wait_hours: data.wait_hours, wait_minutes: data.wait_minutes });
+    console.log('[WAIT DEBUG] Field changed:', field, '-> new value:', v);
+    console.log('[WAIT DEBUG] Sending update payload:', updatePayload);
+    onUpdate(step.id, updatePayload);
   };
 
   return h('div', { className: "p-4" },

@@ -459,6 +459,14 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       step_order
     } = req.body;
 
+    // DEBUG: Log what we received for step creation
+    if (step_type === 'wait') {
+      console.log('[WAIT DEBUG] Creating new wait step');
+      console.log('[WAIT DEBUG] Raw req.body:', JSON.stringify(req.body));
+      console.log('[WAIT DEBUG] Received wait fields - days:', wait_days, 'hours:', wait_hours, 'minutes:', wait_minutes);
+      console.log('[WAIT DEBUG] Will store - days:', wait_days || 0, 'hours:', wait_hours || 0, 'minutes:', wait_minutes || 0);
+    }
+
     // Validate step type
     if (!['email', 'wait', 'condition'].includes(step_type)) {
       return res.status(400).json({ error: 'Invalid step type' });
@@ -484,8 +492,13 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       })
       .select()
       .single();
-    
+
     if (error) throw error;
+
+    if (step_type === 'wait') {
+      console.log('[WAIT DEBUG] Created step in DB:', JSON.stringify({ id: data.id, wait_days: data.wait_days, wait_hours: data.wait_hours, wait_minutes: data.wait_minutes }));
+    }
+
     res.json(data);
   } catch (error) {
     console.error('Error adding campaign step:', error);
@@ -513,6 +526,11 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       condition_type, condition_branches, step_order
     } = req.body;
 
+    // DEBUG: Log what we received from the frontend
+    console.log('[WAIT DEBUG] Backend received update for step', req.params.stepId);
+    console.log('[WAIT DEBUG] Raw req.body:', JSON.stringify(req.body));
+    console.log('[WAIT DEBUG] Extracted wait fields - days:', wait_days, 'hours:', wait_hours, 'minutes:', wait_minutes);
+
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
     if (body !== undefined) updates.body = body;
@@ -522,6 +540,8 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     if (condition_type !== undefined) updates.condition_type = condition_type;
     if (condition_branches !== undefined) updates.condition_branches = condition_branches;
     if (step_order !== undefined) updates.step_order = step_order;
+
+    console.log('[WAIT DEBUG] Updates object to save:', JSON.stringify(updates));
 
     if (Object.keys(updates).length === 0) {
       return res.json({ message: 'No updates provided' });
@@ -544,6 +564,8 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       .single();
 
     if (fetchError) throw fetchError;
+
+    console.log('[WAIT DEBUG] After save, DB has:', JSON.stringify({ wait_days: updatedStep.wait_days, wait_hours: updatedStep.wait_hours, wait_minutes: updatedStep.wait_minutes }));
 
     res.json(updatedStep);
   } catch (error) {
