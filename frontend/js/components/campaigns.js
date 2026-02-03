@@ -62,7 +62,7 @@ const NODE_TYPES = {
   email: { icon: 'Mail', color: '#3b82f6', label: 'Email', bgClass: 'email' },
   wait: { icon: 'Clock', color: '#8b5cf6', label: 'Wait', bgClass: 'wait' },
   condition: { icon: 'Split', color: '#f59e0b', label: 'Condition', bgClass: 'condition' },
-  end: { icon: 'Square', color: '#ef4444', label: 'End', bgClass: 'end' }
+  end: { icon: 'Check', color: '#ef4444', label: 'End', bgClass: 'end' }
 };
 
 const formatWaitDuration = (step) => {
@@ -1023,7 +1023,7 @@ const EndNode = ({ x, y }) => {
     h('div', { className: "node-card", style: { minWidth: '120px' } },
       h('div', { className: "node-header end" },
         h('div', { className: "node-icon end" },
-          h(Icons.Square, { size: 16 })
+          h(Icons.Check, { size: 16 })
         ),
         h('span', { className: "font-semibold text-sm text-stone-700" }, "End")
       )
