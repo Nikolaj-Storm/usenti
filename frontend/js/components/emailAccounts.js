@@ -92,7 +92,7 @@ const EmailAccounts = () => {
   );
 };
 
-const AccountsTab = ({ accounts, onEdit }) => {
+const AccountsTab = ({ accounts, onEdit, onDelete }) => {
   if (accounts.length === 0) {
     return h('div', { className: "flex flex-col items-center justify-center py-16 text-center" },
       h(Icons.Server, { size: 64, className: "text-stone-300 mb-4" }),
@@ -103,7 +103,8 @@ const AccountsTab = ({ accounts, onEdit }) => {
 
   return h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
     ...accounts.map((account) =>
-      h(AccountCard, { key: account.id, account: account, onEdit: onEdit, onDelete: onDelete })
+      95
+                    { key: account.id, account: account, onEdit: onEdit, onDelete: onDelete })
     )
   );
 };
@@ -210,7 +211,7 @@ const AccountCard = ({ account, onEdit, onDelete }) => {
             className: "px-3 py-2 text-sm text-red-400 hover:text-red-600 border border-stone-200 rounded-md hover:bg-red-50 transition-colors",
             title: "Delete Account"
                     },
-                           h(Icons.Trash || Icons.Trash2, { size: 16 }) // Ensure Icons.Trash is available
+                           h(Icons.Trash2, { size: 16 }) // Ensure Icons.Trash is available
     ),
     expanded && h('div', { className: "mt-4 pt-4 border-t border-stone-100 space-y-2 text-sm animate-fade-in" },
       account.sender_name && h('div', { className: "flex justify-between" },
