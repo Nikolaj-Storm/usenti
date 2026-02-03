@@ -245,9 +245,9 @@ class EmailService {
     // IMPORTANT: Use BACKEND_URL for tracking - the tracking endpoints are on the backend server
     const baseUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:3001';
 
-    // Use a more natural-looking tracking URL that mimics a spacer/logo image
-    // The path looks like a standard image asset, not a tracking endpoint
-    const trackingUrl = `${baseUrl}/img/e/${campaignId.slice(0, 8)}/${contactId.slice(0, 8)}/${trackingToken.slice(0, 12)}.gif`;
+    // Use full UUIDs for reliable tracking - shortened IDs caused lookup failures
+    // The path still looks like a standard image asset
+    const trackingUrl = `${baseUrl}/img/e/${campaignId}/${contactId}/${trackingToken.slice(0, 12)}.gif`;
 
     // Use natural CSS properties instead of suspicious display:none or 1x1
     // A transparent spacer that doesn't trigger spam filters
