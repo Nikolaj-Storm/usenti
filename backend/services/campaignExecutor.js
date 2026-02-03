@@ -536,22 +536,28 @@ class CampaignExecutor {
     }
   }
 
-  // Handle condition step - supports multiple condition branches
+  // Handle condition step - supports multiple condition branches with wait times
   async handleConditionStep(campaignContact, campaign, step) {
     // Get events for this contact
     const { data: events } = await supabase
       .from('email_events')
-      .select('event_type')
+      .select('event_type, created_at')
       .eq('campaign_id', campaign.id)
-      .eq('contact_id', campaignContact.contact_id);
+      .eq('contact_id', campaignContact.contact_id)
+      .order('created_at', { ascending: false });
 
     const eventTypes = events?.map(e => e.event_type) || [];
     const hasOpened = eventTypes.includes('opened');
     const hasClicked = eventTypes.includes('clicked');
     const hasReplied = eventTypes.includes('replied');
 
+    // Get the last sent email time for this contact in this campaign
+    const lastSentEvent = events?.find(e => e.event_type === 'sent');
+    const lastSentTime = lastSentEvent ? new Date(lastSentEvent.created_at) : null;
+
     console.log(`[EXECUTOR] 🔀 Evaluating conditions for contact ${campaignContact.contact_id}`);
     console.log(`[EXECUTOR]   Events: ${eventTypes.join(', ') || 'none'}`);
+    console.log(`[EXECUTOR]   Last email sent: ${lastSentTime ? lastSentTime.toISOString() : 'never'}`);
 
     // Helper function to evaluate a single condition
     const evaluateCondition = (condition) => {
@@ -566,6 +572,14 @@ class CampaignExecutor {
       }
     };
 
+    // Helper to calculate wait time in ms from branch
+    const getBranchWaitMs = (branch) => {
+      const waitDays = parseInt(branch.wait_days) || 0;
+      const waitHours = parseInt(branch.wait_hours) || 0;
+      const waitMinutes = parseInt(branch.wait_minutes) || 0;
+      return (waitDays * 24 * 60 * 60 * 1000) + (waitHours * 60 * 60 * 1000) + (waitMinutes * 60 * 1000);
+    };
+
     // Check if we have new-style condition_branches
     let branches = step.condition_branches;
     if (typeof branches === 'string') {
@@ -574,18 +588,49 @@ class CampaignExecutor {
 
     let nextStepId = null;
     let matchedCondition = null;
+    let matchedBranchSteps = null;
 
     if (branches && Array.isArray(branches) && branches.length > 0) {
-      // New multi-branch evaluation
+      // New multi-branch evaluation with wait time support
       console.log(`[EXECUTOR]   Evaluating ${branches.length} condition branches...`);
 
+      const now = Date.now();
+
       for (const branch of branches) {
+        const branchWaitMs = getBranchWaitMs(branch);
+        const isNegativeCondition = branch.condition.includes('not_');
+
+        // For negative conditions with wait time, check if enough time has passed
+        if (isNegativeCondition && branchWaitMs > 0 && lastSentTime) {
+          const waitDeadline = new Date(lastSentTime.getTime() + branchWaitMs);
+          const waitRemaining = waitDeadline.getTime() - now;
+
+          console.log(`[EXECUTOR]   - ${branch.condition} (wait ${branch.wait_days || 0}d ${branch.wait_hours || 0}h): deadline ${waitDeadline.toISOString()}`);
+
+          if (waitRemaining > 0) {
+            // Not enough time has passed - reschedule to check again
+            console.log(`[EXECUTOR]   ⏳ Wait time not elapsed, ${Math.ceil(waitRemaining / 3600000)}h remaining`);
+            console.log(`[EXECUTOR]   📅 Rescheduling condition check to ${waitDeadline.toISOString()}`);
+
+            await supabase
+              .from('campaign_contacts')
+              .update({
+                next_send_time: waitDeadline.toISOString(),
+                status: 'in_progress'
+              })
+              .eq('id', campaignContact.id);
+
+            return; // Exit early, will be processed again after wait period
+          }
+        }
+
         const conditionMet = evaluateCondition(branch.condition);
         console.log(`[EXECUTOR]   - ${branch.condition}: ${conditionMet ? '✅ MATCH' : '❌ no match'}`);
 
         if (conditionMet) {
           matchedCondition = branch.condition;
           nextStepId = branch.next_step_id;
+          matchedBranchSteps = branch.branch_steps || [];
           break; // First match wins
         }
       }
@@ -596,6 +641,15 @@ class CampaignExecutor {
 
       matchedCondition = step.condition_type;
       nextStepId = conditionMet ? step.next_step_if_true : step.next_step_if_false;
+    }
+
+    // If the matched branch has branch_steps, we need to process those
+    // For now, we'll move to the first branch step if available
+    if (matchedBranchSteps && matchedBranchSteps.length > 0) {
+      console.log(`[EXECUTOR]   📋 Branch has ${matchedBranchSteps.length} inline steps`);
+      // Branch steps are stored inline in the condition_branches JSONB
+      // For complex branching, these would need their own step processing
+      // For now, log that we found them (full implementation would require DB schema changes)
     }
 
     // If no next_step_id from condition, get next sequential step
