@@ -13,6 +13,8 @@ const Inbox = () => {
   const [showReplyForm, setShowReplyForm] = React.useState(false);
   const [replyBody, setReplyBody] = React.useState('');
   const [sendingReply, setSendingReply] = React.useState(false);
+  const [attachments, setAttachments] = React.useState([]);
+  const fileInputRef = React.useRef(null);
 
   React.useEffect(() => {
     loadData();
@@ -62,10 +64,9 @@ const Inbox = () => {
 
     setSendingReply(true);
     try {
-      await api.sendReply(selectedMessage.id, replyBody);
+      await api.sendReply(selectedMessage.id, replyBody, attachments);
       alert('Reply sent successfully!');
-      setShowReplyForm(false);
-      setReplyBody('');
+      closeReplyForm();
     } catch (error) {
       console.error('Failed to send reply:', error);
       alert('Failed to send reply: ' + error.message);
@@ -74,11 +75,41 @@ const Inbox = () => {
     }
   };
 
+  const closeReplyForm = () => {
+    setShowReplyForm(false);
+    setReplyBody('');
+    setAttachments([]);
+  };
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    const newAttachments = files.map(file => ({
+      file,
+      name: file.name,
+      size: file.size,
+      type: file.type
+    }));
+    setAttachments(prev => [...prev, ...newAttachments]);
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
   const handleSelectMessage = async (msg) => {
     setSelectedMessage(msg);
     setEmailContent(null);
-    setShowReplyForm(false);
-    setReplyBody('');
+    closeReplyForm();
 
     // Mark as read if it's unread
     if (!msg.is_read) {
@@ -173,8 +204,9 @@ const Inbox = () => {
     );
   }
 
-  return h('div', { className: "h-[calc(100vh-120px)] flex flex-col animate-fade-in" },
-    // Header
+  return h(React.Fragment, null,
+    h('div', { className: "h-[calc(100vh-120px)] flex flex-col animate-fade-in" },
+      // Header
     h('div', { className: "flex justify-between items-center mb-6 pb-6 border-b border-stone-200" },
       h('div', null,
         h('h1', { className: "font-serif text-3xl text-jaguar-900" }, "Unified Inbox"),
@@ -302,38 +334,8 @@ const Inbox = () => {
                       })
                     : h('div', { className: "text-stone-400 italic" }, "Loading...")
               ),
-              // Reply Form (shown when replying)
-              showReplyForm && h('div', { className: "p-4 border-t border-stone-200 bg-cream-50" },
-                h('div', { className: "mb-2" },
-                  h('label', { className: "text-sm font-medium text-stone-700" }, `Reply to: ${selectedMessage.from_name || selectedMessage.from_address}`)
-                ),
-                h('textarea', {
-                  className: "w-full p-3 border border-stone-200 rounded-lg mb-3 resize-none",
-                  rows: 6,
-                  placeholder: "Type your reply here...",
-                  value: replyBody,
-                  onChange: (e) => setReplyBody(e.target.value),
-                  disabled: sendingReply
-                }),
-                h('div', { className: "flex gap-2" },
-                  h('button', {
-                    className: "px-4 py-2 bg-jaguar-900 text-white rounded-lg hover:bg-jaguar-800 transition-colors flex items-center gap-2 disabled:opacity-50",
-                    onClick: handleSendReply,
-                    disabled: sendingReply || !replyBody.trim()
-                  },
-                    sendingReply ? h(Icons.Loader2, { size: 16, className: "animate-spin" }) : h(Icons.Send, { size: 16 }),
-                    h('span', null, sendingReply ? 'Sending...' : 'Send Reply')
-                  ),
-                  h('button', {
-                    className: "px-4 py-2 border border-stone-200 text-stone-700 rounded-lg hover:bg-stone-100 transition-colors",
-                    onClick: () => { setShowReplyForm(false); setReplyBody(''); },
-                    disabled: sendingReply
-                  }, 'Cancel')
-                )
-              ),
-
               // Message Actions (Footer)
-              !showReplyForm && h('div', { className: "p-4 border-t border-stone-100 bg-stone-50 flex gap-2" },
+              h('div', { className: "p-4 border-t border-stone-100 bg-stone-50 flex gap-2" },
                 h('button', {
                   className: "px-4 py-2 bg-jaguar-900 text-white rounded-lg hover:bg-jaguar-800 transition-colors flex items-center gap-2",
                   onClick: () => setShowReplyForm(true)
@@ -357,6 +359,122 @@ const Inbox = () => {
               h('p', { className: "text-lg font-medium" }, "Select an email to read"),
               h('p', { className: "text-sm mt-1" }, "Choose a message from the list to view its content")
             )
+        )
+      )
+    ),
+
+    // Reply Composer Modal
+    showReplyForm && selectedMessage && h('div', {
+      className: "fixed inset-0 bg-black/50 flex items-center justify-center z-50",
+      onClick: (e) => {
+        if (e.target === e.currentTarget && !sendingReply) closeReplyForm();
+      }
+    },
+      h('div', {
+        className: "bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col mx-4",
+        onClick: (e) => e.stopPropagation()
+      },
+        // Modal Header
+        h('div', { className: "p-6 border-b border-stone-200 bg-cream-50 rounded-t-xl" },
+          h('div', { className: "flex justify-between items-start" },
+            h('div', null,
+              h('h3', { className: "font-serif text-xl text-jaguar-900 mb-1" }, "Reply to Email"),
+              h('p', { className: "text-sm text-stone-600" },
+                `To: ${selectedMessage.from_name || selectedMessage.from_address} <${selectedMessage.from_address}>`
+              ),
+              h('p', { className: "text-xs text-stone-400 mt-1" },
+                `Re: ${selectedMessage.subject || '(No Subject)'}`
+              )
+            ),
+            h('button', {
+              className: "p-2 text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded-lg transition-colors",
+              onClick: closeReplyForm,
+              disabled: sendingReply
+            }, h(Icons.X, { size: 20 }))
+          )
+        ),
+
+        // Compose Area
+        h('div', { className: "flex-1 p-6 overflow-y-auto" },
+          h('textarea', {
+            className: "w-full h-64 p-4 border border-stone-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent text-stone-800",
+            placeholder: "Write your reply here...",
+            value: replyBody,
+            onChange: (e) => setReplyBody(e.target.value),
+            disabled: sendingReply,
+            autoFocus: true
+          }),
+
+          // Attachments Section
+          h('div', { className: "mt-4" },
+            // Hidden file input
+            h('input', {
+              type: "file",
+              ref: fileInputRef,
+              onChange: handleFileSelect,
+              multiple: true,
+              className: "hidden"
+            }),
+
+            // Attachment list
+            attachments.length > 0 && h('div', { className: "mb-4" },
+              h('p', { className: "text-sm font-medium text-stone-700 mb-2" }, `Attachments (${attachments.length})`),
+              h('div', { className: "space-y-2" },
+                attachments.map((att, index) =>
+                  h('div', {
+                    key: index,
+                    className: "flex items-center justify-between p-3 bg-stone-50 rounded-lg border border-stone-200"
+                  },
+                    h('div', { className: "flex items-center gap-3" },
+                      h(Icons.File, { size: 18, className: "text-stone-400" }),
+                      h('div', null,
+                        h('p', { className: "text-sm font-medium text-stone-700 truncate max-w-xs" }, att.name),
+                        h('p', { className: "text-xs text-stone-400" }, formatFileSize(att.size))
+                      )
+                    ),
+                    h('button', {
+                      className: "p-1 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors",
+                      onClick: () => removeAttachment(index),
+                      disabled: sendingReply
+                    }, h(Icons.X, { size: 16 }))
+                  )
+                )
+              )
+            ),
+
+            // Add attachment button
+            h('button', {
+              className: "flex items-center gap-2 px-4 py-2 text-stone-600 hover:text-jaguar-900 hover:bg-stone-100 rounded-lg transition-colors border border-dashed border-stone-300",
+              onClick: () => fileInputRef.current?.click(),
+              disabled: sendingReply
+            },
+              h(Icons.Paperclip, { size: 18 }),
+              h('span', { className: "text-sm" }, "Add Attachment")
+            )
+          )
+        ),
+
+        // Modal Footer
+        h('div', { className: "p-6 border-t border-stone-200 bg-stone-50 rounded-b-xl flex justify-between items-center" },
+          h('p', { className: "text-xs text-stone-400" },
+            attachments.length > 0 ? `${attachments.length} file${attachments.length > 1 ? 's' : ''} attached` : "No attachments"
+          ),
+          h('div', { className: "flex gap-3" },
+            h('button', {
+              className: "px-5 py-2.5 border border-stone-200 text-stone-700 rounded-lg hover:bg-stone-100 transition-colors font-medium",
+              onClick: closeReplyForm,
+              disabled: sendingReply
+            }, 'Cancel'),
+            h('button', {
+              className: "px-6 py-2.5 bg-jaguar-900 text-white rounded-lg hover:bg-jaguar-800 transition-colors flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed",
+              onClick: handleSendReply,
+              disabled: sendingReply || !replyBody.trim()
+            },
+              sendingReply ? h(Icons.Loader2, { size: 18, className: "animate-spin" }) : h(Icons.Send, { size: 18 }),
+              h('span', null, sendingReply ? 'Sending...' : 'Send Reply')
+            )
+          )
+        )
       )
     )
   );

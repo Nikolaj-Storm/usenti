@@ -242,7 +242,8 @@ class EmailService {
   // Uses natural-looking image attributes and embeds within content
   addTrackingPixel(htmlBody, campaignId, contactId) {
     const trackingToken = crypto.randomBytes(16).toString('hex');
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    // IMPORTANT: Use BACKEND_URL for tracking - the tracking endpoints are on the backend server
+    const baseUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:3001';
 
     // Use a more natural-looking tracking URL that mimics a spacer/logo image
     // The path looks like a standard image asset, not a tracking endpoint
@@ -263,7 +264,9 @@ class EmailService {
   // Rewrite links for click tracking
   rewriteLinksForTracking(htmlBody, campaignId, contactId) {
     const trackingToken = crypto.randomBytes(16).toString('hex');
-    const baseUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/track/click/${campaignId}/${contactId}/${trackingToken}`;
+    // IMPORTANT: Use BACKEND_URL for tracking - the tracking endpoints are on the backend server
+    const backendUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:3001';
+    const baseUrl = `${backendUrl}/api/track/click/${campaignId}/${contactId}/${trackingToken}`;
     
     return htmlBody.replace(
       /href="(https?:\/\/[^"]+)"/g,
@@ -271,12 +274,13 @@ class EmailService {
     );
   }
 
-  // Send a single email
+  // Send a single email (supports attachments)
   async sendEmail({
     emailAccountId,
     to,
     subject,
     body,
+    attachments = [],
     campaignId,
     contactId,
     trackOpens = true,
@@ -287,6 +291,7 @@ class EmailService {
     console.log(`[EMAIL]    Subject: "${subject}"`);
     console.log(`[EMAIL]    Campaign ID: ${campaignId}`);
     console.log(`[EMAIL]    Contact ID: ${contactId}`);
+    console.log(`[EMAIL]    Attachments: ${attachments.length}`);
 
     try {
       // Get account to check provider type and sender name
@@ -354,7 +359,8 @@ class EmailService {
 
         // Get domain for Message-ID and unsubscribe URL
         const domain = getEmailDomain(account.email_address);
-        const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        // IMPORTANT: Use BACKEND_URL for unsubscribe - the endpoint is on the backend server
+        const backendUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:3001';
 
         // Generate a proper Message-ID with the sending domain
         const messageIdLocal = crypto.randomBytes(16).toString('hex');
@@ -362,7 +368,7 @@ class EmailService {
 
         // Build unsubscribe URL
         const unsubscribeToken = crypto.randomBytes(16).toString('hex');
-        const unsubscribeUrl = `${baseUrl}/api/unsubscribe/${campaignId}/${contactId}/${unsubscribeToken}`;
+        const unsubscribeUrl = `${backendUrl}/api/unsubscribe/${campaignId}/${contactId}/${unsubscribeToken}`;
 
         // Convert HTML to plain text for multipart email
         const plainTextBody = htmlToPlainText(finalBody);
@@ -392,10 +398,13 @@ class EmailService {
             'Auto-Submitted': 'auto-generated'
           },
           // Reply-To same as From for proper reply routing
-          replyTo: account.email_address
+          replyTo: account.email_address,
+          // Include attachments if provided
+          attachments: attachments.length > 0 ? attachments : undefined
         };
 
         console.log(`[EMAIL] 🚀 Calling transporter.sendMail()...`);
+        console.log(`[EMAIL]    Attachments: ${attachments.length > 0 ? attachments.map(a => a.filename).join(', ') : 'none'}`);
         console.log(`[EMAIL]    From: ${fromAddress}`);
         console.log(`[EMAIL]    Message-ID: ${messageId}`);
         console.log(`[EMAIL]    Has plain text: ${plainTextBody.length > 0}`);
