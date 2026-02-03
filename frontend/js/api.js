@@ -180,6 +180,11 @@ const api = {
     return this.put(`${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}/${id}`, accountData);
   },
 
+    async deleteEmailAccount(id) {
+          console.log(`[API] Deleting email account \${id}...`);
+          return this.delete(`\${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}/\${id}`);
+        },
+
   async testEmailAccount(accountData) {
     return this.post(APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS_TEST, accountData);
   },
