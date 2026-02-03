@@ -210,5 +210,92 @@ const Icons = {
   File: (p) => Icon({...p, path: [
     h('path', {key:1, d:"M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"}),
     h('polyline', {key:2, points:"14 2 14 8 20 8"})
+  ]}),
+
+  // Canvas/workflow icons
+  ZoomIn: (p) => Icon({...p, path: [
+    h('circle', {key:1, cx:"11", cy:"11", r:"8"}),
+    h('line', {key:2, x1:"21", x2:"16.65", y1:"21", y2:"16.65"}),
+    h('line', {key:3, x1:"11", x2:"11", y1:"8", y2:"14"}),
+    h('line', {key:4, x1:"8", x2:"14", y1:"11", y2:"11"})
+  ]}),
+
+  ZoomOut: (p) => Icon({...p, path: [
+    h('circle', {key:1, cx:"11", cy:"11", r:"8"}),
+    h('line', {key:2, x1:"21", x2:"16.65", y1:"21", y2:"16.65"}),
+    h('line', {key:3, x1:"8", x2:"14", y1:"11", y2:"11"})
+  ]}),
+
+  Hand: (p) => Icon({...p, path: [
+    h('path', {key:1, d:"M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"}),
+    h('path', {key:2, d:"M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"}),
+    h('path', {key:3, d:"M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"}),
+    h('path', {key:4, d:"M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"})
+  ]}),
+
+  Move: (p) => Icon({...p, path: [
+    h('polyline', {key:1, points:"5 9 2 12 5 15"}),
+    h('polyline', {key:2, points:"9 5 12 2 15 5"}),
+    h('polyline', {key:3, points:"15 19 12 22 9 19"}),
+    h('polyline', {key:4, points:"19 9 22 12 19 15"}),
+    h('line', {key:5, x1:"2", x2:"22", y1:"12", y2:"12"}),
+    h('line', {key:6, x1:"12", x2:"12", y1:"2", y2:"22"})
+  ]}),
+
+  Maximize2: (p) => Icon({...p, path: [
+    h('polyline', {key:1, points:"15 3 21 3 21 9"}),
+    h('polyline', {key:2, points:"9 21 3 21 3 15"}),
+    h('line', {key:3, x1:"21", x2:"14", y1:"3", y2:"10"}),
+    h('line', {key:4, x1:"3", x2:"10", y1:"21", y2:"14"})
+  ]}),
+
+  Grid3x3: (p) => Icon({...p, path: [
+    h('rect', {key:1, width:"18", height:"18", x:"3", y:"3", rx:"2"}),
+    h('path', {key:2, d:"M3 9h18"}),
+    h('path', {key:3, d:"M3 15h18"}),
+    h('path', {key:4, d:"M9 3v18"}),
+    h('path', {key:5, d:"M15 3v18"})
+  ]}),
+
+  Minus: (p) => Icon({...p, path: h('path', {d:"M5 12h14"})}),
+
+  MousePointer: (p) => Icon({...p, path: [
+    h('path', {key:1, d:"m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"}),
+    h('path', {key:2, d:"m13 13 6 6"})
+  ]}),
+
+  Undo2: (p) => Icon({...p, path: [
+    h('path', {key:1, d:"M9 14 4 9l5-5"}),
+    h('path', {key:2, d:"M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"})
+  ]}),
+
+  Redo2: (p) => Icon({...p, path: [
+    h('path', {key:1, d:"m15 14 5-5-5-5"}),
+    h('path', {key:2, d:"M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"})
+  ]}),
+
+  GripVertical: (p) => Icon({...p, path: [
+    h('circle', {key:1, cx:"9", cy:"12", r:"1"}),
+    h('circle', {key:2, cx:"9", cy:"5", r:"1"}),
+    h('circle', {key:3, cx:"9", cy:"19", r:"1"}),
+    h('circle', {key:4, cx:"15", cy:"12", r:"1"}),
+    h('circle', {key:5, cx:"15", cy:"5", r:"1"}),
+    h('circle', {key:6, cx:"15", cy:"19", r:"1"})
+  ]}),
+
+  Link2: (p) => Icon({...p, path: [
+    h('path', {key:1, d:"M9 17H7A5 5 0 0 1 7 7h2"}),
+    h('path', {key:2, d:"M15 7h2a5 5 0 1 1 0 10h-2"}),
+    h('line', {key:3, x1:"8", x2:"16", y1:"12", y2:"12"})
+  ]}),
+
+  Unlink2: (p) => Icon({...p, path: [
+    h('path', {key:1, d:"M15 7h2a5 5 0 0 1 0 10h-2m-6 0H7A5 5 0 0 1 7 7h2"})
+  ]}),
+
+  Target: (p) => Icon({...p, path: [
+    h('circle', {key:1, cx:"12", cy:"12", r:"10"}),
+    h('circle', {key:2, cx:"12", cy:"12", r:"6"}),
+    h('circle', {key:3, cx:"12", cy:"12", r:"2"})
   ]})
 };
