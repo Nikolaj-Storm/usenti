@@ -46,11 +46,9 @@ const sanitizeStep = (s) => {
 
 const CONDITION_OPTIONS = [
   { value: 'if_opened', label: 'If Opened', color: 'bg-blue-500' },
-  { value: 'if_not_opened', label: 'If NOT Opened', color: 'bg-orange-500' },
-  { value: 'if_clicked', label: 'If Clicked', color: 'bg-green-500' },
-  { value: 'if_not_clicked', label: 'If NOT Clicked', color: 'bg-red-500' },
+  { value: 'if_not_opened', label: 'If NOT Opened', color: 'bg-orange-500', hasWait: true },
   { value: 'if_replied', label: 'If Replied', color: 'bg-purple-500' },
-  { value: 'if_not_replied', label: 'If NOT Replied', color: 'bg-pink-500' }
+  { value: 'if_not_replied', label: 'If NOT Replied', color: 'bg-pink-500', hasWait: true }
 ];
 
 const BRANCH_COLORS = [
@@ -176,11 +174,11 @@ const CampaignBuilder = () => {
         step_type: 'condition',
         step_order: 3,
         condition_branches: [
-          { condition: 'if_opened', next_step_id: null, branch_steps: [
+          { condition: 'if_opened', wait_days: 0, wait_hours: 0, wait_minutes: 0, next_step_id: null, branch_steps: [
             { id: 'b1s1', step_type: 'email', subject: 'Thanks for opening!', body: 'Since you showed interest...', step_order: 1, parent_branch_id: 's3', branch_index: 0 },
             { id: 'b1s2', step_type: 'wait', wait_days: 1, wait_hours: 0, wait_minutes: 0, step_order: 2, parent_branch_id: 's3', branch_index: 0 }
           ]},
-          { condition: 'if_not_opened', next_step_id: null, branch_steps: [
+          { condition: 'if_not_opened', wait_days: 2, wait_hours: 0, wait_minutes: 0, next_step_id: null, branch_steps: [
             { id: 'b2s1', step_type: 'email', subject: 'Did you miss my email?', body: 'Just wanted to follow up...', step_order: 1, parent_branch_id: 's3', branch_index: 1 }
           ]}
         ]
@@ -280,7 +278,7 @@ const CampaignBuilder = () => {
         wait_days: 0,
         wait_hours: 0,
         wait_minutes: 0,
-        condition_branches: stepType === 'condition' ? [{ condition: 'if_opened', branch_steps: [] }, { condition: 'if_not_opened', branch_steps: [] }] : []
+        condition_branches: stepType === 'condition' ? [{ condition: 'if_opened', wait_days: 0, wait_hours: 0, wait_minutes: 0, branch_steps: [] }, { condition: 'if_not_opened', wait_days: 2, wait_hours: 0, wait_minutes: 0, branch_steps: [] }] : []
       });
       setSteps([...steps, newStep]);
       setActiveStep(newStep.id);
@@ -300,8 +298,8 @@ const CampaignBuilder = () => {
       wait_minutes: 0,
       condition_type: 'if_opened',
       condition_branches: stepType === 'condition' ? [
-        { condition: 'if_opened', branch_steps: [] },
-        { condition: 'if_not_opened', branch_steps: [] }
+        { condition: 'if_opened', wait_days: 0, wait_hours: 0, wait_minutes: 0, branch_steps: [] },
+        { condition: 'if_not_opened', wait_days: 2, wait_hours: 0, wait_minutes: 0, branch_steps: [] }
       ] : [],
       parent_branch_id: parentBranchId,
       branch_index: branchIndex
@@ -408,9 +406,11 @@ const CampaignBuilder = () => {
           const usedConditions = step.condition_branches.map(b => b.condition);
           const available = CONDITION_OPTIONS.find(opt => !usedConditions.includes(opt.value));
           if (available) {
+            // Add default wait time for negative conditions
+            const defaultWait = available.hasWait ? { wait_days: 2, wait_hours: 0, wait_minutes: 0 } : { wait_days: 0, wait_hours: 0, wait_minutes: 0 };
             return {
               ...step,
-              condition_branches: [...step.condition_branches, { condition: available.value, branch_steps: [] }]
+              condition_branches: [...step.condition_branches, { condition: available.value, ...defaultWait, branch_steps: [] }]
             };
           }
         }
@@ -440,7 +440,34 @@ const CampaignBuilder = () => {
       return prevSteps.map(step => {
         if (step.id === conditionStepId && step.step_type === 'condition') {
           const newBranches = [...step.condition_branches];
-          newBranches[branchIndex] = { ...newBranches[branchIndex], condition: newCondition };
+          // When changing condition, set appropriate default wait time
+          const conditionOpt = CONDITION_OPTIONS.find(o => o.value === newCondition);
+          const defaultWait = conditionOpt?.hasWait ? { wait_days: 2, wait_hours: 0, wait_minutes: 0 } : { wait_days: 0, wait_hours: 0, wait_minutes: 0 };
+          newBranches[branchIndex] = { ...newBranches[branchIndex], condition: newCondition, ...defaultWait };
+          return { ...step, condition_branches: newBranches };
+        }
+        return step;
+      });
+    });
+  };
+
+  // Update branch wait time
+  const handleUpdateBranchWait = async (conditionStepId, branchIndex, waitField, value) => {
+    const newValue = Math.max(0, parseInt(value) || 0);
+
+    setSteps(prevSteps => {
+      return prevSteps.map(step => {
+        if (step.id === conditionStepId && step.step_type === 'condition') {
+          const newBranches = [...step.condition_branches];
+          newBranches[branchIndex] = { ...newBranches[branchIndex], [waitField]: newValue };
+
+          // Also save to backend
+          if (!isDemo && selectedCampaign) {
+            api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
+              condition_branches: newBranches
+            }).catch(err => console.error('Error saving branch wait time:', err));
+          }
+
           return { ...step, condition_branches: newBranches };
         }
         return step;
@@ -590,7 +617,8 @@ const CampaignBuilder = () => {
           onDeleteStep: handleDeleteStep,
           onAddBranch: handleAddBranch,
           onRemoveBranch: handleRemoveBranch,
-          onUpdateBranchCondition: handleUpdateBranchCondition
+          onUpdateBranchCondition: handleUpdateBranchCondition,
+          onUpdateBranchWait: handleUpdateBranchWait
         })
       ),
 
@@ -615,7 +643,7 @@ const CampaignBuilder = () => {
 
 // --- 4. Workflow Canvas Component (n8n-style) ---
 
-const WorkflowCanvas = ({ steps, activeStep, setActiveStep, onAddStep, onDeleteStep, onAddBranch, onRemoveBranch, onUpdateBranchCondition }) => {
+const WorkflowCanvas = ({ steps, activeStep, setActiveStep, onAddStep, onDeleteStep, onAddBranch, onRemoveBranch, onUpdateBranchCondition, onUpdateBranchWait }) => {
 
   // Start node
   const StartNode = () => h('div', { className: "flex flex-col items-center" },
@@ -716,8 +744,17 @@ const WorkflowCanvas = ({ steps, activeStep, setActiveStep, onAddStep, onDeleteS
   };
 
   // Render condition branches
-  const ConditionBranches = ({ step, activeStep, setActiveStep, onAddStep, onDeleteStep, onAddBranch, onRemoveBranch, onUpdateBranchCondition }) => {
+  const ConditionBranches = ({ step, activeStep, setActiveStep, onAddStep, onDeleteStep, onAddBranch, onRemoveBranch, onUpdateBranchCondition, onUpdateBranchWait }) => {
     const branches = step.condition_branches || [];
+
+    // Helper to format wait time
+    const formatBranchWait = (branch) => {
+      const parts = [];
+      if (branch.wait_days > 0) parts.push(`${branch.wait_days}d`);
+      if (branch.wait_hours > 0) parts.push(`${branch.wait_hours}h`);
+      if (branch.wait_minutes > 0) parts.push(`${branch.wait_minutes}m`);
+      return parts.length > 0 ? parts.join(' ') : 'immediately';
+    };
 
     return h('div', { className: "mt-4" },
       // Branch container
@@ -725,34 +762,63 @@ const WorkflowCanvas = ({ steps, activeStep, setActiveStep, onAddStep, onDeleteS
         branches.map((branch, branchIndex) => {
           const color = BRANCH_COLORS[branchIndex % BRANCH_COLORS.length];
           const branchSteps = branch.branch_steps || [];
+          const conditionOpt = CONDITION_OPTIONS.find(o => o.value === branch.condition);
+          const showWaitInputs = conditionOpt?.hasWait;
 
           return h('div', {
             key: branchIndex,
             className: `flex flex-col items-center min-w-[220px] relative`
           },
             // Branch header with condition selector
-            h('div', { className: `flex items-center gap-2 mb-2` },
-              // Color indicator
-              h('div', { className: `w-3 h-3 rounded-full ${color.accent}` }),
+            h('div', { className: `flex flex-col items-center gap-2 mb-2` },
+              h('div', { className: `flex items-center gap-2` },
+                // Color indicator
+                h('div', { className: `w-3 h-3 rounded-full ${color.accent}` }),
 
-              // Condition dropdown
-              h('select', {
-                className: `text-sm px-2 py-1 rounded border ${color.border} ${color.bg} ${color.text} font-medium`,
-                value: branch.condition,
-                onChange: (e) => onUpdateBranchCondition(step.id, branchIndex, e.target.value),
-                onClick: (e) => e.stopPropagation()
-              },
-                CONDITION_OPTIONS.map(opt =>
-                  h('option', { key: opt.value, value: opt.value }, opt.label)
-                )
+                // Condition dropdown
+                h('select', {
+                  className: `text-sm px-2 py-1 rounded border ${color.border} ${color.bg} ${color.text} font-medium`,
+                  value: branch.condition,
+                  onChange: (e) => onUpdateBranchCondition(step.id, branchIndex, e.target.value),
+                  onClick: (e) => e.stopPropagation()
+                },
+                  CONDITION_OPTIONS.map(opt =>
+                    h('option', { key: opt.value, value: opt.value }, opt.label)
+                  )
+                ),
+
+                // Remove branch button
+                branches.length > 1 && h('button', {
+                  onClick: (e) => { e.stopPropagation(); onRemoveBranch(step.id, branchIndex); },
+                  className: "p-1 text-stone-400 hover:text-red-500 transition-colors",
+                  title: "Remove branch"
+                }, h(Icons.X, { size: 14 }))
               ),
 
-              // Remove branch button
-              branches.length > 1 && h('button', {
-                onClick: (e) => { e.stopPropagation(); onRemoveBranch(step.id, branchIndex); },
-                className: "p-1 text-stone-400 hover:text-red-500 transition-colors",
-                title: "Remove branch"
-              }, h(Icons.X, { size: 14 }))
+              // Wait time inputs for negative conditions
+              showWaitInputs && h('div', { className: `flex items-center gap-1 text-xs ${color.text}` },
+                h('span', { className: "text-stone-500" }, "within"),
+                h('input', {
+                  type: "number",
+                  min: "0",
+                  max: "30",
+                  value: branch.wait_days || 0,
+                  onChange: (e) => onUpdateBranchWait(step.id, branchIndex, 'wait_days', e.target.value),
+                  onClick: (e) => e.stopPropagation(),
+                  className: `w-10 px-1 py-0.5 text-center border ${color.border} rounded text-xs bg-white`
+                }),
+                h('span', null, "d"),
+                h('input', {
+                  type: "number",
+                  min: "0",
+                  max: "23",
+                  value: branch.wait_hours || 0,
+                  onChange: (e) => onUpdateBranchWait(step.id, branchIndex, 'wait_hours', e.target.value),
+                  onClick: (e) => e.stopPropagation(),
+                  className: `w-10 px-1 py-0.5 text-center border ${color.border} rounded text-xs bg-white`
+                }),
+                h('span', null, "h")
+              )
             ),
 
             // Connector from condition
@@ -886,7 +952,8 @@ const WorkflowCanvas = ({ steps, activeStep, setActiveStep, onAddStep, onDeleteS
                   onDeleteStep,
                   onAddBranch,
                   onRemoveBranch,
-                  onUpdateBranchCondition
+                  onUpdateBranchCondition,
+                  onUpdateBranchWait
                 }),
 
                 // Add step button after each step (except last one shows always)
@@ -1004,13 +1071,22 @@ const StepEditor = ({ step, onUpdate, saving }) => {
           h('span', { className: "font-semibold text-amber-900" }, "Condition Branches")
         ),
         h('p', { className: "text-sm text-amber-700" },
-          "Each branch evaluates a condition. The first matching condition determines the path. Add steps to each branch in the canvas view."
+          "Each branch evaluates a condition. The first matching condition determines the path."
         )
       ),
-      h('div', { className: "text-sm text-stone-600" },
+      h('div', { className: "p-4 bg-blue-50 rounded-lg border border-blue-200 mt-3" },
+        h('div', { className: "flex items-center gap-2 mb-2" },
+          h(Icons.Clock, { size: 18, className: "text-blue-600" }),
+          h('span', { className: "font-semibold text-blue-900" }, "Wait Time")
+        ),
+        h('p', { className: "text-sm text-blue-700" },
+          "For 'NOT' conditions (not opened, not replied), you can set a wait time. The system will wait this long before checking if the condition is met. Example: 'If NOT Opened within 2 days' means check after 2 days if the email was opened."
+        )
+      ),
+      h('div', { className: "text-sm text-stone-600 mt-3" },
         h('p', null, `This condition has ${step.condition_branches?.length || 0} branches configured.`),
         h('p', { className: "mt-2 text-stone-500" },
-          "Use the canvas on the left to add/remove branches and manage steps within each branch."
+          "Use the canvas on the left to configure wait times and add steps to each branch."
         )
       )
     )
