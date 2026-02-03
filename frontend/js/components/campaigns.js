@@ -235,40 +235,64 @@ const CampaignBuilder = () => {
 
   // Add step to main flow or to a specific branch
   const handleAddStep = async (stepType, parentBranchId = null, branchIndex = null) => {
-    if (isDemo || !selectedCampaign) {
-      // Demo mode: add locally
-      if (parentBranchId !== null && branchIndex !== null) {
-        // Adding to a branch
-        setSteps(prevSteps => {
-          return prevSteps.map(step => {
-            if (step.id === parentBranchId && step.step_type === 'condition') {
-              const newBranches = [...step.condition_branches];
-              const branch = newBranches[branchIndex];
-              const branchSteps = branch.branch_steps || [];
-              const newStep = {
-                id: 'temp-' + Date.now(),
-                step_type: stepType,
-                step_order: branchSteps.length + 1,
-                subject: stepType === 'email' ? 'New Email' : '',
-                body: '',
-                wait_days: 0,
-                wait_hours: 0,
-                wait_minutes: 0,
-                condition_type: 'if_opened',
-                condition_branches: stepType === 'condition' ? [{ condition: 'if_opened', branch_steps: [] }] : [],
-                parent_branch_id: parentBranchId,
-                branch_index: branchIndex
-              };
-              newBranches[branchIndex] = { ...branch, branch_steps: [...branchSteps, newStep] };
-              return { ...step, condition_branches: newBranches };
-            }
-            return step;
-          });
-        });
+    // Adding to a branch (works for both demo and real mode)
+    if (parentBranchId !== null && branchIndex !== null) {
+      const newStep = {
+        id: 'branch-step-' + Date.now(),
+        step_type: stepType,
+        step_order: 1, // Will be updated below
+        subject: stepType === 'email' ? 'New Email' : '',
+        body: '',
+        wait_days: 0,
+        wait_hours: 0,
+        wait_minutes: 0,
+        parent_branch_id: parentBranchId,
+        branch_index: branchIndex
+      };
+
+      // Find the condition step and update its branches
+      const conditionStep = steps.find(s => s.id === parentBranchId);
+      if (!conditionStep || conditionStep.step_type !== 'condition') {
+        console.error('Cannot find condition step:', parentBranchId);
         return;
       }
 
-      // Adding to main flow
+      const newBranches = [...conditionStep.condition_branches];
+      const branch = newBranches[branchIndex];
+      const branchSteps = branch.branch_steps || [];
+      newStep.step_order = branchSteps.length + 1;
+      newBranches[branchIndex] = { ...branch, branch_steps: [...branchSteps, newStep] };
+
+      // Update local state
+      setSteps(prevSteps => {
+        return prevSteps.map(step => {
+          if (step.id === parentBranchId) {
+            return { ...step, condition_branches: newBranches };
+          }
+          return step;
+        });
+      });
+
+      // Set active step to the new branch step
+      setActiveStep(newStep.id);
+
+      // Save to backend (real mode only)
+      if (!isDemo && selectedCampaign) {
+        try {
+          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${parentBranchId}`, {
+            condition_branches: newBranches
+          });
+          console.log('Branch step added and saved to backend');
+        } catch (e) {
+          console.error('Error saving branch step:', e);
+        }
+      }
+      return;
+    }
+
+    // Adding to main flow
+    if (isDemo || !selectedCampaign) {
+      // Demo mode: add locally
       const newStep = sanitizeStep({
         id: 'temp-' + Date.now(),
         step_type: stepType,
@@ -285,7 +309,7 @@ const CampaignBuilder = () => {
       return;
     }
 
-    // Real mode: API call
+    // Real mode: API call for main flow steps
     const tempId = 'temp-' + Date.now();
     const newStepRaw = {
       id: tempId,
@@ -300,9 +324,7 @@ const CampaignBuilder = () => {
       condition_branches: stepType === 'condition' ? [
         { condition: 'if_opened', wait_days: 0, wait_hours: 0, wait_minutes: 0, branch_steps: [] },
         { condition: 'if_not_opened', wait_days: 2, wait_hours: 0, wait_minutes: 0, branch_steps: [] }
-      ] : [],
-      parent_branch_id: parentBranchId,
-      branch_index: branchIndex
+      ] : []
     };
 
     const cleanStep = sanitizeStep(newStepRaw);
@@ -324,33 +346,54 @@ const CampaignBuilder = () => {
     setSaving(true);
 
     if (parentBranchId !== null && branchIndex !== null) {
-      // Updating a step inside a branch
+      // Updating a step inside a branch - need to update the parent condition step
+      const conditionStep = steps.find(s => s.id === parentBranchId);
+      if (!conditionStep) {
+        console.error('Cannot find condition step:', parentBranchId);
+        setSaving(false);
+        return;
+      }
+
+      const newBranches = [...conditionStep.condition_branches];
+      const branch = newBranches[branchIndex];
+      const branchSteps = (branch.branch_steps || []).map(bs =>
+        bs.id === stepId ? { ...bs, ...updates } : bs
+      );
+      newBranches[branchIndex] = { ...branch, branch_steps: branchSteps };
+
+      // Update local state
       setSteps(prevSteps => {
         return prevSteps.map(step => {
           if (step.id === parentBranchId && step.step_type === 'condition') {
-            const newBranches = [...step.condition_branches];
-            const branch = newBranches[branchIndex];
-            const branchSteps = (branch.branch_steps || []).map(bs =>
-              bs.id === stepId ? { ...bs, ...updates } : bs
-            );
-            newBranches[branchIndex] = { ...branch, branch_steps: branchSteps };
             return { ...step, condition_branches: newBranches };
           }
           return step;
         });
       });
+
+      // Save to backend - update the condition step's condition_branches
+      if (!isDemo && selectedCampaign) {
+        try {
+          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${parentBranchId}`, {
+            condition_branches: newBranches
+          });
+          console.log('Branch step updated and saved to backend');
+        } catch (error) {
+          console.error('Error updating branch step:', error);
+        }
+      }
     } else {
       // Updating a main flow step
       setSteps(steps.map(s => s.id === stepId ? { ...s, ...updates } : s));
-    }
 
-    if (!isDemo) {
-      try {
-        console.log('[WAIT DEBUG] Calling API PUT for step', stepId, 'with updates:', JSON.stringify(updates));
-        const response = await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, updates);
-        console.log('[WAIT DEBUG] API response:', JSON.stringify(response));
-      } catch (error) {
-        console.error('[WAIT DEBUG] Update failed:', error);
+      if (!isDemo && selectedCampaign) {
+        try {
+          console.log('[WAIT DEBUG] Calling API PUT for step', stepId, 'with updates:', JSON.stringify(updates));
+          const response = await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, updates);
+          console.log('[WAIT DEBUG] API response:', JSON.stringify(response));
+        } catch (error) {
+          console.error('[WAIT DEBUG] Update failed:', error);
+        }
       }
     }
 
@@ -361,19 +404,44 @@ const CampaignBuilder = () => {
     if (e) e.stopPropagation();
 
     if (parentBranchId !== null && branchIndex !== null) {
-      // Deleting from a branch
+      // Deleting from a branch - need to update the parent condition step
+      const conditionStep = steps.find(s => s.id === parentBranchId);
+      if (!conditionStep) {
+        console.error('Cannot find condition step:', parentBranchId);
+        return;
+      }
+
+      const newBranches = [...conditionStep.condition_branches];
+      const branch = newBranches[branchIndex];
+      const branchSteps = (branch.branch_steps || []).filter(bs => bs.id !== stepId);
+      newBranches[branchIndex] = { ...branch, branch_steps: branchSteps };
+
+      // Update local state
       setSteps(prevSteps => {
         return prevSteps.map(step => {
           if (step.id === parentBranchId && step.step_type === 'condition') {
-            const newBranches = [...step.condition_branches];
-            const branch = newBranches[branchIndex];
-            const branchSteps = (branch.branch_steps || []).filter(bs => bs.id !== stepId);
-            newBranches[branchIndex] = { ...branch, branch_steps: branchSteps };
             return { ...step, condition_branches: newBranches };
           }
           return step;
         });
       });
+
+      // Clear active step if it was the deleted one
+      if (activeStep === stepId) {
+        setActiveStep(parentBranchId);
+      }
+
+      // Save to backend
+      if (!isDemo && selectedCampaign) {
+        try {
+          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${parentBranchId}`, {
+            condition_branches: newBranches
+          });
+          console.log('Branch step deleted and saved to backend');
+        } catch (error) {
+          console.error('Error deleting branch step:', error);
+        }
+      }
       return;
     }
 
@@ -399,56 +467,101 @@ const CampaignBuilder = () => {
   };
 
   // Add a new branch to a condition step
-  const handleAddBranch = (conditionStepId) => {
-    setSteps(prevSteps => {
-      return prevSteps.map(step => {
-        if (step.id === conditionStepId && step.step_type === 'condition') {
-          const usedConditions = step.condition_branches.map(b => b.condition);
-          const available = CONDITION_OPTIONS.find(opt => !usedConditions.includes(opt.value));
-          if (available) {
-            // Add default wait time for negative conditions
-            const defaultWait = available.hasWait ? { wait_days: 2, wait_hours: 0, wait_minutes: 0 } : { wait_days: 0, wait_hours: 0, wait_minutes: 0 };
-            return {
-              ...step,
-              condition_branches: [...step.condition_branches, { condition: available.value, ...defaultWait, branch_steps: [] }]
-            };
-          }
-        }
-        return step;
-      });
-    });
-  };
+  const handleAddBranch = async (conditionStepId) => {
+    const conditionStep = steps.find(s => s.id === conditionStepId);
+    if (!conditionStep || conditionStep.step_type !== 'condition') return;
 
-  // Remove a branch from a condition step
-  const handleRemoveBranch = (conditionStepId, branchIndex) => {
-    setSteps(prevSteps => {
-      return prevSteps.map(step => {
-        if (step.id === conditionStepId && step.step_type === 'condition') {
-          if (step.condition_branches.length > 1) {
-            const newBranches = step.condition_branches.filter((_, i) => i !== branchIndex);
-            return { ...step, condition_branches: newBranches };
-          }
-        }
-        return step;
-      });
-    });
-  };
+    const usedConditions = conditionStep.condition_branches.map(b => b.condition);
+    const available = CONDITION_OPTIONS.find(opt => !usedConditions.includes(opt.value));
+    if (!available) return;
 
-  // Update branch condition
-  const handleUpdateBranchCondition = (conditionStepId, branchIndex, newCondition) => {
+    // Add default wait time for negative conditions
+    const defaultWait = available.hasWait ? { wait_days: 2, wait_hours: 0, wait_minutes: 0 } : { wait_days: 0, wait_hours: 0, wait_minutes: 0 };
+    const newBranches = [...conditionStep.condition_branches, { condition: available.value, ...defaultWait, branch_steps: [] }];
+
+    // Update local state
     setSteps(prevSteps => {
       return prevSteps.map(step => {
-        if (step.id === conditionStepId && step.step_type === 'condition') {
-          const newBranches = [...step.condition_branches];
-          // When changing condition, set appropriate default wait time
-          const conditionOpt = CONDITION_OPTIONS.find(o => o.value === newCondition);
-          const defaultWait = conditionOpt?.hasWait ? { wait_days: 2, wait_hours: 0, wait_minutes: 0 } : { wait_days: 0, wait_hours: 0, wait_minutes: 0 };
-          newBranches[branchIndex] = { ...newBranches[branchIndex], condition: newCondition, ...defaultWait };
+        if (step.id === conditionStepId) {
           return { ...step, condition_branches: newBranches };
         }
         return step;
       });
     });
+
+    // Save to backend
+    if (!isDemo && selectedCampaign) {
+      try {
+        await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
+          condition_branches: newBranches
+        });
+      } catch (e) {
+        console.error('Error adding branch:', e);
+      }
+    }
+  };
+
+  // Remove a branch from a condition step
+  const handleRemoveBranch = async (conditionStepId, branchIndex) => {
+    const conditionStep = steps.find(s => s.id === conditionStepId);
+    if (!conditionStep || conditionStep.step_type !== 'condition') return;
+    if (conditionStep.condition_branches.length <= 1) return;
+
+    const newBranches = conditionStep.condition_branches.filter((_, i) => i !== branchIndex);
+
+    // Update local state
+    setSteps(prevSteps => {
+      return prevSteps.map(step => {
+        if (step.id === conditionStepId) {
+          return { ...step, condition_branches: newBranches };
+        }
+        return step;
+      });
+    });
+
+    // Save to backend
+    if (!isDemo && selectedCampaign) {
+      try {
+        await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
+          condition_branches: newBranches
+        });
+      } catch (e) {
+        console.error('Error removing branch:', e);
+      }
+    }
+  };
+
+  // Update branch condition
+  const handleUpdateBranchCondition = async (conditionStepId, branchIndex, newCondition) => {
+    const conditionStep = steps.find(s => s.id === conditionStepId);
+    if (!conditionStep || conditionStep.step_type !== 'condition') return;
+
+    const newBranches = [...conditionStep.condition_branches];
+    // When changing condition, set appropriate default wait time
+    const conditionOpt = CONDITION_OPTIONS.find(o => o.value === newCondition);
+    const defaultWait = conditionOpt?.hasWait ? { wait_days: 2, wait_hours: 0, wait_minutes: 0 } : { wait_days: 0, wait_hours: 0, wait_minutes: 0 };
+    newBranches[branchIndex] = { ...newBranches[branchIndex], condition: newCondition, ...defaultWait };
+
+    // Update local state
+    setSteps(prevSteps => {
+      return prevSteps.map(step => {
+        if (step.id === conditionStepId) {
+          return { ...step, condition_branches: newBranches };
+        }
+        return step;
+      });
+    });
+
+    // Save to backend
+    if (!isDemo && selectedCampaign) {
+      try {
+        await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
+          condition_branches: newBranches
+        });
+      } catch (e) {
+        console.error('Error updating branch condition:', e);
+      }
+    }
   };
 
   // Update branch wait time
