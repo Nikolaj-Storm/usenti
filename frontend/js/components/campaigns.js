@@ -342,6 +342,36 @@ const CampaignBuilder = () => {
     }
   };
 
+  // Reorder steps based on Y position (drag-drop ordering)
+  const handleReorderSteps = async (stepId, newOrder) => {
+    // Sort steps by their Y position to determine new order
+    const sortedByY = [...steps].sort((a, b) => a.y - b.y);
+
+    // Update all step_order values based on Y position
+    const reorderedSteps = sortedByY.map((step, index) => ({
+      ...step,
+      step_order: index + 1
+    }));
+
+    setSteps(reorderedSteps);
+
+    // Save to backend
+    if (!isDemo && selectedCampaign) {
+      try {
+        // Update each step's order
+        await Promise.all(reorderedSteps.map(step =>
+          api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${step.id}`, {
+            step_order: step.step_order,
+            position_x: step.x,
+            position_y: step.y
+          })
+        ));
+      } catch (e) {
+        console.error('Failed to reorder steps:', e);
+      }
+    }
+  };
+
   const handleUpdateStep = async (stepId, updates, parentBranchId = null, branchIndex = null) => {
     setSaving(true);
 
@@ -587,12 +617,15 @@ const CampaignBuilder = () => {
       onToggleEditor: () => setShowEditor(!showEditor)
     }),
 
+    // Block Toolbar (top bar)
+    h(BlockToolbar, { onAddStep: handleAddStep }),
+
     // Main Layout - Canvas + Editor
     h('div', { className: "flex flex-1 overflow-hidden gap-0" },
       // Canvas Area
       h('div', {
         ref: containerRef,
-        className: `flex-1 relative rounded-lg overflow-hidden border border-stone-200 ${showEditor ? '' : 'rounded-r-lg'}`
+        className: `flex-1 relative overflow-hidden border border-stone-200 rounded-lg ${showEditor ? 'rounded-r-none' : ''}`
       },
         h(WorkflowCanvas, {
           steps,
@@ -605,6 +638,7 @@ const CampaignBuilder = () => {
           onDeleteStep: handleDeleteStep,
           onNodeDrag: handleNodeDrag,
           onNodeDragEnd: handleNodeDragEnd,
+          onReorderSteps: handleReorderSteps,
           onAddBranch: handleAddBranch,
           onRemoveBranch: handleRemoveBranch,
           onUpdateBranchCondition: handleUpdateBranchCondition,
@@ -708,13 +742,12 @@ const MiniStat = ({ label, value, rate, icon: IconComponent }) => {
 
 // --- 6. Canvas Component ---
 
-const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, setActiveStep, canvasState, onAddStep, onDeleteStep, onNodeDrag, onNodeDragEnd, onAddBranch, onRemoveBranch, onUpdateBranchCondition, containerRef }) => {
-  const { zoom, setZoom, pan, setPan, isPanning, setIsPanning, tool, setTool, zoomIn, zoomOut, resetView, fitView } = canvasState;
+const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, setActiveStep, canvasState, onAddStep, onDeleteStep, onNodeDrag, onNodeDragEnd, onReorderSteps, onAddBranch, onRemoveBranch, onUpdateBranchCondition, containerRef }) => {
+  const { zoom, setZoom, pan, setPan, isPanning, setIsPanning } = canvasState;
 
   const [draggingNode, setDraggingNode] = React.useState(null);
   const [dragOffset, setDragOffset] = React.useState({ x: 0, y: 0 });
   const [panStart, setPanStart] = React.useState({ x: 0, y: 0 });
-  const [showGrid, setShowGrid] = React.useState(true);
 
   const svgRef = React.useRef(null);
 
@@ -724,7 +757,6 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     const newZoom = Math.min(Math.max(zoom * delta, 0.25), 3);
 
-    // Zoom towards mouse position
     const rect = e.currentTarget.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
@@ -738,18 +770,15 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
     setPan(newPan);
   };
 
-  // Handle canvas pan
+  // Handle canvas pan - ALWAYS pan when clicking background
   const handleCanvasMouseDown = (e) => {
     if (e.target === e.currentTarget || e.target.classList.contains('canvas-grid')) {
-      if (e.button === 1 || tool === 'pan' || e.shiftKey) {
-        // Middle click or pan tool or shift+click - start panning
-        setIsPanning(true);
-        setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-      } else {
-        // Click on empty canvas - deselect
-        setSelectedNodes([]);
-        setActiveStep(null);
-      }
+      // Always start panning when clicking on background
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+      // Deselect nodes
+      setSelectedNodes([]);
+      setActiveStep(null);
     }
   };
 
@@ -766,9 +795,17 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
 
   const handleCanvasMouseUp = (e) => {
     if (draggingNode) {
-      const step = steps.find(s => s.id === draggingNode);
-      if (step) {
-        onNodeDragEnd(draggingNode, step.x, step.y);
+      const draggedStep = steps.find(s => s.id === draggingNode);
+      if (draggedStep) {
+        // Check if we should reorder based on Y position
+        const sortedByY = [...steps].sort((a, b) => a.y - b.y);
+        const newOrder = sortedByY.findIndex(s => s.id === draggingNode) + 1;
+
+        if (newOrder !== draggedStep.step_order) {
+          onReorderSteps(draggingNode, newOrder);
+        } else {
+          onNodeDragEnd(draggingNode, draggedStep.x, draggedStep.y);
+        }
       }
       setDraggingNode(null);
     }
@@ -799,7 +836,7 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
     setActiveStep(stepId);
   };
 
-  // Drop from palette
+  // Drop from toolbar
   const handleDrop = (e) => {
     e.preventDefault();
     const stepType = e.dataTransfer.getData('stepType');
@@ -914,7 +951,7 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
   };
 
   return h('div', {
-    className: `canvas-container ${isPanning ? 'grabbing' : ''} ${tool === 'pan' ? 'cursor-grab' : ''}`,
+    className: `canvas-container ${isPanning ? 'grabbing' : ''}`,
     onWheel: handleWheel,
     onMouseDown: handleCanvasMouseDown,
     onMouseMove: handleCanvasMouseMove,
@@ -924,7 +961,7 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
     onDragOver: handleDragOver
   },
     // Grid background
-    showGrid && h('div', {
+    h('div', {
       className: "canvas-grid",
       style: {
         backgroundPosition: `${pan.x}px ${pan.y}px`,
@@ -971,29 +1008,10 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
       })
     ),
 
-    // Block Palette (left side)
-    h(BlockPalette, { onAddStep }),
-
-    // Canvas Controls (bottom center)
-    h(CanvasControls, {
-      zoom,
-      tool,
-      setTool,
-      showGrid,
-      setShowGrid,
-      onZoomIn: zoomIn,
-      onZoomOut: zoomOut,
-      onResetView: resetView,
-      onFitView: () => {
-        if (containerRef.current) {
-          const rect = containerRef.current.getBoundingClientRect();
-          fitView(steps, rect.width, rect.height);
-        }
-      }
-    }),
-
-    // Minimap (bottom right)
-    h(Minimap, { steps, pan, zoom, containerRef })
+    // Zoom indicator (small, bottom right)
+    h('div', { className: "absolute bottom-3 right-3 px-2 py-1 bg-white/80 rounded text-xs text-stone-500 font-medium" },
+      `${Math.round(zoom * 100)}%`
+    )
   );
 };
 
@@ -1103,144 +1121,42 @@ const CanvasNode = ({ step, isSelected, isActive, isDragging, onMouseDown, onDel
   );
 };
 
-const BlockPalette = ({ onAddStep }) => {
+// Horizontal toolbar for adding blocks
+const BlockToolbar = ({ onAddStep }) => {
   const handleDragStart = (e, stepType) => {
     e.dataTransfer.setData('stepType', stepType);
     e.dataTransfer.effectAllowed = 'copy';
   };
 
   const blocks = [
-    { type: 'email', icon: 'Mail', label: 'Email', color: '#3b82f6' },
-    { type: 'wait', icon: 'Clock', label: 'Wait', color: '#8b5cf6' },
-    { type: 'condition', icon: 'Split', label: 'Condition', color: '#f59e0b' }
+    { type: 'email', icon: 'Mail', label: 'Email', color: '#3b82f6', desc: 'Send an email' },
+    { type: 'wait', icon: 'Clock', label: 'Wait', color: '#8b5cf6', desc: 'Add a delay' },
+    { type: 'condition', icon: 'Split', label: 'Condition', color: '#f59e0b', desc: 'Branch logic' }
   ];
 
-  return h('div', { className: "block-palette" },
-    h('div', { className: "text-xs font-semibold text-stone-400 uppercase tracking-wider mb-2 px-2" }, "Blocks"),
+  return h('div', { className: "flex items-center gap-2 p-2 bg-white border-b border-stone-200" },
+    h('span', { className: "text-xs font-semibold text-stone-400 uppercase tracking-wider px-2" }, "Add Block:"),
     blocks.map(block => {
       const IconComponent = Icons[block.icon];
       return h('div', {
         key: block.type,
-        className: "palette-item",
+        className: "flex items-center gap-2 px-3 py-2 bg-stone-50 rounded-lg cursor-grab border border-transparent hover:border-stone-300 hover:bg-stone-100 transition-all",
         draggable: true,
         onDragStart: (e) => handleDragStart(e, block.type),
-        onClick: () => onAddStep(block.type)
+        onClick: () => onAddStep(block.type),
+        title: block.desc
       },
-        h('div', { className: "icon", style: { background: block.color } },
-          IconComponent && h(IconComponent, { size: 16, color: 'white' })
+        h('div', {
+          className: "w-7 h-7 rounded-md flex items-center justify-center",
+          style: { background: block.color }
+        },
+          IconComponent && h(IconComponent, { size: 14, color: 'white' })
         ),
         h('span', { className: "text-sm font-medium text-stone-700" }, block.label)
       );
-    })
-  );
-};
-
-const CanvasControls = ({ zoom, tool, setTool, showGrid, setShowGrid, onZoomIn, onZoomOut, onResetView, onFitView }) => {
-  return h('div', { className: "canvas-controls" },
-    // Zoom controls
-    h('button', {
-      className: "canvas-control-btn",
-      onClick: onZoomOut,
-      title: "Zoom Out"
-    }, h(Icons.ZoomOut, { size: 18 })),
-
-    h('span', { className: "zoom-display" }, `${Math.round(zoom * 100)}%`),
-
-    h('button', {
-      className: "canvas-control-btn",
-      onClick: onZoomIn,
-      title: "Zoom In"
-    }, h(Icons.ZoomIn, { size: 18 })),
-
-    h('div', { className: "control-divider" }),
-
-    // Tool selection
-    h('button', {
-      className: `canvas-control-btn ${tool === 'select' ? 'active' : ''}`,
-      onClick: () => setTool('select'),
-      title: "Select Tool (V)"
-    }, h(Icons.MousePointer, { size: 18 })),
-
-    h('button', {
-      className: `canvas-control-btn ${tool === 'pan' ? 'active' : ''}`,
-      onClick: () => setTool('pan'),
-      title: "Pan Tool (H)"
-    }, h(Icons.Hand, { size: 18 })),
-
-    h('div', { className: "control-divider" }),
-
-    // View controls
-    h('button', {
-      className: `canvas-control-btn ${showGrid ? 'active' : ''}`,
-      onClick: () => setShowGrid(!showGrid),
-      title: "Toggle Grid"
-    }, h(Icons.Grid3x3, { size: 18 })),
-
-    h('button', {
-      className: "canvas-control-btn",
-      onClick: onFitView,
-      title: "Fit to View"
-    }, h(Icons.Maximize2, { size: 18 })),
-
-    h('button', {
-      className: "canvas-control-btn",
-      onClick: onResetView,
-      title: "Reset View"
-    }, h(Icons.Target, { size: 18 }))
-  );
-};
-
-const Minimap = ({ steps, pan, zoom, containerRef }) => {
-  const scale = 0.08;
-  const mapWidth = 180;
-  const mapHeight = 120;
-
-  // Calculate bounds
-  const allX = steps.map(s => s.x);
-  const allY = steps.map(s => s.y);
-  const minX = Math.min(0, ...allX) - 50;
-  const maxX = Math.max(500, ...allX.map(x => x + 220)) + 50;
-  const minY = Math.min(0, ...allY) - 50;
-  const maxY = Math.max(300, ...allY.map(y => y + 120)) + 50;
-
-  const contentWidth = maxX - minX;
-  const contentHeight = maxY - minY;
-  const minimapScale = Math.min(mapWidth / contentWidth, mapHeight / contentHeight);
-
-  // Viewport indicator
-  const containerRect = containerRef.current?.getBoundingClientRect();
-  const viewportWidth = containerRect ? containerRect.width / zoom : 800;
-  const viewportHeight = containerRect ? containerRect.height / zoom : 600;
-  const viewportX = (-pan.x / zoom - minX) * minimapScale;
-  const viewportY = (-pan.y / zoom - minY) * minimapScale;
-  const viewportW = viewportWidth * minimapScale;
-  const viewportH = viewportHeight * minimapScale;
-
-  return h('div', { className: "canvas-minimap" },
-    h('div', { className: "minimap-content" },
-      // Nodes
-      steps.map(step => h('div', {
-        key: step.id,
-        className: "minimap-node",
-        style: {
-          left: (step.x - minX) * minimapScale,
-          top: (step.y - minY) * minimapScale,
-          width: 220 * minimapScale,
-          height: 80 * minimapScale,
-          background: step.step_type === 'email' ? '#3b82f6' : step.step_type === 'wait' ? '#8b5cf6' : '#f59e0b'
-        }
-      })),
-      // Viewport indicator
-      h('div', {
-        className: "minimap-viewport",
-        style: {
-          left: Math.max(0, viewportX),
-          top: Math.max(0, viewportY),
-          width: Math.min(viewportW, mapWidth),
-          height: Math.min(viewportH, mapHeight)
-        }
-      })
-    )
+    }),
+    h('div', { className: "flex-1" }),
+    h('span', { className: "text-xs text-stone-400 px-2" }, "Drag blocks onto canvas or click to add")
   );
 };
 
