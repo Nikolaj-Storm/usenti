@@ -1,587 +1,603 @@
-const nodemailer = require('nodemailer');
-const supabase = require('../config/supabase');
-const { decrypt } = require('../utils/encryption');
-const crypto = require('crypto');
-const gmailService = require('./gmailService');
-const microsoftService = require('./microsoftService');
+// Mr. Snowman - Email Accounts / Infrastructure Component
 
-// Helper to extract domain from email address
-const getEmailDomain = (email) => {
-  const parts = email.split('@');
-  return parts.length > 1 ? parts[1] : 'localhost';
-};
+const EmailAccounts = () => {
+  const [accounts, setAccounts] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showModal, setShowModal] = React.useState(false);
+  const [editingAccount, setEditingAccount] = React.useState(null);
 
-// Helper to convert HTML to plain text for multipart emails
-const htmlToPlainText = (html) => {
-  if (!html) return '';
-  return html
-    // Remove style and script tags and their content
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    // Convert line breaks and paragraphs to newlines
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<\/tr>/gi, '\n')
-    .replace(/<\/li>/gi, '\n')
-    // Convert links to text with URL
-    .replace(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, '$2 ($1)')
-    // Remove remaining HTML tags
-    .replace(/<[^>]+>/g, '')
-    // Decode HTML entities
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    // Clean up whitespace
-    .replace(/\n\s*\n\s*\n/g, '\n\n')
-    .trim();
-};
+  React.useEffect(() => {
+    loadAccounts();
+  }, []);
 
-// Zoho SMTP hosts for different data centers
-const ZOHO_SMTP_HOSTS = [
-  'smtp.zoho.com',      // US
-  'smtp.zoho.eu',       // EU
-  'smtp.zoho.in',       // India
-  'smtp.zoho.com.au',   // Australia
-  'smtp.zoho.com.cn'    // China
-];
-
-class EmailService {
-  constructor() {
-    this.transporters = new Map();
-    this.zohoHostCache = new Map(); // Cache working Zoho hosts per account
-  }
-
-  // Check if a host is a Zoho SMTP host
-  isZohoHost(host) {
-    return host?.toLowerCase().includes('zoho');
-  }
-
-  // Create a transporter config for a given host
-  createTransporterConfig(host, port, isSecure, username, password, isZoho) {
-    const config = {
-      host,
-      port,
-      secure: isSecure,
-      auth: {
-        user: username,
-        pass: password
-      },
-      tls: {
-        rejectUnauthorized: false,
-        minVersion: 'TLSv1.2'
-      }
-    };
-
-    if (isZoho) {
-      config.authMethod = 'LOGIN';
-    }
-
-    return config;
-  }
-
-  // Try to verify a transporter connection
-  async tryTransporter(config) {
-    const transporter = nodemailer.createTransport(config);
-    await transporter.verify();
-    return transporter;
-  }
-
-  // Get or create transporter for email account
-  async getTransporter(emailAccountId) {
-    console.log(`[EMAIL] 🔌 Getting transporter for account ${emailAccountId}...`);
-
-    if (this.transporters.has(emailAccountId)) {
-      console.log(`[EMAIL]    ✅ Using cached transporter`);
-      return this.transporters.get(emailAccountId);
-    }
-
-    console.log(`[EMAIL]    🔍 Fetching email account from database...`);
-    const { data: account, error } = await supabase
-      .from('email_accounts')
-      .select('*')
-      .eq('id', emailAccountId)
-      .single();
-
-    if (error || !account) {
-      console.error(`[EMAIL]    ❌ Email account not found: ${error?.message}`);
-      throw new Error('Email account not found');
-    }
-
-    // Ensure port is a number for proper comparison and nodemailer
-    const smtpPort = parseInt(account.smtp_port, 10) || 587;
-    const isSecure = smtpPort === 465;
-
-    console.log(`[EMAIL]    📧 Account: ${account.email_address}`);
-    console.log(`[EMAIL]    🌐 SMTP Host: ${account.smtp_host}:${smtpPort}`);
-    console.log(`[EMAIL]    👤 SMTP User: ${account.smtp_username}`);
-    console.log(`[EMAIL]    🔒 Secure: ${isSecure ? 'YES (SSL)' : 'NO (TLS/STARTTLS)'}`);
-
-    // Decrypt the password and log debug info (without exposing the actual password)
-    console.log(`[EMAIL]    🔐 Decrypting SMTP password...`);
-    console.log(`[EMAIL]       Encrypted password length: ${account.smtp_password?.length || 0}`);
-    console.log(`[EMAIL]       Encrypted password format check: ${account.smtp_password?.includes(':') ? 'Valid (contains separator)' : 'INVALID (no separator)'}`);
-
-    let decryptedPassword;
+  const loadAccounts = async () => {
     try {
-      decryptedPassword = decrypt(account.smtp_password);
-      console.log(`[EMAIL]       Decrypted password length: ${decryptedPassword?.length || 0}`);
-      console.log(`[EMAIL]       Decryption: ✅ SUCCESS`);
-    } catch (decryptError) {
-      console.error(`[EMAIL]       Decryption: ❌ FAILED - ${decryptError.message}`);
-      throw new Error(`Password decryption failed: ${decryptError.message}`);
-    }
-
-    const isZoho = this.isZohoHost(account.smtp_host) || account.account_type === 'zoho';
-
-    if (isZoho) {
-      console.log(`[EMAIL]    📧 Detected Zoho account - will try multiple data centers if needed`);
-    }
-
-    console.log(`[EMAIL]    🔧 Creating SMTP transporter...`);
-
-    // For Zoho accounts, try multiple data centers
-    if (isZoho) {
-      // Check if we have a cached working host for this account
-      const cachedHost = this.zohoHostCache.get(emailAccountId);
-
-      // Build list of hosts to try - cached host first, then configured, then all others
-      const hostsToTry = [];
-      if (cachedHost) {
-        hostsToTry.push(cachedHost);
-      }
-      if (account.smtp_host && !hostsToTry.includes(account.smtp_host)) {
-        hostsToTry.push(account.smtp_host);
-      }
-      for (const host of ZOHO_SMTP_HOSTS) {
-        if (!hostsToTry.includes(host)) {
-          hostsToTry.push(host);
-        }
-      }
-
-      console.log(`[EMAIL]    🌐 Will try Zoho hosts in order: ${hostsToTry.join(', ')}`);
-
-      let lastError;
-      for (const host of hostsToTry) {
-        console.log(`[EMAIL]    🔄 Trying Zoho host: ${host}...`);
-        const config = this.createTransporterConfig(
-          host, smtpPort, isSecure,
-          account.smtp_username, decryptedPassword, true
-        );
-
-        try {
-          const transporter = await this.tryTransporter(config);
-          console.log(`[EMAIL]    ✅ Connected successfully to ${host}`);
-
-          // Cache this working host for future use
-          this.zohoHostCache.set(emailAccountId, host);
-          this.transporters.set(emailAccountId, transporter);
-
-          // Update the account's SMTP host in the database if it changed
-          if (host !== account.smtp_host) {
-            console.log(`[EMAIL]    📝 Updating account SMTP host to ${host}`);
-            await supabase
-              .from('email_accounts')
-              .update({ smtp_host: host })
-              .eq('id', emailAccountId);
-          }
-
-          return transporter;
-        } catch (err) {
-          console.log(`[EMAIL]    ❌ Failed with ${host}: ${err.message} (code: ${err.code})`);
-          lastError = err;
-          // Continue to next host
-        }
-      }
-
-      // All hosts failed
-      console.error(`[EMAIL]    ❌ All Zoho SMTP hosts failed`);
-      throw lastError || new Error('Failed to connect to any Zoho SMTP server');
-    }
-
-    // Non-Zoho accounts: standard single-host connection
-    const transporterConfig = this.createTransporterConfig(
-      account.smtp_host, smtpPort, isSecure,
-      account.smtp_username, decryptedPassword, false
-    );
-
-    console.log(`[EMAIL]    🔧 Transport config: host=${transporterConfig.host}, port=${transporterConfig.port}, secure=${transporterConfig.secure}`);
-
-    const transporter = nodemailer.createTransport(transporterConfig);
-
-    console.log(`[EMAIL]    ✅ Transporter created and cached`);
-    this.transporters.set(emailAccountId, transporter);
-    return transporter;
-  }
-
-  // Personalize email content with variables
-  personalizeContent(template, contact, customVars = {}) {
-    let personalized = template;
-    
-    const variables = {
-      first_name: contact.first_name || '',
-      last_name: contact.last_name || '',
-      email: contact.email || '',
-      company: contact.company || '',
-      ...contact.custom_fields,
-      ...customVars
-    };
-
-    Object.keys(variables).forEach(key => {
-      const regex = new RegExp(`{{${key}}}`, 'g');
-      personalized = personalized.replace(regex, variables[key]);
-    });
-
-    return personalized;
-  }
-
-  // Add tracking pixel to email body - improved for deliverability
-  // Uses natural-looking image attributes and embeds within content
-  addTrackingPixel(htmlBody, campaignId, contactId) {
-    const trackingToken = crypto.randomBytes(16).toString('hex');
-    // IMPORTANT: Use BACKEND_URL for tracking - the tracking endpoints are on the backend server
-    const baseUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:3001';
-
-    // Use full UUIDs for reliable tracking - shortened IDs caused lookup failures
-    // The path still looks like a standard image asset
-    const trackingUrl = `${baseUrl}/img/e/${campaignId}/${contactId}/${trackingToken.slice(0, 12)}.gif`;
-
-    // Use natural CSS properties instead of suspicious display:none or 1x1
-    // A transparent spacer that doesn't trigger spam filters
-    const trackingPixel = `<img src="${trackingUrl}" alt="" width="1" height="1" border="0" style="height:1px!important;width:1px!important;border-width:0!important;margin:0!important;padding:0!important" />`;
-
-    // Try to insert the pixel before the closing body tag or at the end
-    if (htmlBody.includes('</body>')) {
-      return htmlBody.replace('</body>', `${trackingPixel}</body>`);
-    }
-
-    return htmlBody + trackingPixel;
-  }
-
-  // Rewrite links for click tracking
-  rewriteLinksForTracking(htmlBody, campaignId, contactId) {
-    const trackingToken = crypto.randomBytes(16).toString('hex');
-    // IMPORTANT: Use BACKEND_URL for tracking - the tracking endpoints are on the backend server
-    const backendUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:3001';
-    const baseUrl = `${backendUrl}/api/track/click/${campaignId}/${contactId}/${trackingToken}`;
-    
-    return htmlBody.replace(
-      /href="(https?:\/\/[^"]+)"/g,
-      (match, url) => `href="${baseUrl}?url=${encodeURIComponent(url)}"`
-    );
-  }
-
-  // Send a single email (supports attachments)
-  async sendEmail({
-    emailAccountId,
-    to,
-    subject,
-    body,
-    attachments = [],
-    campaignId,
-    contactId,
-    trackOpens = true,
-    trackClicks = true
-  }) {
-    console.log(`[EMAIL] 📨 Preparing to send email...`);
-    console.log(`[EMAIL]    To: ${to}`);
-    console.log(`[EMAIL]    Subject: "${subject}"`);
-    console.log(`[EMAIL]    Campaign ID: ${campaignId}`);
-    console.log(`[EMAIL]    Contact ID: ${contactId}`);
-    console.log(`[EMAIL]    Attachments: ${attachments.length}`);
-
-    try {
-      // Get account to check provider type and sender name
-      console.log(`[EMAIL] 🔍 Getting email account to determine provider type...`);
-      const { data: account, error: accountError } = await supabase
-        .from('email_accounts')
-        .select('provider_type, email_address, sender_name')
-        .eq('id', emailAccountId)
-        .single();
-
-      if (accountError || !account) {
-        throw new Error('Email account not found');
-      }
-
-      const providerType = account.provider_type || 'smtp';
-      console.log(`[EMAIL]    Provider type: ${providerType}`);
-      console.log(`[EMAIL]    From: ${account.email_address}`);
-      console.log(`[EMAIL]    Sender name: ${account.sender_name || '(not set)'}`);
-
-      let finalBody = body;
-
-      // Add tracking
-      if (trackOpens) {
-        console.log(`[EMAIL] 🔍 Adding open tracking pixel...`);
-        finalBody = this.addTrackingPixel(finalBody, campaignId, contactId);
-      }
-      if (trackClicks) {
-        console.log(`[EMAIL] 🔗 Adding click tracking to links...`);
-        finalBody = this.rewriteLinksForTracking(finalBody, campaignId, contactId);
-      }
-
-      let result;
-
-      // Route to appropriate sending method based on provider type
-      if (providerType === 'gmail_oauth') {
-        console.log(`[EMAIL] 🔀 Routing to Gmail API...`);
-        result = await gmailService.sendEmail({
-          emailAccountId,
-          to,
-          subject,
-          body: finalBody
-        });
-      } else if (providerType === 'microsoft_oauth') {
-        console.log(`[EMAIL] 🔀 Routing to Microsoft Graph API...`);
-        result = await microsoftService.sendEmail({
-          emailAccountId,
-          to,
-          subject,
-          body: finalBody
-        });
-      } else {
-        // Use traditional SMTP for smtp, smtp_direct, smtp_relay
-        console.log(`[EMAIL] 🔀 Routing to SMTP...`);
-        console.log(`[EMAIL] 🔌 Getting SMTP transporter...`);
-        const transporter = await this.getTransporter(emailAccountId);
-
-        console.log(`[EMAIL] 📤 Sending via SMTP with deliverability optimizations...`);
-        console.log(`[EMAIL]    Body length: ${finalBody.length} characters`);
-
-        // Build the From address with display name if available
-        // Format: "Display Name <email@domain.com>" or just "email@domain.com"
-        const fromAddress = account.sender_name
-          ? `"${account.sender_name}" <${account.email_address}>`
-          : account.email_address;
-
-        // Get domain for Message-ID and unsubscribe URL
-        const domain = getEmailDomain(account.email_address);
-        // IMPORTANT: Use BACKEND_URL for unsubscribe - the endpoint is on the backend server
-        const backendUrl = process.env.BACKEND_URL || process.env.FRONTEND_URL || 'http://localhost:3001';
-
-        // Generate a proper Message-ID with the sending domain
-        const messageIdLocal = crypto.randomBytes(16).toString('hex');
-        const messageId = `<${messageIdLocal}.${Date.now()}@${domain}>`;
-
-        // Build unsubscribe URL
-        const unsubscribeToken = crypto.randomBytes(16).toString('hex');
-        const unsubscribeUrl = `${backendUrl}/api/unsubscribe/${campaignId}/${contactId}/${unsubscribeToken}`;
-
-        // Convert HTML to plain text for multipart email
-        const plainTextBody = htmlToPlainText(finalBody);
-
-        // Build mail options with deliverability optimizations
-        const mailOptions = {
-          from: fromAddress,
-          to,
-          subject,
-          // Multipart: both plain text and HTML
-          // Many spam filters prefer emails that have both versions
-          text: plainTextBody,
-          html: finalBody,
-          // Proper Message-ID with sending domain
-          messageId: messageId,
-          // Headers for better deliverability
-          headers: {
-            // List-Unsubscribe header - required by Gmail/Yahoo for bulk mail
-            'List-Unsubscribe': `<${unsubscribeUrl}>, <mailto:unsubscribe@${domain}?subject=Unsubscribe-${campaignId}>`,
-            // One-click unsubscribe for modern email clients (RFC 8058)
-            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-            // Precedence header to indicate bulk mail
-            'Precedence': 'bulk',
-            // X-Mailer header (looks more legitimate than default nodemailer)
-            'X-Mailer': 'SnowmanMailer/2.0',
-            // Auto-submitted header to indicate automated message
-            'Auto-Submitted': 'auto-generated'
-          },
-          // Reply-To same as From for proper reply routing
-          replyTo: account.email_address,
-          // Include attachments if provided
-          attachments: attachments.length > 0 ? attachments : undefined
-        };
-
-        console.log(`[EMAIL] 🚀 Calling transporter.sendMail()...`);
-        console.log(`[EMAIL]    Attachments: ${attachments.length > 0 ? attachments.map(a => a.filename).join(', ') : 'none'}`);
-        console.log(`[EMAIL]    From: ${fromAddress}`);
-        console.log(`[EMAIL]    Message-ID: ${messageId}`);
-        console.log(`[EMAIL]    Has plain text: ${plainTextBody.length > 0}`);
-        console.log(`[EMAIL]    List-Unsubscribe: enabled`);
-
-        const info = await transporter.sendMail(mailOptions);
-
-        console.log(`[EMAIL] ✅ Email sent successfully via SMTP!`);
-        console.log(`[EMAIL]    Message ID: ${info.messageId}`);
-        console.log(`[EMAIL]    Response: ${info.response}`);
-
-        result = {
-          success: true,
-          messageId: info.messageId
-        };
-      }
-
-      // Log sent event
-      console.log(`[EMAIL] 💾 Logging 'sent' event to database...`);
-      await supabase.from('email_events').insert({
-        campaign_id: campaignId,
-        contact_id: contactId,
-        event_type: 'sent',
-        event_data: {
-          message_id: result.messageId,
-          timestamp: new Date().toISOString()
-        }
-      });
-
-      console.log(`[EMAIL] ✅ Event logged successfully`);
-
-      return result;
+      const data = await api.getEmailAccounts();
+      setAccounts(data);
     } catch (error) {
-      console.error(`[EMAIL] ❌ Email send error!`);
-      console.error(`[EMAIL]    Error type: ${error.constructor.name}`);
-      console.error(`[EMAIL]    Error message: ${error.message}`);
-      console.error(`[EMAIL]    Error code: ${error.code}`);
-      console.error(`[EMAIL]    Error command: ${error.command}`);
-      console.error(`[EMAIL]    Full error:`, error);
+      console.error('Failed to load accounts:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      // Clear cached transporter on authentication errors to allow retry with fresh credentials
-      if (error.code === 'EAUTH' || error.responseCode === 535) {
-        console.log(`[EMAIL] 🔄 Clearing cached transporter due to auth error...`);
-        this.clearTransporter(emailAccountId);
+  const handleAddAccount = () => {
+    setEditingAccount(null);
+    setShowModal(true);
+  };
+
+  const handleEditAccount = (account) => {
+    setEditingAccount(account);
+    setShowModal(true);
+  };
+
+  const handleDeleteAccount = async (account) => {
+    if (!confirm(`Are you sure you want to delete ${account.email_address}?\n\nThis will permanently remove:\n- The connected account\n- All inbox messages\n- Warmup history and stats\n\nThis action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await api.deleteEmailAccount(account.id);
+      loadAccounts(); // Refresh the list
+    } catch (error) {
+      console.error('Failed to delete account:', error);
+      alert('Failed to delete account: ' + (error.message || 'Unknown error'));
+    }
+  };
+
+  const handleSaveAccount = async (accountData) => {
+    try {
+      if (editingAccount) {
+        await api.updateEmailAccount(editingAccount.id, accountData);
+        alert('Account updated successfully!');
+      } else {
+        await api.createEmailAccount(accountData);
+        alert('Account added successfully!');
       }
-
-      // Log failed event
-      console.log(`[EMAIL] 💾 Logging 'failed' event to database...`);
-      await supabase.from('email_events').insert({
-        campaign_id: campaignId,
-        contact_id: contactId,
-        event_type: 'failed',
-        event_data: {
-          error: error.message,
-          error_code: error.code,
-          timestamp: new Date().toISOString()
-        }
-      });
-
+      setShowModal(false);
+      setEditingAccount(null);
+      loadAccounts();
+    } catch (error) {
+      console.error('Failed to save account:', error);
       throw error;
     }
+  };
+
+  return h('div', { className: "space-y-6 animate-fade-in" },
+    h('div', { className: "flex justify-between items-end" },
+      h('div', null,
+        h('h2', { className: "font-serif text-3xl text-jaguar-900" }, 'Infrastructure'),
+        h('p', { className: "text-stone-500 mt-2 font-light" }, 'Manage your connected email accounts.')
+      ),
+      h('button', {
+        onClick: handleAddAccount,
+        className: "px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 font-medium flex items-center gap-2 transition-colors"
+      },
+        h(Icons.Plus, { size: 18 }),
+        ' Add Account'
+      )
+    ),
+    h('div', { className: "border-b border-stone-200" }),
+    loading
+      ? h('div', { className: "flex justify-center py-12" },
+          h(Icons.Loader2, { size: 48, className: "text-jaguar-900" })
+        )
+      : h(AccountsTab, { 
+          accounts: accounts, 
+          onEdit: handleEditAccount,
+          onDelete: handleDeleteAccount 
+        }),
+    showModal && h(AccountModal, {
+      account: editingAccount,
+      onClose: () => { setShowModal(false); setEditingAccount(null); },
+      onSave: handleSaveAccount
+    })
+  );
+};
+
+const AccountsTab = ({ accounts, onEdit, onDelete }) => {
+  if (accounts.length === 0) {
+    return h('div', { className: "flex flex-col items-center justify-center py-16 text-center" },
+      h(Icons.Server, { size: 64, className: "text-stone-300 mb-4" }),
+      h('h3', { className: "font-serif text-2xl text-jaguar-900 mb-2" }, 'No Accounts Connected'),
+      h('p', { className: "text-stone-500 mb-6 max-w-md" }, 'Connect your first email account to start sending campaigns.')
+    );
   }
 
-  // Check if within sending schedule (uses UTC time for consistency)
-  isWithinSchedule(schedule) {
-    if (!schedule || !schedule.days || schedule.start_hour === undefined || schedule.end_hour === undefined) {
-      return true; // No schedule = always send
+  return h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
+    ...accounts.map((account) =>
+      h(AccountCard, { 
+        key: account.id, 
+        account: account, 
+        onEdit: onEdit,
+        onDelete: onDelete
+      })
+    )
+  );
+};
+
+const AccountCard = ({ account, onEdit, onDelete }) => {
+  const [expanded, setExpanded] = React.useState(false);
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'active':
+        return 'bg-green-100 text-green-700';
+      case 'warming':
+        return 'bg-amber-100 text-amber-700';
+      case 'paused':
+        return 'bg-stone-100 text-stone-600';
+      default:
+        return 'bg-stone-100 text-stone-600';
     }
+  };
 
-    // Check for 24/7 schedule (all days, 0-24 hours)
-    const allDays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-    const is24_7 = schedule.days.length === 7 && schedule.start_hour === 0 && schedule.end_hour === 24;
-    if (is24_7) {
-      console.log(`[SCHEDULE] 24/7 schedule detected - always within schedule`);
-      return true;
+  const getTypeColor = (type) => {
+    switch (type) {
+      case 'stalwart':
+        return 'bg-indigo-100 text-indigo-700';
+      case 'aws_workmail':
+        return 'bg-orange-100 text-orange-700';
+      case 'zoho':
+        return 'bg-purple-100 text-purple-700';
+      case 'gmail':
+        return 'bg-red-100 text-red-700';
+      case 'outlook':
+        return 'bg-blue-100 text-blue-700';
+      default:
+        return 'bg-stone-100 text-stone-600';
     }
+  };
 
-    const now = new Date();
-    // Use UTC to ensure consistent behavior regardless of server timezone
-    const dayOfWeek = allDays[now.getUTCDay()];
-    const hour = now.getUTCHours();
+  return h('div', { className: "bg-white border border-stone-200 rounded-lg p-6 hover:shadow-lg transition-all group" },
+    h('div', { className: "flex justify-between items-start mb-4" },
+      h('div', { className: "flex items-center gap-3 w-full overflow-hidden" },
+        h('div', { className: "w-12 h-12 rounded-full bg-jaguar-900 text-cream-50 flex items-center justify-center font-serif text-xl shrink-0" },
+          account.email_address[0].toUpperCase()
+        ),
+        h('div', { className: "flex-1 min-w-0" },
+          account.sender_name
+            ? h('div', null,
+                h('h3', { className: "font-medium text-jaguar-900 truncate", title: account.sender_name },
+                  account.sender_name
+                ),
+                h('p', { className: "text-xs text-stone-500 truncate", title: account.email_address }, account.email_address)
+              )
+            : h('h3', { className: "font-medium text-jaguar-900 truncate", title: account.email_address },
+                account.email_address
+              )
+        )
+      )
+    ),
+    h('div', { className: "flex gap-2 mb-4" },
+      h('span', { className: `px-2 py-1 rounded text-xs font-medium uppercase tracking-wider ${getTypeColor(account.account_type)}` },
+        account.account_type?.replace('_', ' ')
+      ),
+      h('span', { className: `px-2 py-1 rounded text-xs font-medium uppercase tracking-wider ${getStatusColor(account.status || 'active')}` },
+        account.status || 'active'
+      )
+    ),
+    h('div', { className: "space-y-3" },
+      h('div', { className: "flex justify-between text-sm" },
+        h('span', { className: "text-stone-500" }, 'Daily Limit'),
+        h('span', { className: "font-medium text-jaguar-900" },
+          (account.daily_send_limit?.toLocaleString() || '500')
+        )
+      ),
+      h('div', { className: "flex justify-between text-sm" },
+        h('span', { className: "text-stone-500" }, 'Sent Today'),
+        h('span', { className: "font-medium text-jaguar-900" },
+          `${account.sent_today || 0} / ${account.daily_send_limit || 500}`
+        )
+      ),
+      h('div', { className: "w-full bg-stone-100 rounded-full h-2" },
+        h('div', {
+          className: "bg-jaguar-900 h-2 rounded-full transition-all",
+          style: {
+            width: `${Math.min(100, ((account.sent_today || 0) / (account.daily_send_limit || 500)) * 100)}%`
+          }
+        })
+      )
+    ),
+    h('div', { className: "mt-4 pt-4 border-t border-stone-100 flex gap-2" },
+      h('button', {
+        onClick: () => setExpanded(!expanded),
+        className: "flex-1 px-3 py-2 text-sm border border-stone-200 rounded-md hover:bg-stone-50 transition-colors"
+      }, expanded ? 'Less' : 'Details'),
+      h('button', {
+        onClick: () => onEdit(account),
+        className: "px-3 py-2 text-sm text-stone-400 hover:text-stone-600 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors",
+        title: "Edit Settings"
+      },
+        h(Icons.Settings, { size: 16 })
+      ),
+      h('button', {
+        onClick: () => onDelete(account),
+        className: "px-3 py-2 text-sm text-red-400 hover:text-red-600 border border-stone-200 rounded-md hover:bg-red-50 transition-colors",
+        title: "Delete Account"
+      },
+        h(Icons.Trash, { size: 16 })
+      )
+    ),
+    expanded && h('div', { className: "mt-4 pt-4 border-t border-stone-100 space-y-2 text-sm animate-fade-in" },
+      account.sender_name && h('div', { className: "flex justify-between" },
+        h('span', { className: "text-stone-500" }, 'Sender Name'),
+        h('span', { className: "text-jaguar-900" }, account.sender_name)
+      ),
+      h('div', { className: "flex justify-between" },
+        h('span', { className: "text-stone-500" }, 'SMTP Host'),
+        h('span', { className: "text-jaguar-900 font-mono text-xs" }, account.smtp_host || 'smtp.example.com')
+      ),
+      h('div', { className: "flex justify-between" },
+        h('span', { className: "text-stone-500" }, 'SMTP Port'),
+        h('span', { className: "text-jaguar-900" }, account.smtp_port || 587)
+      ),
+      h('div', { className: "flex justify-between" },
+        h('span', { className: "text-stone-500" }, 'IMAP Host'),
+        h('span', { className: "text-jaguar-900 font-mono text-xs" }, account.imap_host || 'imap.example.com')
+      )
+    )
+  );
+};
 
-    const dayAllowed = schedule.days.includes(dayOfWeek);
-    // Handle end_hour of 24 (means up to midnight)
-    const endHour = schedule.end_hour === 24 ? 24 : schedule.end_hour;
-    const hourAllowed = hour >= schedule.start_hour && hour < endHour;
+const AccountModal = ({ account, onClose, onSave }) => {
+  const isEditing = !!account;
+  const [step, setStep] = React.useState(isEditing ? 'details' : 'type');
+  const [accountType, setAccountType] = React.useState(account?.account_type || '');
+  const [formData, setFormData] = React.useState({
+    email_address: account?.email_address || '',
+    sender_name: account?.sender_name || '',
+    smtp_host: account?.smtp_host || '',
+    smtp_port: account?.smtp_port || '587',
+    smtp_username: account?.smtp_username || '',
+    smtp_password: '',
+    imap_host: account?.imap_host || '',
+    imap_port: account?.imap_port || '993',
+    imap_username: account?.imap_username || '',
+    imap_password: '',
+    daily_send_limit: account?.daily_send_limit || '500'
+  });
+  const [testing, setTesting] = React.useState(false);
+  const [testResult, setTestResult] = React.useState(null);
 
-    console.log(`[SCHEDULE] Checking schedule - UTC Day: ${dayOfWeek}, UTC Hour: ${hour}, Days allowed: ${schedule.days.join(',')}, Hours: ${schedule.start_hour}-${schedule.end_hour}`);
-    console.log(`[SCHEDULE] Day allowed: ${dayAllowed}, Hour allowed: ${hourAllowed}, Within schedule: ${dayAllowed && hourAllowed}`);
+  const handleTypeSelect = (type) => {
+    setAccountType(type);
 
-    return dayAllowed && hourAllowed;
-  }
-
-  // Get next available send time based on schedule (uses UTC for consistency)
-  getNextSendTime(schedule) {
-    const now = new Date();
-
-    if (!schedule || !schedule.days || schedule.start_hour === undefined) {
-      return now; // No schedule = send now
-    }
-
-    // Check for 24/7 schedule - can send anytime
-    const is24_7 = schedule.days.length === 7 && schedule.start_hour === 0 && schedule.end_hour === 24;
-    if (is24_7) {
-      console.log(`[SCHEDULE] 24/7 schedule - sending now`);
-      return now;
-    }
-
-    const daysOfWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-    let checkDate = new Date(now);
-    let attempts = 0;
-
-    while (attempts < 14) { // Check up to 2 weeks ahead
-      const dayOfWeek = daysOfWeek[checkDate.getUTCDay()];
-
-      if (schedule.days.includes(dayOfWeek)) {
-        // Set to the start hour in UTC
-        checkDate.setUTCHours(schedule.start_hour || 0, 0, 0, 0);
-
-        if (checkDate > now) {
-          console.log(`[SCHEDULE] Next send time calculated: ${checkDate.toISOString()} (UTC)`);
-          return checkDate;
-        }
+    if (!isEditing) {
+      if (type === 'zoho') {
+        setFormData(prev => ({
+          ...prev,
+          smtp_host: 'smtp.zoho.com',
+          smtp_port: '587',
+          imap_host: 'imap.zoho.com',
+          imap_port: '993'
+        }));
+      } else if (type === 'gmail') {
+        setFormData(prev => ({
+          ...prev,
+          smtp_host: 'smtp.gmail.com',
+          smtp_port: '587',
+          imap_host: 'imap.gmail.com',
+          imap_port: '993'
+        }));
+        alert('⚠️ Important: Gmail requires App Passwords for third-party applications.\n\nTo connect your Gmail account:\n\n1. Enable 2-Step Verification on your Google account\n2. Go to https://myaccount.google.com/apppasswords\n3. Generate an app password for "Mail"\n4. Use that password (not your regular password) in the IMAP/SMTP password fields');
+      } else if (type === 'outlook') {
+        setFormData(prev => ({
+          ...prev,
+          smtp_host: 'smtp.office365.com',
+          smtp_port: '587',
+          imap_host: 'outlook.office365.com',
+          imap_port: '993'
+        }));
+        alert('⚠️ Important: Microsoft disabled basic authentication for Outlook/Office 365 in late 2022.\n\nTo connect your Outlook account, you MUST use an App Password:\n\n1. Go to https://account.microsoft.com/security\n2. Navigate to "Advanced security options"\n3. Create a new app password\n4. Use that password (not your regular password) in the IMAP/SMTP password fields\n\nIf app passwords are disabled by your organization, you will need to contact your IT administrator.');
       }
-
-      // Move to next day at midnight UTC
-      checkDate.setUTCDate(checkDate.getUTCDate() + 1);
-      checkDate.setUTCHours(0, 0, 0, 0);
-      attempts++;
     }
 
-    console.log(`[SCHEDULE] Fallback next send time: ${checkDate.toISOString()} (UTC)`);
-    return checkDate;
-  }
+    setStep('details');
+  };
 
-  // Check daily sending limit
-  async checkDailyLimit(emailAccountId, campaignId) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
 
-    const { count, error } = await supabase
-      .from('email_events')
-      .select('*', { count: 'exact', head: true })
-      .eq('campaign_id', campaignId)
-      .eq('event_type', 'sent')
-      .gte('created_at', today.toISOString());
+    try {
+      const testData = { ...formData, account_type: accountType };
+      const result = await api.testEmailAccount(testData);
+      setTestResult({ success: true, message: result.message || 'Connection successful!' });
+    } catch (error) {
+      setTestResult({ success: false, message: error.message || 'Connection failed' });
+    } finally {
+      setTesting(false);
+    }
+  };
 
-    if (error) {
-      console.error('Error checking daily limit:', error);
-      return true; // Allow if we can't check
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    const payload = {
+      ...formData,
+      account_type: accountType
+    };
+
+    if (isEditing) {
+      if (!payload.smtp_password) delete payload.smtp_password;
+      if (!payload.imap_password) delete payload.imap_password;
     }
 
-    const { data: account } = await supabase
-      .from('email_accounts')
-      .select('daily_send_limit')
-      .eq('id', emailAccountId)
-      .single();
-
-    const limit = account?.daily_send_limit || 10000;
-    return count < limit;
-  }
-
-  // Clear transporter cache
-  clearTransporter(emailAccountId) {
-    if (this.transporters.has(emailAccountId)) {
-      this.transporters.delete(emailAccountId);
+    try {
+      await onSave(payload);
+    } catch (err) {
+      alert('Failed to save account: ' + err.message);
     }
-    // Also clear Zoho host cache so it will try all hosts again
-    if (this.zohoHostCache.has(emailAccountId)) {
-      this.zohoHostCache.delete(emailAccountId);
-    }
-  }
+  };
 
-  // Clear all transporters
-  clearAllTransporters() {
-    this.transporters.clear();
-  }
-}
-
-module.exports = new EmailService();
+  return h('div', {
+    className: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in",
+    onClick: onClose
+  },
+    h('div', {
+      className: "bg-white rounded-lg p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto",
+      onClick: (e) => e.stopPropagation()
+    },
+      h('div', { className: "flex justify-between items-center mb-6" },
+        h('h3', { className: "font-serif text-2xl text-jaguar-900" }, isEditing ? 'Edit Email Account' : 'Add Email Account'),
+        h('button', {
+          onClick: onClose,
+          className: "text-stone-400 hover:text-stone-600 transition-colors"
+        }, h(Icons.X, { size: 24 }))
+      ),
+      step === 'type' && h('div', { className: "space-y-4" },
+        h('p', { className: "text-stone-600 mb-6" }, 'Choose your email provider:'),
+        h('button', {
+          onClick: () => handleTypeSelect('stalwart'),
+          className: "w-full p-6 border-2 border-stone-200 rounded-lg hover:border-jaguar-900 hover:bg-cream-50 transition-all text-left group"
+        },
+          h('div', { className: "flex items-center gap-4" },
+            h('div', { className: "w-12 h-12 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xl group-hover:scale-110 transition-transform" }, 'ST'),
+            h('div', null,
+              h('h4', { className: "font-medium text-jaguar-900 mb-1" }, 'Stalwart SMTP'),
+              h('p', { className: "text-sm text-stone-500" }, 'Custom SMTP relay for maximum deliverability')
+            )
+          )
+        ),
+        h('button', {
+          onClick: () => handleTypeSelect('aws_workmail'),
+          className: "w-full p-6 border-2 border-stone-200 rounded-lg hover:border-jaguar-900 hover:bg-cream-50 transition-all text-left group"
+        },
+          h('div', { className: "flex items-center gap-4" },
+            h('div', { className: "w-12 h-12 rounded-lg bg-orange-100 flex items-center justify-center text-orange-700 font-bold text-xl group-hover:scale-110 transition-transform" }, 'AWS'),
+            h('div', null,
+              h('h4', { className: "font-medium text-jaguar-900 mb-1" }, 'AWS WorkMail'),
+              h('p', { className: "text-sm text-stone-500" }, 'Enterprise email service from Amazon')
+            )
+          )
+        ),
+        h('button', {
+          onClick: () => handleTypeSelect('zoho'),
+          className: "w-full p-6 border-2 border-stone-200 rounded-lg hover:border-jaguar-900 hover:bg-cream-50 transition-all text-left group"
+        },
+          h('div', { className: "flex items-center gap-4" },
+            h('div', { className: "w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center text-purple-700 font-bold text-xl group-hover:scale-110 transition-transform" }, 'Z'),
+            h('div', null,
+              h('h4', { className: "font-medium text-jaguar-900 mb-1" }, 'Zoho Mail'),
+              h('p', { className: "text-sm text-stone-500" }, 'Professional email with simple setup (no app passwords needed)')
+            )
+          )
+        ),
+        h('button', {
+          onClick: () => handleTypeSelect('gmail'),
+          className: "w-full p-6 border-2 border-stone-200 rounded-lg hover:border-jaguar-900 hover:bg-cream-50 transition-all text-left group"
+        },
+          h('div', { className: "flex items-center gap-4" },
+            h('div', { className: "w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center text-red-700 font-bold text-xl group-hover:scale-110 transition-transform" }, 'G'),
+            h('div', null,
+              h('h4', { className: "font-medium text-jaguar-900 mb-1" }, 'Gmail / Google Workspace'),
+              h('p', { className: "text-sm text-stone-500" }, 'Connect your Gmail or Google Workspace account')
+            )
+          )
+        ),
+        h('button', {
+          onClick: () => handleTypeSelect('outlook'),
+          className: "w-full p-6 border-2 border-stone-200 rounded-lg hover:border-jaguar-900 hover:bg-cream-50 transition-all text-left group"
+        },
+          h('div', { className: "flex items-center gap-4" },
+            h('div', { className: "w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xl group-hover:scale-110 transition-transform" }, 'M'),
+            h('div', null,
+              h('h4', { className: "font-medium text-jaguar-900 mb-1" }, 'Microsoft Outlook / Office 365'),
+              h('p', { className: "text-sm text-stone-500" }, 'Connect your Outlook or Microsoft 365 account')
+            )
+          )
+        )
+      ),
+      step === 'details' && h('form', { onSubmit: handleSubmit, className: "space-y-6" },
+        (accountType === 'outlook' || accountType === 'gmail') && h('div', { className: "p-4 bg-amber-50 border border-amber-200 rounded-lg" },
+          h('div', { className: "flex gap-3" },
+            h(Icons.AlertCircle, { size: 20, className: "text-amber-600 shrink-0 mt-0.5" }),
+            h('div', null,
+              h('h4', { className: "font-medium text-amber-900 mb-1" }, 'App Password Required'),
+              h('p', { className: "text-sm text-amber-700 mb-2" },
+                accountType === 'outlook'
+                  ? 'Microsoft disabled basic authentication for Outlook/Office 365. You must use an App Password:'
+                  : 'Gmail requires App Passwords for third-party applications. You must use an App Password:'
+              ),
+              h('ol', { className: "text-sm text-amber-700 list-decimal list-inside space-y-1" },
+                accountType === 'outlook' ? [
+                  h('li', { key: 1 }, 'Visit ', h('a', { href: "https://account.microsoft.com/security", target: "_blank", className: "underline" }, 'account.microsoft.com/security')),
+                  h('li', { key: 2 }, 'Create a new app password under "Advanced security options"'),
+                  h('li', { key: 3 }, 'Use that password in the IMAP/SMTP password fields below')
+                ] : [
+                  h('li', { key: 1 }, 'Enable 2-Step Verification on your Google account'),
+                  h('li', { key: 2 }, 'Visit ', h('a', { href: "https://myaccount.google.com/apppasswords", target: "_blank", className: "underline" }, 'myaccount.google.com/apppasswords')),
+                  h('li', { key: 3 }, 'Generate an app password for "Mail"'),
+                  h('li', { key: 4 }, 'Use that password in the IMAP/SMTP password fields below')
+                ]
+              )
+            )
+          )
+        ),
+        h('div', null,
+          h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Email Address'),
+          h('input', {
+            type: "email",
+            required: true,
+            value: formData.email_address,
+            onChange: (e) => setFormData({ ...formData, email_address: e.target.value }),
+            className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20",
+            placeholder: "john@company.com"
+          })
+        ),
+        h('div', null,
+          h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Sender Display Name'),
+          h('input', {
+            type: "text",
+            value: formData.sender_name,
+            onChange: (e) => setFormData({ ...formData, sender_name: e.target.value }),
+            className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20",
+            placeholder: "John Smith"
+          }),
+          h('p', { className: "text-xs text-stone-500 mt-1" }, 'How your name appears in the From field. E.g., "John Smith" results in "John Smith <john@company.com>". Improves deliverability.')
+        ),
+        h('div', { className: "p-4 bg-cream-50 rounded-lg space-y-4" },
+          h('h4', { className: "font-medium text-jaguar-900" }, 'SMTP Settings (Outgoing)'),
+          h('div', { className: "grid grid-cols-2 gap-4" },
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'SMTP Host'),
+              h('input', {
+                type: "text",
+                required: true,
+                value: formData.smtp_host,
+                onChange: (e) => setFormData({ ...formData, smtp_host: e.target.value }),
+                className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20",
+                placeholder: "smtp.example.com"
+              })
+            ),
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'SMTP Port'),
+              h('input', {
+                type: "number",
+                required: true,
+                value: formData.smtp_port,
+                onChange: (e) => setFormData({ ...formData, smtp_port: e.target.value }),
+                className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+              })
+            )
+          ),
+          h('div', { className: "grid grid-cols-2 gap-4" },
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'SMTP Username'),
+              h('input', {
+                type: "text",
+                required: true,
+                value: formData.smtp_username,
+                onChange: (e) => setFormData({ ...formData, smtp_username: e.target.value }),
+                className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+              })
+            ),
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'SMTP Password'),
+              h('input', {
+                type: "password",
+                required: !isEditing,
+                placeholder: isEditing ? '(Leave blank to keep unchanged)' : '',
+                value: formData.smtp_password,
+                onChange: (e) => setFormData({ ...formData, smtp_password: e.target.value }),
+                className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+              })
+            )
+          )
+        ),
+        h('div', { className: "p-4 bg-cream-50 rounded-lg space-y-4" },
+          h('h4', { className: "font-medium text-jaguar-900" }, 'IMAP Settings (Incoming)'),
+          h('div', { className: "grid grid-cols-2 gap-4" },
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'IMAP Host'),
+              h('input', {
+                type: "text",
+                required: true,
+                value: formData.imap_host,
+                onChange: (e) => setFormData({ ...formData, imap_host: e.target.value }),
+                className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20",
+                placeholder: "imap.example.com"
+              })
+            ),
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'IMAP Port'),
+              h('input', {
+                type: "number",
+                required: true,
+                value: formData.imap_port,
+                onChange: (e) => setFormData({ ...formData, imap_port: e.target.value }),
+                className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+              })
+            )
+          ),
+          h('div', { className: "grid grid-cols-2 gap-4" },
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'IMAP Username'),
+              h('input', {
+                type: "text",
+                required: true,
+                value: formData.imap_username,
+                onChange: (e) => setFormData({ ...formData, imap_username: e.target.value }),
+                className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+              })
+            ),
+            h('div', null,
+              h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'IMAP Password'),
+              h('input', {
+                type: "password",
+                required: !isEditing,
+                placeholder: isEditing ? '(Leave blank to keep unchanged)' : '',
+                value: formData.imap_password,
+                onChange: (e) => setFormData({ ...formData, imap_password: e.target.value }),
+                className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+              })
+            )
+          )
+        ),
+        h('div', null,
+          h('label', { className: "block text-sm font-medium text-stone-700 mb-2" }, 'Daily Send Limit'),
+          h('input', {
+            type: "number",
+            required: true,
+            value: formData.daily_send_limit,
+            onChange: (e) => setFormData({ ...formData, daily_send_limit: e.target.value }),
+            className: "w-full px-4 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-jaguar-900/20"
+          })
+        ),
+        testResult && h('div', {
+          className: `p-4 rounded-lg border ${
+            testResult.success
+              ? 'bg-green-50 border-green-200 text-green-700'
+              : 'bg-red-50 border-red-200 text-red-700'
+          }`
+        },
+          h('div', { className: "flex items-center gap-2" },
+            testResult.success ? h(Icons.Check, { size: 20 }) : h(Icons.AlertCircle, { size: 20 }),
+            h('span', { className: "font-medium" }, testResult.message)
+          )
+        ),
+        h('div', { className: "flex gap-3" },
+          !isEditing && h('button', {
+            type: "button",
+            onClick: () => setStep('type'),
+            className: "px-4 py-2 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors"
+          }, 'Back'),
+          h('button', {
+            type: "button",
+            onClick: handleTest,
+            disabled: testing,
+            className: "px-4 py-2 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors flex items-center gap-2"
+          },
+            testing ? h(Icons.Loader2, { size: 16, className: "animate-spin" }) : h(Icons.Zap, { size: 16 }),
+            'Test Connection'
+          ),
+          h('button', {
+            type: "submit",
+            className: "flex-1 px-4 py-2 bg-jaguar-900 text-cream-50 rounded-md hover:bg-jaguar-800 transition-colors"
+          }, isEditing ? 'Save Changes' : 'Add Account')
+        )
+      )
+    )
+  );
+};
