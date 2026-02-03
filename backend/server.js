@@ -2104,21 +2104,35 @@ app.get('/api/track/open/:campaign_id/:contact_id/:token', async (req, res) => {
   try {
     console.log(`[TRACKING] API open tracking: campaign=${req.params.campaign_id}, contact=${req.params.contact_id}`);
 
-    const { error: insertError } = await supabase.from('email_events').insert({
-      campaign_id: req.params.campaign_id,
-      contact_id: req.params.contact_id,
-      event_type: 'opened',
-      event_data: {
-        user_agent: req.headers['user-agent'],
-        ip: req.ip,
-        timestamp: new Date().toISOString()
-      }
-    });
+    // Check if this contact already has an 'opened' event for this campaign (prevent duplicate counting)
+    const { data: existingOpen } = await supabase
+      .from('email_events')
+      .select('id')
+      .eq('campaign_id', req.params.campaign_id)
+      .eq('contact_id', req.params.contact_id)
+      .eq('event_type', 'opened')
+      .limit(1)
+      .single();
 
-    if (insertError) {
-      console.error(`[TRACKING] Failed to insert open event:`, insertError);
+    if (existingOpen) {
+      console.log(`[TRACKING] ⏭️ Open already recorded for contact ${req.params.contact_id}, skipping duplicate`);
     } else {
-      console.log(`[TRACKING] ✅ Open event recorded for contact ${req.params.contact_id}`);
+      const { error: insertError } = await supabase.from('email_events').insert({
+        campaign_id: req.params.campaign_id,
+        contact_id: req.params.contact_id,
+        event_type: 'opened',
+        event_data: {
+          user_agent: req.headers['user-agent'],
+          ip: req.ip,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+      if (insertError) {
+        console.error(`[TRACKING] Failed to insert open event:`, insertError);
+      } else {
+        console.log(`[TRACKING] ✅ Open event recorded for contact ${req.params.contact_id}`);
+      }
     }
 
     const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -2190,23 +2204,37 @@ app.get('/img/e/:campaign_id/:contact_id/:token', async (req, res) => {
       }
     }
 
-    // Insert the open event
-    const { error: insertError } = await supabase.from('email_events').insert({
-      campaign_id: campaignIdToUse,
-      contact_id: contactIdToUse,
-      event_type: 'opened',
-      event_data: {
-        user_agent: req.headers['user-agent'],
-        ip: req.ip,
-        timestamp: new Date().toISOString(),
-        tracking_type: isShortened ? 'legacy_pixel' : 'improved_pixel'
-      }
-    });
+    // Check if this contact already has an 'opened' event for this campaign (prevent duplicate counting)
+    const { data: existingOpen } = await supabase
+      .from('email_events')
+      .select('id')
+      .eq('campaign_id', campaignIdToUse)
+      .eq('contact_id', contactIdToUse)
+      .eq('event_type', 'opened')
+      .limit(1)
+      .single();
 
-    if (insertError) {
-      console.error(`[TRACKING] Failed to insert open event:`, insertError);
+    if (existingOpen) {
+      console.log(`[TRACKING] ⏭️ Open already recorded for contact ${contactIdToUse}, skipping duplicate`);
     } else {
-      console.log(`[TRACKING] ✅ Open event recorded for contact ${contactIdToUse}`);
+      // Insert the open event
+      const { error: insertError } = await supabase.from('email_events').insert({
+        campaign_id: campaignIdToUse,
+        contact_id: contactIdToUse,
+        event_type: 'opened',
+        event_data: {
+          user_agent: req.headers['user-agent'],
+          ip: req.ip,
+          timestamp: new Date().toISOString(),
+          tracking_type: isShortened ? 'legacy_pixel' : 'improved_pixel'
+        }
+      });
+
+      if (insertError) {
+        console.error(`[TRACKING] Failed to insert open event:`, insertError);
+      } else {
+        console.log(`[TRACKING] ✅ Open event recorded for contact ${contactIdToUse}`);
+      }
     }
 
     // Return transparent 1x1 GIF
