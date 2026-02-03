@@ -448,6 +448,9 @@ class CampaignExecutor {
 
   // Handle wait step - supports days, hours, and minutes
   async handleWaitStep(campaignContact, campaign, step) {
+    // DEBUG: Log raw step data to see what's actually in the database
+    console.log(`[EXECUTOR]      🔍 Raw step data from DB: wait_days=${step.wait_days} (${typeof step.wait_days}), wait_hours=${step.wait_hours} (${typeof step.wait_hours}), wait_minutes=${step.wait_minutes} (${typeof step.wait_minutes})`);
+
     // Get wait duration components (ensure they are numbers)
     const waitDays = parseInt(step.wait_days) || 0;
     const waitHours = parseInt(step.wait_hours) || 0;
@@ -460,9 +463,13 @@ class CampaignExecutor {
                    (waitHours * 60 * 60 * 1000) +
                    (waitMinutes * 60 * 1000);
 
-    // FIX: Only default to 1 hour if the user literally provided NO time at all (all 0s)
-    // and ensure we don't accidentally force a 24h wait.
-    const actualDelayMs = totalMs > 0 ? totalMs : (60 * 60 * 1000); // Default to 1 hour instead of 1 day if empty
+    // If all values are 0, use a minimal delay (1 minute) instead of 1 hour
+    // This prevents unexpected long delays when values fail to save
+    const actualDelayMs = totalMs > 0 ? totalMs : (60 * 1000); // Default to 1 minute if empty (was 1 hour!)
+
+    if (totalMs === 0) {
+      console.log(`[EXECUTOR]      ⚠️  WARNING: All wait values are 0! Using 1 minute default. Check if values were saved correctly.`);
+    }
 
     const nextSendTime = new Date(Date.now() + actualDelayMs);
 
@@ -471,7 +478,7 @@ class CampaignExecutor {
     if (waitDays > 0) durationParts.push(`${waitDays}d`);
     if (waitHours > 0) durationParts.push(`${waitHours}h`);
     if (waitMinutes > 0) durationParts.push(`${waitMinutes}m`);
-    const durationStr = durationParts.length > 0 ? durationParts.join(' ') : '1d (default)';
+    const durationStr = durationParts.length > 0 ? durationParts.join(' ') : '1m (default)';
 
     console.log(`[EXECUTOR]         - Calculated wait: ${durationStr} (${actualDelayMs}ms)`);
     console.log(`[EXECUTOR]         - Next send time will be: ${nextSendTime.toISOString()}`);

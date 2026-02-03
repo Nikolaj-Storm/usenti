@@ -348,9 +348,11 @@ const CampaignBuilder = () => {
 
     if (!isDemo) {
       try {
-        await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, updates);
+        console.log('[WAIT DEBUG] Calling API PUT for step', stepId, 'with updates:', JSON.stringify(updates));
+        const response = await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, updates);
+        console.log('[WAIT DEBUG] API response:', JSON.stringify(response));
       } catch (error) {
-        console.error('Update failed', error);
+        console.error('[WAIT DEBUG] Update failed:', error);
       }
     }
 
@@ -1026,9 +1028,9 @@ const WaitStepEditor = ({ data, handleChange, onUpdate, step }) => {
       wait_hours: field === 'wait_hours' ? v : (data.wait_hours || 0),
       wait_minutes: field === 'wait_minutes' ? v : (data.wait_minutes || 0)
     };
-    console.log('[WAIT DEBUG] Current data from state:', { wait_days: data.wait_days, wait_hours: data.wait_hours, wait_minutes: data.wait_minutes });
-    console.log('[WAIT DEBUG] Field changed:', field, '-> new value:', v);
-    console.log('[WAIT DEBUG] Sending update payload:', updatePayload);
+    console.log('[WAIT DEBUG] Current data from state: D=' + data.wait_days + ' H=' + data.wait_hours + ' M=' + data.wait_minutes);
+    console.log('[WAIT DEBUG] Field changed: ' + field + ' -> new value: ' + v);
+    console.log('[WAIT DEBUG] Sending update payload: D=' + updatePayload.wait_days + ' H=' + updatePayload.wait_hours + ' M=' + updatePayload.wait_minutes);
     onUpdate(step.id, updatePayload);
   };
 
