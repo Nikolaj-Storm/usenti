@@ -48,6 +48,20 @@ const EmailAccounts = () => {
       console.error('Failed to save account:', error);
       throw error;
     }
+
+      const handleDeleteAccount = async (account) => {
+            if (!confirm(`Are you sure you want to delete \${account.email_address}?\n\nThis will permanently remove the account and all related data.`)) {
+                    return;
+                  }
+
+            try {
+                    await api.deleteEmailAccount(account.id);
+                    loadAccounts(); // Refresh the list
+                  } catch (error) {
+                    console.error('Failed to delete account:', error);
+                    alert('Failed to delete account: ' + (error.message || 'Unknown error'));
+                  }
+          };
   };
 
   return h('div', { className: "space-y-6 animate-fade-in" },
@@ -69,7 +83,7 @@ const EmailAccounts = () => {
       ? h('div', { className: "flex justify-center py-12" },
           h(Icons.Loader2, { size: 48, className: "text-jaguar-900" })
         )
-      : h(AccountsTab, { accounts: accounts, onEdit: handleEditAccount }),
+      : h(AccountsTab, { accounts: accounts, onEdit: handleEditAccount, onDelete: handleDeleteAccount }),
     showModal && h(AccountModal, {
       account: editingAccount,
       onClose: () => { setShowModal(false); setEditingAccount(null); },
