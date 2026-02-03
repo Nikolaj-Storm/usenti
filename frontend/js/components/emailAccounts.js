@@ -87,7 +87,7 @@ const EmailAccounts = () => {
     showModal && h(AccountModal, {
       account: editingAccount,
       onClose: () => { setShowModal(false); setEditingAccount(null); },
-      onSave: handleSaveAccount
+      onSave: handleSaveAccount, onDelete
     })
   );
 };
@@ -103,12 +103,12 @@ const AccountsTab = ({ accounts, onEdit }) => {
 
   return h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
     ...accounts.map((account) =>
-      h(AccountCard, { key: account.id, account: account, onEdit: onEdit })
+      h(AccountCard, { key: account.id, account: account, onEdit: onEdit, onDelete: onDelete })
     )
   );
 };
 
-const AccountCard = ({ account, onEdit }) => {
+const AccountCard = ({ account, onEdit, onDelete }) => {
   const [expanded, setExpanded] = React.useState(false);
 
   const getStatusColor = (status) => {
@@ -202,6 +202,15 @@ const AccountCard = ({ account, onEdit }) => {
       },
         h(Icons.Settings, { size: 16 })
       )
+            ),
+
+                 // NEW Delete Button
+                 h('button', {
+            onClick: () => onDelete(account),
+            className: "px-3 py-2 text-sm text-red-400 hover:text-red-600 border border-stone-200 rounded-md hover:bg-red-50 transition-colors",
+            title: "Delete Account"
+                    },
+                           h(Icons.Trash || Icons.Trash2, { size: 16 }) // Ensure Icons.Trash is available
     ),
     expanded && h('div', { className: "mt-4 pt-4 border-t border-stone-100 space-y-2 text-sm animate-fade-in" },
       account.sender_name && h('div', { className: "flex justify-between" },
