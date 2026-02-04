@@ -555,11 +555,20 @@ const CampaignBuilder = () => {
 
   // Add step to a specific branch
   const handleAddStepToBranch = async (conditionStepId, branchIndex, stepType) => {
+    console.log('🔧 [handleAddStepToBranch] Called with:', { conditionStepId, branchIndex, stepType });
+
     const conditionStep = steps.find(s => s.id === conditionStepId);
-    if (!conditionStep || conditionStep.step_type !== 'condition') return;
+    console.log('🔧 [handleAddStepToBranch] Found condition step:', conditionStep);
+
+    if (!conditionStep || conditionStep.step_type !== 'condition') {
+      console.log('🔧 [handleAddStepToBranch] Early return - invalid condition step');
+      return;
+    }
 
     const newBranches = [...conditionStep.condition_branches];
     const branch = newBranches[branchIndex];
+    console.log('🔧 [handleAddStepToBranch] Branch:', branch);
+
     const branchSteps = branch.branch_steps || [];
 
     // Calculate position for the new branch step
@@ -585,10 +594,14 @@ const CampaignBuilder = () => {
       y: branchStepY
     };
 
+    console.log('🔧 [handleAddStepToBranch] New step created:', newStepRaw);
+
     newBranches[branchIndex] = {
       ...branch,
       branch_steps: [...branchSteps, newStepRaw]
     };
+
+    console.log('🔧 [handleAddStepToBranch] Updated branches:', newBranches);
 
     setSteps(prevSteps => prevSteps.map(step => {
       if (step.id === conditionStepId) {
@@ -599,14 +612,17 @@ const CampaignBuilder = () => {
 
     // Select the new branch step for editing
     setActiveStep(newStepRaw.id);
+    console.log('🔧 [handleAddStepToBranch] Set active step to:', newStepRaw.id);
 
     if (!isDemo && selectedCampaign) {
+      console.log('🔧 [handleAddStepToBranch] Saving to backend...');
       try {
         await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
           condition_branches: newBranches
         });
+        console.log('🔧 [handleAddStepToBranch] Backend save successful');
       } catch (e) {
-        console.error('Error adding step to branch:', e);
+        console.error('🔧 [handleAddStepToBranch] Error adding step to branch:', e);
       }
     }
   };
@@ -1127,7 +1143,10 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
             x: conditionStep.x + offsetX - 15,
             y: conditionStep.y + 200 + (branchSteps.length * 150),
             branchCondition: branch.condition,
-            onAddStep: (stepType) => onAddStepToBranch(conditionStep.id, bi, stepType)
+            onAddStep: (stepType) => {
+              console.log('🔷 [WorkflowCanvas] onAddStep callback triggered:', { conditionStepId: conditionStep.id, branchIndex: bi, stepType });
+              onAddStepToBranch(conditionStep.id, bi, stepType);
+            }
           }));
         });
 
@@ -1230,6 +1249,8 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
   const [showMenu, setShowMenu] = React.useState(false);
   const conditionOpt = CONDITION_OPTIONS.find(o => o.value === branchCondition);
 
+  console.log('🎯 [AddStepPlaceholder] Rendering:', { x, y, branchCondition, showMenu });
+
   const stepOptions = [
     { type: 'email', icon: 'Mail', label: 'Email', color: '#3b82f6' },
     { type: 'wait', icon: 'Clock', label: 'Wait', color: '#8b5cf6' },
@@ -1237,22 +1258,37 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
   ];
 
   const handleAddStepClick = (e, stepType) => {
+    console.log('🎯 [AddStepPlaceholder] handleAddStepClick called with:', stepType);
+    console.log('🎯 [AddStepPlaceholder] Event:', e.type, e.target);
     e.preventDefault();
     e.stopPropagation();
+    console.log('🎯 [AddStepPlaceholder] Calling onAddStep...');
     onAddStep(stepType);
+    console.log('🎯 [AddStepPlaceholder] onAddStep called, hiding menu');
     setShowMenu(false);
+  };
+
+  const handlePlaceholderClick = (e) => {
+    console.log('🎯 [AddStepPlaceholder] Placeholder clicked, toggling menu from', showMenu, 'to', !showMenu);
+    e.stopPropagation();
+    setShowMenu(!showMenu);
+  };
+
+  const handleOuterMouseDown = (e) => {
+    console.log('🎯 [AddStepPlaceholder] Outer mousedown, stopping propagation');
+    e.stopPropagation();
   };
 
   return h('div', {
     className: "canvas-node",
     style: { left: x, top: y, width: '200px', zIndex: showMenu ? 100 : 1 },
-    onMouseDown: (e) => e.stopPropagation(),
-    onClick: (e) => e.stopPropagation()
+    onMouseDown: handleOuterMouseDown,
+    onClick: (e) => { console.log('🎯 [AddStepPlaceholder] Outer click'); e.stopPropagation(); }
   },
     h('div', {
       className: "node-card border-2 border-dashed border-stone-300 bg-stone-50/80 hover:border-stone-400 hover:bg-stone-100/80 transition-all cursor-pointer relative",
-      onMouseDown: (e) => e.stopPropagation(),
-      onClick: (e) => { e.stopPropagation(); setShowMenu(!showMenu); }
+      onMouseDown: (e) => { console.log('🎯 [AddStepPlaceholder] Inner mousedown'); e.stopPropagation(); },
+      onClick: handlePlaceholderClick
     },
       h('div', { className: "p-3 text-center" },
         h('div', { className: "flex items-center justify-center gap-2 text-stone-400" },
@@ -1268,8 +1304,8 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
       showMenu && h('div', {
         className: "absolute top-full left-0 mt-1 w-full bg-white rounded-lg shadow-lg border border-stone-200 overflow-hidden",
         style: { zIndex: 1000 },
-        onMouseDown: (e) => e.stopPropagation(),
-        onClick: (e) => e.stopPropagation()
+        onMouseDown: (e) => { console.log('🎯 [AddStepPlaceholder] Dropdown mousedown'); e.stopPropagation(); },
+        onClick: (e) => { console.log('🎯 [AddStepPlaceholder] Dropdown click'); e.stopPropagation(); }
       },
         stepOptions.map(opt => {
           const Icon = Icons[opt.icon];
@@ -1277,8 +1313,8 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
             key: opt.type,
             type: 'button',
             className: "w-full px-3 py-2 flex items-center gap-2 hover:bg-stone-100 transition-colors text-left",
-            onMouseDown: (e) => e.stopPropagation(),
-            onClick: (e) => handleAddStepClick(e, opt.type)
+            onMouseDown: (e) => { console.log('🎯 [AddStepPlaceholder] Button mousedown:', opt.type); e.stopPropagation(); },
+            onClick: (e) => { console.log('🎯 [AddStepPlaceholder] Button click:', opt.type); handleAddStepClick(e, opt.type); }
           },
             h('div', {
               className: "w-6 h-6 rounded flex items-center justify-center",
