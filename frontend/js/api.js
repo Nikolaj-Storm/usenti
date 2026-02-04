@@ -181,8 +181,8 @@ const api = {
   },
 
     async deleteEmailAccount(id) {
-          console.log(`[API] Deleting email account \${id}...`);
-          return this.delete(`\${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}/\${id}`);
+          console.log(`[API] Deleting email account ${id}...`);
+          return this.delete(`${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}/${id}`);
         },
 
   async testEmailAccount(accountData) {
