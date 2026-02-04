@@ -1259,7 +1259,6 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
 
   const handleAddStepClick = (e, stepType) => {
     console.log('🎯 [AddStepPlaceholder] handleAddStepClick called with:', stepType);
-    console.log('🎯 [AddStepPlaceholder] Event:', e.type, e.target);
     e.preventDefault();
     e.stopPropagation();
     console.log('🎯 [AddStepPlaceholder] Calling onAddStep...');
@@ -1269,25 +1268,50 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
   };
 
   const handlePlaceholderClick = (e) => {
-    console.log('🎯 [AddStepPlaceholder] Placeholder clicked, toggling menu from', showMenu, 'to', !showMenu);
+    console.log('🎯 [AddStepPlaceholder] Placeholder clicked, target:', e.target.tagName, e.target.className);
     e.stopPropagation();
-    setShowMenu(!showMenu);
+    // Only toggle menu if clicking on the placeholder itself, not on dropdown items
+    if (!showMenu) {
+      console.log('🎯 [AddStepPlaceholder] Opening menu');
+      setShowMenu(true);
+    }
   };
 
   const handleOuterMouseDown = (e) => {
-    console.log('🎯 [AddStepPlaceholder] Outer mousedown, stopping propagation');
+    console.log('🎯 [AddStepPlaceholder] Outer mousedown');
     e.stopPropagation();
   };
+
+  // Close menu when clicking outside
+  React.useEffect(() => {
+    if (!showMenu) return;
+
+    const handleClickOutside = (e) => {
+      console.log('🎯 [AddStepPlaceholder] Click outside detected');
+      setShowMenu(false);
+    };
+
+    // Add listener with a small delay to prevent immediate closing
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [showMenu]);
 
   return h('div', {
     className: "canvas-node",
     style: { left: x, top: y, width: '200px', zIndex: showMenu ? 100 : 1 },
     onMouseDown: handleOuterMouseDown,
-    onClick: (e) => { console.log('🎯 [AddStepPlaceholder] Outer click'); e.stopPropagation(); }
+    onClick: (e) => e.stopPropagation()
   },
+    // The clickable card that opens the menu
     h('div', {
       className: "node-card border-2 border-dashed border-stone-300 bg-stone-50/80 hover:border-stone-400 hover:bg-stone-100/80 transition-all cursor-pointer relative",
-      onMouseDown: (e) => { console.log('🎯 [AddStepPlaceholder] Inner mousedown'); e.stopPropagation(); },
+      onMouseDown: (e) => e.stopPropagation(),
       onClick: handlePlaceholderClick
     },
       h('div', { className: "p-3 text-center" },
@@ -1298,35 +1322,36 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
         h('p', { className: "text-xs text-stone-400 mt-1" },
           `to "${conditionOpt?.shortLabel || branchCondition}" branch`
         )
-      ),
-
-      // Dropdown menu for step type selection
-      showMenu && h('div', {
-        className: "absolute top-full left-0 mt-1 w-full bg-white rounded-lg shadow-lg border border-stone-200 overflow-hidden",
-        style: { zIndex: 1000 },
-        onMouseDown: (e) => { console.log('🎯 [AddStepPlaceholder] Dropdown mousedown'); e.stopPropagation(); },
-        onClick: (e) => { console.log('🎯 [AddStepPlaceholder] Dropdown click'); e.stopPropagation(); }
-      },
-        stepOptions.map(opt => {
-          const Icon = Icons[opt.icon];
-          return h('button', {
-            key: opt.type,
-            type: 'button',
-            className: "w-full px-3 py-2 flex items-center gap-2 hover:bg-stone-100 transition-colors text-left",
-            onMouseDown: (e) => { console.log('🎯 [AddStepPlaceholder] Button mousedown:', opt.type); e.stopPropagation(); },
-            onClick: (e) => { console.log('🎯 [AddStepPlaceholder] Button click:', opt.type); handleAddStepClick(e, opt.type); }
-          },
-            h('div', {
-              className: "w-6 h-6 rounded flex items-center justify-center",
-              style: { background: opt.color }
-            },
-              Icon && h(Icon, { size: 12, color: 'white' })
-            ),
-            h('span', { className: "text-sm text-stone-700" }, opt.label)
-          );
-        })
       )
     ),
+
+    // Dropdown menu - OUTSIDE the clickable card
+    showMenu && h('div', {
+      className: "absolute top-full left-0 mt-1 w-full bg-white rounded-lg shadow-lg border border-stone-200 overflow-hidden",
+      style: { zIndex: 1000 },
+      onMouseDown: (e) => { console.log('🎯 [AddStepPlaceholder] Dropdown mousedown'); e.stopPropagation(); },
+      onClick: (e) => { console.log('🎯 [AddStepPlaceholder] Dropdown click'); e.stopPropagation(); }
+    },
+      stepOptions.map(opt => {
+        const Icon = Icons[opt.icon];
+        return h('button', {
+          key: opt.type,
+          type: 'button',
+          className: "w-full px-3 py-2 flex items-center gap-2 hover:bg-stone-100 transition-colors text-left",
+          onMouseDown: (e) => { console.log('🎯 [AddStepPlaceholder] Button mousedown:', opt.type); e.stopPropagation(); },
+          onClick: (e) => { console.log('🎯 [AddStepPlaceholder] Button click:', opt.type); handleAddStepClick(e, opt.type); }
+        },
+          h('div', {
+            className: "w-6 h-6 rounded flex items-center justify-center",
+            style: { background: opt.color }
+          },
+            Icon && h(Icon, { size: 12, color: 'white' })
+          ),
+          h('span', { className: "text-sm text-stone-700" }, opt.label)
+        );
+      })
+    ),
+
     h('div', { className: "node-port input" })
   );
 };
