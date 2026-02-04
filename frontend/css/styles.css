@@ -1,27 +1,50 @@
-/* Mr. Snowman - Custom Styles */
+/* Mr. Snowman - Dark Mode Glassmorphism Styles */
 
-body {
-  background-color: #FDFBF7;
-  color: #1F2937;
+/* ====== Core Theme Variables ====== */
+:root {
+  --gradient-start: #2D1810;  /* Dark burnt umber */
+  --gradient-end: #A86232;    /* Terracotta/copper */
+  --glass-bg: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-shadow: rgba(0, 0, 0, 0.3);
+  --text-primary: #FFFFFF;
+  --text-secondary: rgba(255, 255, 255, 0.70);
+  --text-muted: rgba(255, 255, 255, 0.50);
+  --accent-cream: #F5E6D3;
+  --accent-gold: #D99A5C;
 }
 
-/* Custom Scrollbar */
+/* ====== Base Styles ====== */
+body {
+  background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+  background-attachment: fixed;
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+/* Alternative: Horizontal gradient like reference */
+.bg-gradient-warm {
+  background: linear-gradient(90deg, #2D1810 0%, #6B3A1F 50%, #A86232 100%);
+}
+
+/* ====== Custom Scrollbar (Dark Theme) ====== */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #F7F4EB;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #C5A065;
+  background: rgba(255, 255, 255, 0.20);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #B08D55;
+  background: rgba(255, 255, 255, 0.30);
 }
 
 /* Smooth scrolling */
@@ -31,13 +54,180 @@ html {
 
 /* Selection */
 ::selection {
-  background-color: #C5A065;
-  color: white;
+  background-color: #F5E6D3;
+  color: #2D1810;
 }
 
 ::-moz-selection {
-  background-color: #C5A065;
+  background-color: #F5E6D3;
+  color: #2D1810;
+}
+
+/* ====== Glassmorphism Utilities ====== */
+.glass-card {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 20px;
+}
+
+.glass-card-light {
+  background: rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+}
+
+.glass-card-dark {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+}
+
+.glass-sidebar {
+  background: rgba(0, 0, 0, 0.20);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-header {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-modal {
+  background: rgba(45, 24, 16, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 24px;
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   color: white;
+}
+
+.glass-input:focus {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  outline: none;
+}
+
+.glass-input::placeholder {
+  color: rgba(255, 255, 255, 0.40);
+}
+
+/* ====== Button Styles ====== */
+.btn-primary {
+  background: #F5E6D3;
+  color: #2D1810;
+  border-radius: 9999px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: #EBD9C4;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.10);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ====== Navigation Active State ====== */
+.nav-item-active {
+  background: #F5E6D3;
+  color: #2D1810;
+  border-radius: 12px;
+}
+
+.nav-item {
+  color: rgba(255, 255, 255, 0.60);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.nav-item:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ====== Table Styles (Dark Theme) ====== */
+.glass-table {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.glass-table thead {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.glass-table th {
+  color: rgba(255, 255, 255, 0.60);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+.glass-table td {
+  color: rgba(255, 255, 255, 0.90);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-table tr:hover td {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ====== Status Badges (Dark Theme) ====== */
+.badge-active {
+  background: rgba(34, 197, 94, 0.20);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.30);
+}
+
+.badge-warning {
+  background: rgba(251, 191, 36, 0.20);
+  color: #fde047;
+  border: 1px solid rgba(251, 191, 36, 0.30);
+}
+
+.badge-error {
+  background: rgba(239, 68, 68, 0.20);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.30);
+}
+
+.badge-neutral {
+  background: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.70);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* ====== Highlighted Metric Card ====== */
+.metric-highlight {
+  background: rgba(245, 230, 211, 0.15);
+  border: 1px solid rgba(245, 230, 211, 0.30);
 }
 
 /* ====== Canvas Workflow Builder Styles ====== */
