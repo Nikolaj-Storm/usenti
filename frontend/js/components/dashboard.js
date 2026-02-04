@@ -73,7 +73,6 @@ const Dashboard = () => {
   const metrics = dashboardData?.metrics || [
     { label: 'Total Sent', value: '0', change: '+0%', icon: Icons.Mail, color: 'text-blue-600' },
     { label: 'Open Rate', value: '0%', change: '+0%', icon: Icons.ArrowUpRight, color: 'text-emerald-600' },
-    { label: 'Click Rate', value: '0%', change: '+0%', icon: Icons.MousePointer2, color: 'text-amber-600' },
     { label: 'Reply Rate', value: '0%', change: '+0%', icon: Icons.MessageSquare, color: 'text-jaguar-900' },
   ];
 
@@ -90,11 +89,11 @@ const Dashboard = () => {
         )
       )
     ),
-    h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" },
+    h('div', { className: "grid grid-cols-1 md:grid-cols-3 gap-6" },
       ...metrics.map((metric, index) =>
         h('div', {
           key: index,
-          className: `glass-card p-6 transition-all hover:bg-white/10 ${index === 3 ? 'metric-highlight' : ''}`
+          className: `glass-card p-6 transition-all hover:bg-white/10 ${index === 2 ? 'metric-highlight' : ''}`
         },
           h('div', { className: "flex justify-between items-start" },
             h('div', null,
