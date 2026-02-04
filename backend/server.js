@@ -1456,7 +1456,6 @@ app.get('/api/dashboard/stats', authenticateUser, async (req, res) => {
     // Get email events for user's campaigns
     let totalSent = 0;
     let totalOpened = 0;
-    let totalClicked = 0;
     let totalReplied = 0;
     let activityData = [];
 
@@ -1470,7 +1469,6 @@ app.get('/api/dashboard/stats', authenticateUser, async (req, res) => {
       if (!eventsError && events) {
         totalSent = events.filter(e => e.event_type === 'sent').length;
         totalOpened = events.filter(e => e.event_type === 'opened').length;
-        totalClicked = events.filter(e => e.event_type === 'clicked').length;
         totalReplied = events.filter(e => e.event_type === 'replied').length;
 
         // Get activity data for the last 7 days
@@ -1509,7 +1507,6 @@ app.get('/api/dashboard/stats', authenticateUser, async (req, res) => {
 
     // Calculate rates
     const openRate = totalSent > 0 ? ((totalOpened / totalSent) * 100).toFixed(1) : '0.0';
-    const clickRate = totalSent > 0 ? ((totalClicked / totalSent) * 100).toFixed(1) : '0.0';
     const replyRate = totalSent > 0 ? ((totalReplied / totalSent) * 100).toFixed(1) : '0.0';
 
     res.json({
@@ -1527,13 +1524,6 @@ app.get('/api/dashboard/stats', authenticateUser, async (req, res) => {
           change: '+0%',
           icon: 'ArrowUpRight',
           color: 'text-emerald-600'
-        },
-        {
-          label: 'Click Rate',
-          value: `${clickRate}%`,
-          change: '+0%',
-          icon: 'MousePointer2',
-          color: 'text-amber-600'
         },
         {
           label: 'Reply Rate',

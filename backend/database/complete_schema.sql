@@ -338,7 +338,7 @@ CREATE INDEX idx_campaign_contacts_next_send ON campaign_contacts(next_send_time
 
 CREATE TABLE IF NOT EXISTS email_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
   contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
   campaign_step_id UUID REFERENCES campaign_steps(id) ON DELETE SET NULL,
   event_type TEXT NOT NULL CHECK (event_type IN ('sent', 'opened', 'clicked', 'replied', 'bounced', 'failed', 'unsubscribed')),
