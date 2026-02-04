@@ -236,6 +236,24 @@ async function sendEmail({
  * @returns {Object} Result with messageId
  */
 async function sendViaSMTP({ account, to, subject, body, attachments = [] }) {
+  // Debug logging for SMTP configuration
+  console.log(`[EMAIL-SERVICE] 🔧 SMTP Configuration:`);
+  console.log(`[EMAIL-SERVICE]    Host: ${account.smtp_host}`);
+  console.log(`[EMAIL-SERVICE]    Port: ${account.smtp_port}`);
+  console.log(`[EMAIL-SERVICE]    Secure: ${account.smtp_port === 465}`);
+  console.log(`[EMAIL-SERVICE]    Username: ${account.smtp_username}`);
+  console.log(`[EMAIL-SERVICE]    Password stored: ${account.smtp_password ? 'YES (encrypted)' : 'NO'}`);
+
+  // Attempt to decrypt password
+  let decryptedPassword;
+  try {
+    decryptedPassword = decrypt(account.smtp_password);
+    console.log(`[EMAIL-SERVICE]    Password decrypted: YES (length: ${decryptedPassword?.length || 0})`);
+  } catch (decryptError) {
+    console.error(`[EMAIL-SERVICE]    ❌ Password decryption FAILED: ${decryptError.message}`);
+    throw new Error(`Failed to decrypt SMTP password: ${decryptError.message}`);
+  }
+
   // Create SMTP transporter
   const transporter = nodemailer.createTransport({
     host: account.smtp_host,
@@ -243,7 +261,7 @@ async function sendViaSMTP({ account, to, subject, body, attachments = [] }) {
     secure: account.smtp_port === 465,
     auth: {
       user: account.smtp_username,
-      pass: decrypt(account.smtp_password)
+      pass: decryptedPassword
     },
     tls: { rejectUnauthorized: false }
   });

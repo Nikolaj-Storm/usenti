@@ -280,6 +280,10 @@ CREATE TABLE IF NOT EXISTS campaign_steps (
   -- Multi-branch condition support: [{condition: 'if_opened', next_step_id: 'uuid'}, ...]
   condition_branches JSONB,
 
+  -- Visual editor position
+  position_x INTEGER DEFAULT 0,
+  position_y INTEGER DEFAULT 0,
+
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
 

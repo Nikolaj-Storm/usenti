@@ -220,6 +220,10 @@ CREATE TABLE IF NOT EXISTS campaign_steps (
   next_step_if_false UUID REFERENCES campaign_steps(id) ON DELETE SET NULL,
   condition_branches JSONB, -- New in v2.0
 
+  -- Visual editor position
+  position_x INTEGER DEFAULT 0,
+  position_y INTEGER DEFAULT 0,
+
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
 
