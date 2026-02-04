@@ -48,20 +48,20 @@ const EmailAccounts = () => {
       console.error('Failed to save account:', error);
       throw error;
     }
+  };
 
-      const handleDeleteAccount = async (account) => {
-            if (!confirm(`Are you sure you want to delete \${account.email_address}?\n\nThis will permanently remove the account and all related data.`)) {
-                    return;
-                  }
+  const handleDeleteAccount = async (account) => {
+    if (!confirm(`Are you sure you want to delete ${account.email_address}?\n\nThis will permanently remove the account and all related data.`)) {
+      return;
+    }
 
-            try {
-                    await api.deleteEmailAccount(account.id);
-                    loadAccounts(); // Refresh the list
-                  } catch (error) {
-                    console.error('Failed to delete account:', error);
-                    alert('Failed to delete account: ' + (error.message || 'Unknown error'));
-                  }
-          };
+    try {
+      await api.deleteEmailAccount(account.id);
+      loadAccounts(); // Refresh the list
+    } catch (error) {
+      console.error('Failed to delete account:', error);
+      alert('Failed to delete account: ' + (error.message || 'Unknown error'));
+    }
   };
 
   return h('div', { className: "space-y-6 animate-fade-in" },
@@ -87,7 +87,7 @@ const EmailAccounts = () => {
     showModal && h(AccountModal, {
       account: editingAccount,
       onClose: () => { setShowModal(false); setEditingAccount(null); },
-      onSave: handleSaveAccount, onDelete
+      onSave: handleSaveAccount
     })
   );
 };
@@ -103,8 +103,7 @@ const AccountsTab = ({ accounts, onEdit, onDelete }) => {
 
   return h('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" },
     ...accounts.map((account) =>
-      95
-                    { key: account.id, account: account, onEdit: onEdit, onDelete: onDelete })
+      h(AccountCard, { key: account.id, account: account, onEdit: onEdit, onDelete: onDelete })
     )
   );
 };
@@ -202,16 +201,14 @@ const AccountCard = ({ account, onEdit, onDelete }) => {
         className: "px-3 py-2 text-sm text-stone-400 hover:text-stone-600 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors"
       },
         h(Icons.Settings, { size: 16 })
+      ),
+      h('button', {
+        onClick: () => onDelete(account),
+        className: "px-3 py-2 text-sm text-red-400 hover:text-red-600 border border-stone-200 rounded-md hover:bg-red-50 transition-colors",
+        title: "Delete Account"
+      },
+        h(Icons.Trash2, { size: 16 })
       )
-            ),
-
-                 // NEW Delete Button
-                 h('button', {
-            onClick: () => onDelete(account),
-            className: "px-3 py-2 text-sm text-red-400 hover:text-red-600 border border-stone-200 rounded-md hover:bg-red-50 transition-colors",
-            title: "Delete Account"
-                    },
-                           h(Icons.Trash2, { size: 16 }) // Ensure Icons.Trash is available
     ),
     expanded && h('div', { className: "mt-4 pt-4 border-t border-stone-100 space-y-2 text-sm animate-fade-in" },
       account.sender_name && h('div', { className: "flex justify-between" },
