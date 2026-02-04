@@ -553,6 +553,64 @@ const CampaignBuilder = () => {
     }
   };
 
+  // Add step to a specific branch
+  const handleAddStepToBranch = async (conditionStepId, branchIndex, stepType) => {
+    const conditionStep = steps.find(s => s.id === conditionStepId);
+    if (!conditionStep || conditionStep.step_type !== 'condition') return;
+
+    const newBranches = [...conditionStep.condition_branches];
+    const branch = newBranches[branchIndex];
+    const branchSteps = branch.branch_steps || [];
+
+    // Calculate position for the new branch step
+    const branches = conditionStep.condition_branches || [];
+    const offsetX = (branchIndex - (branches.length - 1) / 2) * 250;
+    const branchStepY = conditionStep.y + 200 + branchSteps.length * 150;
+
+    const newStepRaw = {
+      id: 'branch-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+      step_type: stepType,
+      step_order: branchSteps.length + 1,
+      subject: stepType === 'email' ? 'Follow-up Email' : '',
+      body: '',
+      wait_days: stepType === 'wait' ? 1 : 0,
+      wait_hours: 0,
+      wait_minutes: 0,
+      condition_type: 'if_opened',
+      condition_branches: stepType === 'condition' ? [
+        { condition: 'if_opened', wait_days: 0, branch_steps: [] },
+        { condition: 'if_not_opened', wait_days: 2, branch_steps: [] }
+      ] : [],
+      x: conditionStep.x + offsetX,
+      y: branchStepY
+    };
+
+    newBranches[branchIndex] = {
+      ...branch,
+      branch_steps: [...branchSteps, newStepRaw]
+    };
+
+    setSteps(prevSteps => prevSteps.map(step => {
+      if (step.id === conditionStepId) {
+        return { ...step, condition_branches: newBranches };
+      }
+      return step;
+    }));
+
+    // Select the new branch step for editing
+    setActiveStep(newStepRaw.id);
+
+    if (!isDemo && selectedCampaign) {
+      try {
+        await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
+          condition_branches: newBranches
+        });
+      } catch (e) {
+        console.error('Error adding step to branch:', e);
+      }
+    }
+  };
+
   // Get active step data
   const getActiveStepData = () => {
     const mainStep = steps.find(s => s.id === activeStep);
@@ -642,6 +700,7 @@ const CampaignBuilder = () => {
           onAddBranch: handleAddBranch,
           onRemoveBranch: handleRemoveBranch,
           onUpdateBranchCondition: handleUpdateBranchCondition,
+          onAddStepToBranch: handleAddStepToBranch,
           containerRef
         })
       ),
@@ -742,7 +801,7 @@ const MiniStat = ({ label, value, rate, icon: IconComponent }) => {
 
 // --- 6. Canvas Component ---
 
-const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, setActiveStep, canvasState, onAddStep, onDeleteStep, onNodeDrag, onNodeDragEnd, onReorderSteps, onAddBranch, onRemoveBranch, onUpdateBranchCondition, containerRef }) => {
+const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, setActiveStep, canvasState, onAddStep, onDeleteStep, onNodeDrag, onNodeDragEnd, onReorderSteps, onAddBranch, onRemoveBranch, onUpdateBranchCondition, onAddStepToBranch, containerRef }) => {
   const { zoom, setZoom, pan, setPan, isPanning, setIsPanning } = canvasState;
 
   const [draggingNode, setDraggingNode] = React.useState(null);
@@ -874,20 +933,52 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
       const nextStep = sortedSteps[i + 1];
 
       if (step.step_type === 'condition') {
-        // Draw branch connections
+        // Draw branch connections for ALL branches
         const branches = step.condition_branches || [];
         branches.forEach((branch, bi) => {
           const branchSteps = branch.branch_steps || [];
-          const offsetX = (bi - (branches.length - 1) / 2) * 200;
+          const offsetX = (bi - (branches.length - 1) / 2) * 250;
+          const conditionOpt = CONDITION_OPTIONS.find(o => o.value === branch.condition);
+          const label = conditionOpt?.shortLabel || branch.condition;
 
           if (branchSteps.length > 0) {
             // Connect condition to first branch step
+            const firstBranchStep = branchSteps[0];
             connections.push({
-              id: `${step.id}-branch-${bi}-0`,
+              id: `${step.id}-branch-${bi}-start`,
               from: { x: step.x + 110, y: step.y + 100 },
-              to: { x: step.x + 110 + offsetX, y: step.y + 180 },
+              to: { x: step.x + 110 + offsetX, y: step.y + 200 },
               type: 'branch',
-              label: CONDITION_OPTIONS.find(o => o.value === branch.condition)?.shortLabel || branch.condition
+              label: label
+            });
+
+            // Connect branch steps to each other
+            for (let j = 0; j < branchSteps.length - 1; j++) {
+              const currentBS = branchSteps[j];
+              const nextBS = branchSteps[j + 1];
+              connections.push({
+                id: `${step.id}-branch-${bi}-step-${j}`,
+                from: { x: step.x + 110 + offsetX, y: step.y + 200 + (j * 150) + 100 },
+                to: { x: step.x + 110 + offsetX, y: step.y + 200 + ((j + 1) * 150) },
+                type: 'branch'
+              });
+            }
+
+            // Connect last branch step to add-step placeholder
+            connections.push({
+              id: `${step.id}-branch-${bi}-to-add`,
+              from: { x: step.x + 110 + offsetX, y: step.y + 200 + ((branchSteps.length - 1) * 150) + 100 },
+              to: { x: step.x + 110 + offsetX, y: step.y + 200 + (branchSteps.length * 150) },
+              type: 'branch-add'
+            });
+          } else {
+            // Empty branch - connect to placeholder/add-step node
+            connections.push({
+              id: `${step.id}-branch-${bi}-empty`,
+              from: { x: step.x + 110, y: step.y + 100 },
+              to: { x: step.x + 110 + offsetX, y: step.y + 200 },
+              type: 'branch',
+              label: label
             });
           }
         });
@@ -902,7 +993,7 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
       }
     }
 
-    // Add end node connection from last step
+    // Add end node connection from last step (only if not a condition)
     if (sortedSteps.length > 0) {
       const lastStep = sortedSteps[sortedSteps.length - 1];
       if (lastStep.step_type !== 'condition') {
@@ -1001,8 +1092,50 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
         onUpdateBranchCondition: (bi, cond) => onUpdateBranchCondition(step.id, bi, cond)
       })),
 
-      // End node (positioned after last step)
-      steps.length > 0 && h(EndNode, {
+      // Branch step nodes and add-step placeholders for condition nodes
+      steps.filter(s => s.step_type === 'condition').flatMap(conditionStep => {
+        const branches = conditionStep.condition_branches || [];
+        const elements = [];
+
+        branches.forEach((branch, bi) => {
+          const branchSteps = branch.branch_steps || [];
+          const offsetX = (bi - (branches.length - 1) / 2) * 250;
+
+          // Render branch step nodes
+          branchSteps.forEach((branchStep, bsi) => {
+            elements.push(h(BranchStepNode, {
+              key: `${conditionStep.id}-branch-${bi}-step-${bsi}`,
+              step: branchStep,
+              parentStep: conditionStep,
+              branchIndex: bi,
+              stepIndex: bsi,
+              x: conditionStep.x + offsetX - 15,
+              y: conditionStep.y + 200 + (bsi * 150),
+              isSelected: selectedNodes.includes(branchStep.id),
+              isActive: activeStep === branchStep.id,
+              onSelect: () => {
+                setSelectedNodes([branchStep.id]);
+                setActiveStep(branchStep.id);
+              },
+              onDelete: () => onDeleteStep(branchStep.id, conditionStep.id, bi)
+            }));
+          });
+
+          // Render add-step placeholder at the end of each branch
+          elements.push(h(AddStepPlaceholder, {
+            key: `${conditionStep.id}-branch-${bi}-add`,
+            x: conditionStep.x + offsetX - 15,
+            y: conditionStep.y + 200 + (branchSteps.length * 150),
+            branchCondition: branch.condition,
+            onAddStep: (stepType) => onAddStepToBranch(conditionStep.id, bi, stepType)
+          }));
+        });
+
+        return elements;
+      }),
+
+      // End node (positioned after last step that's not a condition)
+      steps.length > 0 && steps[steps.length - 1].step_type !== 'condition' && h(EndNode, {
         x: steps[steps.length - 1].x + 85,
         y: steps[steps.length - 1].y + 200
       })
@@ -1046,6 +1179,107 @@ const EndNode = ({ x, y }) => {
         h('span', { className: "font-semibold text-sm text-stone-700" }, "End")
       )
     )
+  );
+};
+
+// Branch step node - steps within condition branches
+const BranchStepNode = ({ step, parentStep, branchIndex, stepIndex, x, y, isSelected, isActive, onSelect, onDelete }) => {
+  const nodeType = NODE_TYPES[step.step_type] || NODE_TYPES.email;
+  const IconComponent = Icons[nodeType.icon];
+
+  return h('div', {
+    className: `canvas-node ${isSelected ? 'selected' : ''} ${isActive ? 'new' : ''}`,
+    style: { left: x, top: y, width: '200px' },
+    onClick: (e) => { e.stopPropagation(); onSelect(); }
+  },
+    h('div', { className: "node-card" },
+      h('div', { className: `node-header ${nodeType.bgClass}` },
+        h('div', { className: `node-icon ${nodeType.bgClass}` },
+          IconComponent && h(IconComponent, { size: 14 })
+        ),
+        h('div', { className: "flex-1 min-w-0" },
+          h('span', { className: "font-semibold text-xs text-stone-700 block truncate" },
+            step.step_type === 'email' ? (step.subject || 'New Email') :
+            step.step_type === 'wait' ? `Wait ${formatWaitDuration(step)}` :
+            'Condition'
+          )
+        ),
+        h('button', {
+          onClick: (e) => { e.stopPropagation(); onDelete(); },
+          className: "p-0.5 rounded hover:bg-white/50 text-stone-400 hover:text-red-500 transition-colors"
+        }, h(Icons.X, { size: 12 }))
+      ),
+      h('div', { className: "node-content py-1" },
+        step.step_type === 'email' && h('p', { className: "text-xs text-stone-500 truncate" },
+          (step.body || 'No content...').substring(0, 30) + (step.body?.length > 30 ? '...' : '')
+        ),
+        step.step_type === 'wait' && h('div', { className: "flex items-center gap-1 text-xs text-stone-500" },
+          h(Icons.Clock, { size: 10 }),
+          h('span', null, 'Delay')
+        )
+      )
+    ),
+    h('div', { className: "node-port input" }),
+    h('div', { className: "node-port output" })
+  );
+};
+
+// Add step placeholder - appears at the end of each branch
+const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
+  const [showMenu, setShowMenu] = React.useState(false);
+  const conditionOpt = CONDITION_OPTIONS.find(o => o.value === branchCondition);
+
+  const stepOptions = [
+    { type: 'email', icon: 'Mail', label: 'Email', color: '#3b82f6' },
+    { type: 'wait', icon: 'Clock', label: 'Wait', color: '#8b5cf6' },
+    { type: 'condition', icon: 'Split', label: 'Condition', color: '#f59e0b' }
+  ];
+
+  return h('div', {
+    className: "canvas-node",
+    style: { left: x, top: y, width: '200px' }
+  },
+    h('div', {
+      className: "node-card border-2 border-dashed border-stone-300 bg-stone-50/80 hover:border-stone-400 hover:bg-stone-100/80 transition-all cursor-pointer",
+      onClick: (e) => { e.stopPropagation(); setShowMenu(!showMenu); }
+    },
+      h('div', { className: "p-3 text-center" },
+        h('div', { className: "flex items-center justify-center gap-2 text-stone-400" },
+          h(Icons.Plus, { size: 18 }),
+          h('span', { className: "text-sm font-medium" }, "Add Step")
+        ),
+        h('p', { className: "text-xs text-stone-400 mt-1" },
+          `to "${conditionOpt?.shortLabel || branchCondition}" branch`
+        )
+      ),
+
+      // Dropdown menu for step type selection
+      showMenu && h('div', {
+        className: "absolute top-full left-0 mt-1 w-full bg-white rounded-lg shadow-lg border border-stone-200 z-50 overflow-hidden"
+      },
+        stepOptions.map(opt => {
+          const Icon = Icons[opt.icon];
+          return h('button', {
+            key: opt.type,
+            className: "w-full px-3 py-2 flex items-center gap-2 hover:bg-stone-100 transition-colors text-left",
+            onClick: (e) => {
+              e.stopPropagation();
+              onAddStep(opt.type);
+              setShowMenu(false);
+            }
+          },
+            h('div', {
+              className: "w-6 h-6 rounded flex items-center justify-center",
+              style: { background: opt.color }
+            },
+              Icon && h(Icon, { size: 12, color: 'white' })
+            ),
+            h('span', { className: "text-sm text-stone-700" }, opt.label)
+          );
+        })
+      )
+    ),
+    h('div', { className: "node-port input" })
   );
 };
 
