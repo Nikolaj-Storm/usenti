@@ -17,20 +17,39 @@
         theme: {
           extend: {
             colors: {
-              jaguar: {
-                900: '#0B2B26',
-                800: '#16423C',
-                700: '#1F5750',
-                100: '#E8F5F3',
+              // Dark Mode Glassmorphism - Warm Palette
+              rust: {
+                950: '#1A0A05',   // Darkest - deep shadows
+                900: '#2D1810',   // Dark burnt umber
+                800: '#4A2516',   // Rich rust
+                700: '#6B3A1F',   // Medium rust
+                600: '#8B4F28',   // Warm rust
+                500: '#A86232',   // Terracotta
+                400: '#C47A3D',   // Copper orange
+                300: '#D99A5C',   // Light copper
               },
               cream: {
-                50: '#FDFBF7',
-                100: '#F7F4EB',
-                200: '#EBE6D9',
+                50: '#FDF8F3',    // Off-white warm
+                100: '#F5E6D3',   // Primary cream (CTA color)
+                200: '#EBD9C4',   // Slightly darker cream
+              },
+              // Glass surface colors (semi-transparent whites)
+              glass: {
+                light: 'rgba(255, 255, 255, 0.10)',
+                medium: 'rgba(255, 255, 255, 0.08)',
+                dark: 'rgba(255, 255, 255, 0.05)',
+                border: 'rgba(255, 255, 255, 0.10)',
+              },
+              // Keep legacy for compatibility during transition
+              jaguar: {
+                900: '#2D1810',
+                800: '#4A2516',
+                700: '#6B3A1F',
+                100: '#F5E6D3',
               },
               gold: {
-                500: '#C5A065',
-                600: '#B08D55',
+                500: '#D99A5C',
+                600: '#C47A3D',
               }
             },
             fontFamily: {
@@ -38,13 +57,26 @@
               serif: ['Playfair Display', 'serif'],
             },
             animation: {
-                'fade-in': 'fadeIn 0.5s ease-out forwards',
+              'fade-in': 'fadeIn 0.5s ease-out forwards',
+              'slide-up': 'slideUp 0.4s ease-out forwards',
             },
             keyframes: {
-                fadeIn: {
-                    '0%': { opacity: '0' },
-                    '100%': { opacity: '1' },
-                }
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              }
+            },
+            backdropBlur: {
+              xs: '2px',
+            },
+            borderRadius: {
+              '2xl': '16px',
+              '3xl': '20px',
+              '4xl': '24px',
             }
           }
         }
