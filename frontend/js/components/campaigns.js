@@ -576,20 +576,20 @@ const CampaignBuilder = () => {
 
   if (loading) {
     return h('div', { className: "flex items-center justify-center h-96" },
-      h(Icons.Loader2, { className: "animate-spin text-jaguar-900", size: 48 })
+      h(Icons.Loader2, { className: "animate-spin text-cream-100", size: 48 })
     );
   }
 
   // Empty State
   if (!selectedCampaign && campaigns.length === 0) {
     return h('div', { className: "flex flex-col items-center justify-center h-96 text-center animate-fade-in" },
-      h(Icons.Send, { size: 64, className: "text-stone-300 mb-4" }),
-      h('h3', { className: "font-serif text-2xl text-jaguar-900 mb-2" }, 'No Campaigns Yet'),
-      h('p', { className: "text-stone-500 mb-6 max-w-md" }, 'Create your first email campaign to start reaching out.'),
+      h(Icons.Send, { size: 64, className: "text-white/30 mb-4" }),
+      h('h3', { className: "font-serif text-2xl text-white mb-2" }, 'No Campaigns Yet'),
+      h('p', { className: "text-white/60 mb-6 max-w-md" }, 'Create your first email campaign to start reaching out.'),
       h('div', { className: "flex gap-3" },
         h('button', {
           onClick: () => setShowNewCampaignModal(true),
-          className: "px-6 py-3 bg-jaguar-900 text-cream-50 rounded-lg hover:bg-jaguar-800 flex items-center gap-2 text-white"
+          className: "btn-primary px-6 py-3 flex items-center gap-2"
         }, h(Icons.Plus, { size: 20 }), 'Create Campaign'),
       ),
       showNewCampaignModal && h(NewCampaignModal, { onClose: () => setShowNewCampaignModal(false), onCreate: handleCreateCampaign })
@@ -625,7 +625,7 @@ const CampaignBuilder = () => {
       // Canvas Area
       h('div', {
         ref: containerRef,
-        className: `flex-1 relative overflow-hidden border border-stone-200 rounded-lg ${showEditor ? 'rounded-r-none' : ''}`
+        className: `flex-1 relative overflow-hidden glass-card ${showEditor ? 'rounded-r-none' : ''}`
       },
         h(WorkflowCanvas, {
           steps,
@@ -647,7 +647,7 @@ const CampaignBuilder = () => {
       ),
 
       // Editor Panel (collapsible)
-      showEditor && h('div', { className: "w-80 bg-white border-l border-stone-200 overflow-hidden flex flex-col" },
+      showEditor && h('div', { className: "w-80 glass-card rounded-l-none border-l border-white/10 overflow-hidden flex flex-col" },
         activeStepData
           ? h(StepEditor, {
               step: activeStepData.step,
@@ -655,7 +655,7 @@ const CampaignBuilder = () => {
               onDelete: () => handleDeleteStep(activeStepData.step.id, activeStepData.parentBranchId, activeStepData.branchIndex),
               saving: saving
             })
-          : h('div', { className: "h-full flex flex-col items-center justify-center text-stone-400 p-6" },
+          : h('div', { className: "h-full flex flex-col items-center justify-center text-white/40 p-6" },
               h(Icons.MousePointer, { size: 48, className: "opacity-20 mb-4" }),
               h('p', { className: "text-center" }, "Select a node on the canvas to edit its properties")
             )
@@ -669,18 +669,18 @@ const CampaignBuilder = () => {
 // --- 5. Builder Header Component ---
 
 const BuilderHeader = ({ selectedCampaign, campaigns, isDemo, stats, loadingStats, onSelectCampaign, onDeleteCampaign, onStartCampaign, onPauseCampaign, onNewCampaign, onLoadDemo, showEditor, onToggleEditor }) => {
-  return h('div', { className: "flex justify-between items-center mb-3 pb-3 border-b border-stone-200" },
+  return h('div', { className: "flex justify-between items-center mb-3 pb-3 border-b border-white/10" },
     h('div', { className: "flex items-center gap-4" },
       h('div', null,
-        h('h1', { className: "font-serif text-2xl text-jaguar-900" }, selectedCampaign?.name || 'Campaign Builder'),
-        h('div', { className: "flex items-center gap-2 text-sm text-stone-500" },
-          h('span', { className: `w-2 h-2 rounded-full ${selectedCampaign?.status === 'running' ? 'bg-green-500 animate-pulse' : selectedCampaign?.status === 'paused' ? 'bg-yellow-500' : 'bg-stone-300'}` }),
+        h('h1', { className: "font-serif text-2xl text-white" }, selectedCampaign?.name || 'Campaign Builder'),
+        h('div', { className: "flex items-center gap-2 text-sm text-white/60" },
+          h('span', { className: `w-2 h-2 rounded-full ${selectedCampaign?.status === 'running' ? 'bg-green-500 animate-pulse' : selectedCampaign?.status === 'paused' ? 'bg-yellow-500' : 'bg-white/30'}` }),
           h('span', { className: "capitalize" }, selectedCampaign?.status || 'draft'),
-          isDemo && h('span', { className: "ml-2 px-2 py-0.5 bg-gold-500 text-white text-xs rounded-full" }, "Demo")
+          isDemo && h('span', { className: "ml-2 px-2 py-0.5 bg-cream-100 text-rust-900 text-xs rounded-full" }, "Demo")
         )
       ),
       // Quick stats
-      !isDemo && stats && h('div', { className: "flex gap-4 ml-6 pl-6 border-l border-stone-200" },
+      !isDemo && stats && h('div', { className: "flex gap-4 ml-6 pl-6 border-l border-white/10" },
         h(MiniStat, { label: "Sent", value: stats.sent_count, icon: Icons.Send }),
         h(MiniStat, { label: "Opened", value: stats.opened_count, rate: stats.open_rate, icon: Icons.Eye }),
         h(MiniStat, { label: "Replied", value: stats.replied_count, rate: stats.reply_rate, icon: Icons.Reply })
@@ -689,15 +689,15 @@ const BuilderHeader = ({ selectedCampaign, campaigns, isDemo, stats, loadingStat
     h('div', { className: "flex items-center gap-2" },
       h('button', {
         onClick: onToggleEditor,
-        className: `p-2 rounded-lg border transition-colors ${showEditor ? 'bg-jaguar-900 text-white border-jaguar-900' : 'border-stone-200 hover:bg-stone-50'}`,
+        className: `p-2 rounded-xl border transition-colors ${showEditor ? 'bg-cream-100 text-rust-900 border-cream-100' : 'border-white/20 text-white/60 hover:bg-white/10 hover:text-white'}`,
         title: showEditor ? "Hide Editor" : "Show Editor"
       }, h(Icons.Edit3, { size: 18 })),
 
-      h('div', { className: "w-px h-6 bg-stone-200 mx-1" }),
+      h('div', { className: "w-px h-6 bg-white/10 mx-1" }),
 
       !isDemo && selectedCampaign && h('button', {
         onClick: onDeleteCampaign,
-        className: "p-2 border border-red-200 rounded-lg hover:bg-red-50 text-red-500",
+        className: "p-2 border border-red-500/30 rounded-xl hover:bg-red-500/20 text-red-400",
         title: "Delete Campaign"
       }, h(Icons.Trash2, { size: 18 })),
 
@@ -705,16 +705,16 @@ const BuilderHeader = ({ selectedCampaign, campaigns, isDemo, stats, loadingStat
         selectedCampaign.status === 'running'
           ? h('button', {
               onClick: onPauseCampaign,
-              className: "px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 flex items-center gap-2 text-sm"
+              className: "px-3 py-2 bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-xl hover:bg-yellow-500/30 flex items-center gap-2 text-sm"
             }, h(Icons.Pause, { size: 16 }), 'Pause')
           : h('button', {
               onClick: onStartCampaign,
-              className: "px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm"
+              className: "px-3 py-2 bg-green-500/20 text-green-300 border border-green-500/30 rounded-xl hover:bg-green-500/30 flex items-center gap-2 text-sm"
             }, h(Icons.Play, { size: 16 }), selectedCampaign.status === 'paused' ? 'Resume' : 'Start')
       ),
 
       !isDemo && h('select', {
-        className: "px-3 py-2 border border-stone-200 rounded-lg bg-white text-sm",
+        className: "glass-input px-3 py-2 rounded-xl text-sm",
         value: selectedCampaign?.id || '',
         onChange: e => {
           const c = campaigns.find(x => x.id === e.target.value);
@@ -724,7 +724,7 @@ const BuilderHeader = ({ selectedCampaign, campaigns, isDemo, stats, loadingStat
 
       h('button', {
         onClick: onNewCampaign,
-        className: "p-2 bg-jaguar-900 text-white rounded-lg hover:bg-jaguar-800",
+        className: "p-2 bg-cream-100 text-rust-900 rounded-xl hover:bg-cream-200",
         title: "New Campaign"
       }, h(Icons.Plus, { size: 18 }))
     )
@@ -733,10 +733,10 @@ const BuilderHeader = ({ selectedCampaign, campaigns, isDemo, stats, loadingStat
 
 const MiniStat = ({ label, value, rate, icon: IconComponent }) => {
   return h('div', { className: "flex items-center gap-2" },
-    h(IconComponent, { size: 14, className: "text-stone-400" }),
-    h('span', { className: "text-sm font-medium text-jaguar-900" }, value || 0),
-    rate !== undefined && rate > 0 && h('span', { className: "text-xs text-stone-400" }, `(${rate}%)`),
-    h('span', { className: "text-xs text-stone-400" }, label)
+    h(IconComponent, { size: 14, className: "text-white/40" }),
+    h('span', { className: "text-sm font-medium text-white" }, value || 0),
+    rate !== undefined && rate > 0 && h('span', { className: "text-xs text-white/40" }, `(${rate}%)`),
+    h('span', { className: "text-xs text-white/40" }, label)
   );
 };
 
@@ -1009,7 +1009,7 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
     ),
 
     // Zoom indicator (small, bottom right)
-    h('div', { className: "absolute bottom-3 right-3 px-2 py-1 bg-white/80 rounded text-xs text-stone-500 font-medium" },
+    h('div', { className: "absolute bottom-3 right-3 px-2 py-1 bg-black/30 backdrop-blur rounded-lg text-xs text-white/70 font-medium" },
       `${Math.round(zoom * 100)}%`
     )
   );
@@ -1134,29 +1134,29 @@ const BlockToolbar = ({ onAddStep }) => {
     { type: 'condition', icon: 'Split', label: 'Condition', color: '#f59e0b', desc: 'Branch logic' }
   ];
 
-  return h('div', { className: "flex items-center gap-2 p-2 bg-white border-b border-stone-200" },
-    h('span', { className: "text-xs font-semibold text-stone-400 uppercase tracking-wider px-2" }, "Add Block:"),
+  return h('div', { className: "flex items-center gap-2 p-2 glass-card rounded-xl mb-2" },
+    h('span', { className: "text-xs font-semibold text-white/40 uppercase tracking-wider px-2" }, "Add Block:"),
     blocks.map(block => {
       const IconComponent = Icons[block.icon];
       return h('div', {
         key: block.type,
-        className: "flex items-center gap-2 px-3 py-2 bg-stone-50 rounded-lg cursor-grab border border-transparent hover:border-stone-300 hover:bg-stone-100 transition-all",
+        className: "flex items-center gap-2 px-3 py-2 bg-white/10 rounded-xl cursor-grab border border-transparent hover:border-white/20 hover:bg-white/15 transition-all",
         draggable: true,
         onDragStart: (e) => handleDragStart(e, block.type),
         onClick: () => onAddStep(block.type),
         title: block.desc
       },
         h('div', {
-          className: "w-7 h-7 rounded-md flex items-center justify-center",
+          className: "w-7 h-7 rounded-lg flex items-center justify-center",
           style: { background: block.color }
         },
           IconComponent && h(IconComponent, { size: 14, color: 'white' })
         ),
-        h('span', { className: "text-sm font-medium text-stone-700" }, block.label)
+        h('span', { className: "text-sm font-medium text-white" }, block.label)
       );
     }),
     h('div', { className: "flex-1" }),
-    h('span', { className: "text-xs text-stone-400 px-2" }, "Drag blocks onto canvas or click to add")
+    h('span', { className: "text-xs text-white/40 px-2" }, "Drag blocks onto canvas or click to add")
   );
 };
 
@@ -1194,22 +1194,22 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
 
   return h('div', { className: "flex flex-col h-full" },
     // Header
-    h('div', { className: `p-4 border-b border-stone-200 node-header ${nodeType.bgClass}` },
+    h('div', { className: `p-4 border-b border-white/10` },
       h('div', { className: "flex items-center justify-between" },
         h('div', { className: "flex items-center gap-3" },
           h('div', { className: `node-icon ${nodeType.bgClass}` },
             IconComponent && h(IconComponent, { size: 18 })
           ),
           h('div', null,
-            h('h3', { className: "font-semibold text-stone-800" }, nodeType.label),
-            saving && h('span', { className: "text-xs text-stone-500 flex items-center gap-1" },
+            h('h3', { className: "font-semibold text-white" }, nodeType.label),
+            saving && h('span', { className: "text-xs text-white/50 flex items-center gap-1" },
               h(Icons.Loader2, { size: 10, className: "animate-spin" }), "Saving..."
             )
           )
         ),
         h('button', {
           onClick: onDelete,
-          className: "p-2 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+          className: "p-2 text-white/40 hover:text-red-400 hover:bg-red-500/20 rounded-xl transition-colors"
         }, h(Icons.Trash2, { size: 16 }))
       )
     ),
@@ -1218,9 +1218,9 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
     h('div', { className: "flex-1 overflow-y-auto p-4" },
       step.step_type === 'email' && h('div', { className: "space-y-4" },
         h('div', null,
-          h('label', { className: "block text-sm font-medium text-stone-700 mb-1" }, "Subject"),
+          h('label', { className: "block text-sm font-medium text-white mb-1" }, "Subject"),
           h('input', {
-            className: "w-full px-3 py-2 border border-stone-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900",
+            className: "glass-input w-full px-3 py-2 rounded-xl text-sm",
             value: data.subject,
             onChange: e => handleChange('subject', e.target.value),
             onBlur: handleBlur,
@@ -1229,18 +1229,18 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
         ),
         h('div', null,
           h('div', { className: "flex justify-between items-center mb-1" },
-            h('label', { className: "block text-sm font-medium text-stone-700" }, "Body"),
+            h('label', { className: "block text-sm font-medium text-white" }, "Body"),
             h('div', { className: "flex flex-wrap gap-1" },
               personalizationVars.slice(0, 3).map(v => h('button', {
                 key: v.var,
                 onClick: () => insertVar(v.var),
-                className: "text-xs bg-stone-100 px-1.5 py-0.5 rounded hover:bg-jaguar-900 hover:text-white transition-colors"
+                className: "text-xs bg-white/10 text-white/70 px-1.5 py-0.5 rounded-lg hover:bg-cream-100 hover:text-rust-900 transition-colors"
               }, v.var))
             )
           ),
           h('textarea', {
             id: "emailBody",
-            className: "w-full px-3 py-2 border border-stone-200 rounded-lg h-64 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-jaguar-900/20 focus:border-jaguar-900",
+            className: "glass-input w-full px-3 py-2 rounded-xl h-64 font-mono text-sm",
             value: data.body,
             onChange: e => handleChange('body', e.target.value),
             onBlur: handleBlur,
@@ -1250,14 +1250,14 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
       ),
 
       step.step_type === 'wait' && h('div', { className: "space-y-4" },
-        h('p', { className: "text-sm text-stone-600 mb-4" }, "Set how long to wait before proceeding to the next step."),
+        h('p', { className: "text-sm text-white/60 mb-4" }, "Set how long to wait before proceeding to the next step."),
         h('div', { className: "grid grid-cols-3 gap-3" },
           h('div', null,
-            h('label', { className: "block text-xs text-stone-500 mb-1" }, "Days"),
+            h('label', { className: "block text-xs text-white/50 mb-1" }, "Days"),
             h('input', {
               type: "number",
               min: "0",
-              className: "w-full px-3 py-2 border border-stone-200 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-jaguar-900/20",
+              className: "glass-input w-full px-3 py-2 rounded-xl text-center",
               value: data.wait_days || 0,
               onChange: e => {
                 const v = Math.max(0, parseInt(e.target.value) || 0);
@@ -1267,12 +1267,12 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
             })
           ),
           h('div', null,
-            h('label', { className: "block text-xs text-stone-500 mb-1" }, "Hours"),
+            h('label', { className: "block text-xs text-white/50 mb-1" }, "Hours"),
             h('input', {
               type: "number",
               min: "0",
               max: "23",
-              className: "w-full px-3 py-2 border border-stone-200 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-jaguar-900/20",
+              className: "glass-input w-full px-3 py-2 rounded-xl text-center",
               value: data.wait_hours || 0,
               onChange: e => {
                 const v = Math.min(23, Math.max(0, parseInt(e.target.value) || 0));
@@ -1282,12 +1282,12 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
             })
           ),
           h('div', null,
-            h('label', { className: "block text-xs text-stone-500 mb-1" }, "Minutes"),
+            h('label', { className: "block text-xs text-white/50 mb-1" }, "Minutes"),
             h('input', {
               type: "number",
               min: "0",
               max: "59",
-              className: "w-full px-3 py-2 border border-stone-200 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-jaguar-900/20",
+              className: "glass-input w-full px-3 py-2 rounded-xl text-center",
               value: data.wait_minutes || 0,
               onChange: e => {
                 const v = Math.min(59, Math.max(0, parseInt(e.target.value) || 0));
@@ -1297,26 +1297,26 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
             })
           )
         ),
-        h('div', { className: "mt-4 p-3 bg-purple-50 rounded-lg border border-purple-200" },
+        h('div', { className: "mt-4 p-3 bg-purple-500/20 rounded-xl border border-purple-500/30" },
           h('div', { className: "flex items-center gap-2" },
-            h(Icons.Clock, { size: 16, className: "text-purple-600" }),
-            h('span', { className: "text-sm font-medium text-purple-900" }, `Total: ${formatWaitDuration(data)}`)
+            h(Icons.Clock, { size: 16, className: "text-purple-300" }),
+            h('span', { className: "text-sm font-medium text-purple-200" }, `Total: ${formatWaitDuration(data)}`)
           )
         )
       ),
 
       step.step_type === 'condition' && h('div', { className: "space-y-4" },
-        h('div', { className: "p-3 bg-amber-50 rounded-lg border border-amber-200" },
+        h('div', { className: "p-3 bg-amber-500/20 rounded-xl border border-amber-500/30" },
           h('div', { className: "flex items-center gap-2 mb-2" },
-            h(Icons.Split, { size: 16, className: "text-amber-600" }),
-            h('span', { className: "font-medium text-amber-900" }, "Condition Branches")
+            h(Icons.Split, { size: 16, className: "text-amber-300" }),
+            h('span', { className: "font-medium text-amber-200" }, "Condition Branches")
           ),
-          h('p', { className: "text-sm text-amber-700" },
+          h('p', { className: "text-sm text-amber-200/70" },
             "Each branch evaluates a condition. Configure branches directly on the canvas node."
           )
         ),
-        h('div', { className: "p-3 bg-blue-50 rounded-lg border border-blue-200" },
-          h('p', { className: "text-sm text-blue-700" },
+        h('div', { className: "p-3 bg-blue-500/20 rounded-xl border border-blue-500/30" },
+          h('p', { className: "text-sm text-blue-200/70" },
             "For 'NOT' conditions, the system waits the specified time before checking if the condition was met."
           )
         )
@@ -1374,50 +1374,50 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
     onCreate(payload);
   };
 
-  return h('div', { className: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in", onClick: onClose },
-    h('div', { className: "bg-white rounded-xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto shadow-2xl", onClick: e => e.stopPropagation() },
+  return h('div', { className: "fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in", onClick: onClose },
+    h('div', { className: "glass-modal rounded-2xl p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto", onClick: e => e.stopPropagation() },
       h('div', { className: "flex items-center justify-between mb-4" },
-        h('h3', { className: "font-serif text-2xl text-jaguar-900" }, "New Campaign"),
-        h('button', { onClick: onClose, className: "p-2 hover:bg-stone-100 rounded-lg" }, h(Icons.X, { size: 20 }))
+        h('h3', { className: "font-serif text-2xl text-white" }, "New Campaign"),
+        h('button', { onClick: onClose, className: "p-2 hover:bg-white/10 rounded-xl text-white/60 hover:text-white transition-colors" }, h(Icons.X, { size: 20 }))
       ),
-      loading ? h('div', { className: "flex justify-center py-8" }, h(Icons.Loader2, { className: "animate-spin text-jaguar-900", size: 32 })) :
+      loading ? h('div', { className: "flex justify-center py-8" }, h(Icons.Loader2, { className: "animate-spin text-cream-100", size: 32 })) :
       h('form', { onSubmit: handleSubmit, className: "space-y-4" },
         h('div', null,
-          h('label', { className: "block text-sm font-medium text-stone-700 mb-1" }, "Campaign Name"),
+          h('label', { className: "block text-sm font-medium text-white mb-1" }, "Campaign Name"),
           h('input', {
             required: true,
-            className: "w-full border border-stone-200 p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-jaguar-900/20",
+            className: "glass-input w-full p-2.5 rounded-xl text-sm",
             value: formData.name,
             onChange: e => setFormData({...formData, name: e.target.value}),
             placeholder: "e.g., Q1 Outreach Campaign"
           })
         ),
         h('div', null,
-          h('label', { className: "block text-sm font-medium text-stone-700 mb-1" }, "Send From"),
-          h('div', { className: "border border-stone-200 rounded-lg max-h-32 overflow-y-auto" },
+          h('label', { className: "block text-sm font-medium text-white mb-1" }, "Send From"),
+          h('div', { className: "glass-input rounded-xl max-h-32 overflow-y-auto p-0" },
             emailAccounts.length === 0 ?
-              h('div', { className: "p-3 text-center text-stone-500 text-sm" }, "No email accounts found") :
+              h('div', { className: "p-3 text-center text-white/50 text-sm" }, "No email accounts found") :
               emailAccounts.map(account =>
                 h('label', {
                   key: account.id,
-                  className: `flex items-center gap-2 p-2.5 hover:bg-stone-50 cursor-pointer border-b last:border-b-0 ${formData.email_account_ids.includes(account.id) ? 'bg-cream-50' : ''}`
+                  className: `flex items-center gap-2 p-2.5 hover:bg-white/10 cursor-pointer border-b border-white/10 last:border-b-0 ${formData.email_account_ids.includes(account.id) ? 'bg-cream-100/10' : ''}`
                 },
                   h('input', {
                     type: "checkbox",
                     checked: formData.email_account_ids.includes(account.id),
                     onChange: () => toggleEmailAccount(account.id),
-                    className: "w-4 h-4 rounded border-stone-300 text-jaguar-900"
+                    className: "w-4 h-4 rounded border-white/30 bg-transparent"
                   }),
-                  h('span', { className: "text-sm text-stone-700 truncate" }, account.email_address)
+                  h('span', { className: "text-sm text-white truncate" }, account.email_address)
                 )
               )
           )
         ),
         h('div', null,
-          h('label', { className: "block text-sm font-medium text-stone-700 mb-1" }, "Target List"),
+          h('label', { className: "block text-sm font-medium text-white mb-1" }, "Target List"),
           h('select', {
             required: true,
-            className: "w-full border border-stone-200 p-2.5 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-jaguar-900/20",
+            className: "glass-input w-full p-2.5 rounded-xl text-sm",
             value: formData.contact_list_id,
             onChange: e => setFormData({...formData, contact_list_id: e.target.value})
           },
@@ -1425,39 +1425,39 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
             contactLists.map(l => h('option', { key: l.id, value: l.id }, String(l.name)))
           )
         ),
-        h('label', { className: "flex items-center gap-3 p-3 bg-cream-50 rounded-lg border border-stone-200 cursor-pointer" },
+        h('label', { className: "flex items-center gap-3 p-3 bg-cream-100/10 rounded-xl border border-white/10 cursor-pointer" },
           h('input', {
             type: "checkbox",
             checked: formData.send_immediately,
             onChange: e => setFormData({...formData, send_immediately: e.target.checked}),
-            className: "w-4 h-4 rounded"
+            className: "w-4 h-4 rounded bg-transparent border-white/30"
           }),
           h('div', null,
-            h('span', { className: "block text-sm font-medium text-stone-700" }, "Send anytime (ignore schedule)"),
-            h('span', { className: "text-xs text-stone-500" }, "Emails will send 24/7")
+            h('span', { className: "block text-sm font-medium text-white" }, "Send anytime (ignore schedule)"),
+            h('span', { className: "text-xs text-white/50" }, "Emails will send 24/7")
           )
         ),
         h('button', {
           type: "button",
           onClick: () => setShowAdvanced(!showAdvanced),
-          className: "text-sm text-jaguar-900 hover:underline flex items-center gap-1"
+          className: "text-sm text-cream-100 hover:text-white flex items-center gap-1 transition-colors"
         },
           h(showAdvanced ? Icons.ChevronUp : Icons.ChevronDown, { size: 16 }),
           showAdvanced ? "Hide Schedule" : "Show Schedule"
         ),
-        showAdvanced && h('div', { className: "space-y-3 p-3 bg-stone-50 rounded-lg border border-stone-200" },
+        showAdvanced && h('div', { className: "space-y-3 p-3 bg-white/5 rounded-xl border border-white/10" },
           h('div', null,
-            h('label', { className: "block text-xs font-medium text-stone-600 mb-2" }, "Send Days"),
+            h('label', { className: "block text-xs font-medium text-white/60 mb-2" }, "Send Days"),
             h('div', { className: "flex flex-wrap gap-1" },
               allDays.map(day =>
                 h('button', {
                   key: day.key,
                   type: "button",
                   onClick: () => toggleDay(day.key),
-                  className: `px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                  className: `px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
                     formData.send_schedule.days.includes(day.key)
-                      ? 'bg-jaguar-900 text-white'
-                      : 'bg-white border border-stone-300 text-stone-600 hover:border-jaguar-900'
+                      ? 'bg-cream-100 text-rust-900'
+                      : 'bg-white/10 border border-white/20 text-white/60 hover:border-white/40'
                   }`
                 }, day.label)
               )
@@ -1465,17 +1465,17 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
           ),
           h('div', { className: "grid grid-cols-2 gap-3" },
             h('div', null,
-              h('label', { className: "block text-xs text-stone-600 mb-1" }, "Start Hour"),
+              h('label', { className: "block text-xs text-white/60 mb-1" }, "Start Hour"),
               h('select', {
-                className: "w-full border border-stone-200 p-2 rounded-lg bg-white text-sm",
+                className: "glass-input w-full p-2 rounded-xl text-sm",
                 value: formData.send_schedule.start_hour,
                 onChange: e => setFormData({ ...formData, send_schedule: { ...formData.send_schedule, start_hour: parseInt(e.target.value) } })
               }, Array.from({ length: 24 }, (_, i) => h('option', { key: i, value: i }, `${i.toString().padStart(2, '0')}:00`)))
             ),
             h('div', null,
-              h('label', { className: "block text-xs text-stone-600 mb-1" }, "End Hour"),
+              h('label', { className: "block text-xs text-white/60 mb-1" }, "End Hour"),
               h('select', {
-                className: "w-full border border-stone-200 p-2 rounded-lg bg-white text-sm",
+                className: "glass-input w-full p-2 rounded-xl text-sm",
                 value: formData.send_schedule.end_hour,
                 onChange: e => setFormData({ ...formData, send_schedule: { ...formData.send_schedule, end_hour: parseInt(e.target.value) } })
               }, Array.from({ length: 25 }, (_, i) => h('option', { key: i, value: i }, i === 24 ? '24:00' : `${i.toString().padStart(2, '0')}:00`)))
@@ -1484,7 +1484,7 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
         ),
         h('button', {
           type: "submit",
-          className: "w-full bg-jaguar-900 text-white p-3 rounded-lg hover:bg-jaguar-800 font-medium transition-colors flex items-center justify-center gap-2"
+          className: "btn-primary w-full p-3 flex items-center justify-center gap-2"
         }, h(Icons.Plus, { size: 18 }), "Create Campaign")
       )
     )
