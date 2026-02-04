@@ -1190,6 +1190,7 @@ const BranchStepNode = ({ step, parentStep, branchIndex, stepIndex, x, y, isSele
   return h('div', {
     className: `canvas-node ${isSelected ? 'selected' : ''} ${isActive ? 'new' : ''}`,
     style: { left: x, top: y, width: '200px' },
+    onMouseDown: (e) => e.stopPropagation(),
     onClick: (e) => { e.stopPropagation(); onSelect(); }
   },
     h('div', { className: "node-card" },
@@ -1235,12 +1236,22 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
     { type: 'condition', icon: 'Split', label: 'Condition', color: '#f59e0b' }
   ];
 
+  const handleAddStepClick = (e, stepType) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onAddStep(stepType);
+    setShowMenu(false);
+  };
+
   return h('div', {
     className: "canvas-node",
-    style: { left: x, top: y, width: '200px' }
+    style: { left: x, top: y, width: '200px', zIndex: showMenu ? 100 : 1 },
+    onMouseDown: (e) => e.stopPropagation(),
+    onClick: (e) => e.stopPropagation()
   },
     h('div', {
-      className: "node-card border-2 border-dashed border-stone-300 bg-stone-50/80 hover:border-stone-400 hover:bg-stone-100/80 transition-all cursor-pointer",
+      className: "node-card border-2 border-dashed border-stone-300 bg-stone-50/80 hover:border-stone-400 hover:bg-stone-100/80 transition-all cursor-pointer relative",
+      onMouseDown: (e) => e.stopPropagation(),
       onClick: (e) => { e.stopPropagation(); setShowMenu(!showMenu); }
     },
       h('div', { className: "p-3 text-center" },
@@ -1255,18 +1266,19 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
 
       // Dropdown menu for step type selection
       showMenu && h('div', {
-        className: "absolute top-full left-0 mt-1 w-full bg-white rounded-lg shadow-lg border border-stone-200 z-50 overflow-hidden"
+        className: "absolute top-full left-0 mt-1 w-full bg-white rounded-lg shadow-lg border border-stone-200 overflow-hidden",
+        style: { zIndex: 1000 },
+        onMouseDown: (e) => e.stopPropagation(),
+        onClick: (e) => e.stopPropagation()
       },
         stepOptions.map(opt => {
           const Icon = Icons[opt.icon];
           return h('button', {
             key: opt.type,
+            type: 'button',
             className: "w-full px-3 py-2 flex items-center gap-2 hover:bg-stone-100 transition-colors text-left",
-            onClick: (e) => {
-              e.stopPropagation();
-              onAddStep(opt.type);
-              setShowMenu(false);
-            }
+            onMouseDown: (e) => e.stopPropagation(),
+            onClick: (e) => handleAddStepClick(e, opt.type)
           },
             h('div', {
               className: "w-6 h-6 rounded flex items-center justify-center",
