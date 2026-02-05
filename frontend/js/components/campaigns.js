@@ -555,20 +555,11 @@ const CampaignBuilder = () => {
 
   // Add step to a specific branch
   const handleAddStepToBranch = async (conditionStepId, branchIndex, stepType) => {
-    console.log('🔧 [handleAddStepToBranch] Called with:', { conditionStepId, branchIndex, stepType });
-
     const conditionStep = steps.find(s => s.id === conditionStepId);
-    console.log('🔧 [handleAddStepToBranch] Found condition step:', conditionStep);
-
-    if (!conditionStep || conditionStep.step_type !== 'condition') {
-      console.log('🔧 [handleAddStepToBranch] Early return - invalid condition step');
-      return;
-    }
+    if (!conditionStep || conditionStep.step_type !== 'condition') return;
 
     const newBranches = [...conditionStep.condition_branches];
     const branch = newBranches[branchIndex];
-    console.log('🔧 [handleAddStepToBranch] Branch:', branch);
-
     const branchSteps = branch.branch_steps || [];
 
     // Calculate position for the new branch step
@@ -594,14 +585,10 @@ const CampaignBuilder = () => {
       y: branchStepY
     };
 
-    console.log('🔧 [handleAddStepToBranch] New step created:', newStepRaw);
-
     newBranches[branchIndex] = {
       ...branch,
       branch_steps: [...branchSteps, newStepRaw]
     };
-
-    console.log('🔧 [handleAddStepToBranch] Updated branches:', newBranches);
 
     setSteps(prevSteps => prevSteps.map(step => {
       if (step.id === conditionStepId) {
@@ -612,17 +599,14 @@ const CampaignBuilder = () => {
 
     // Select the new branch step for editing
     setActiveStep(newStepRaw.id);
-    console.log('🔧 [handleAddStepToBranch] Set active step to:', newStepRaw.id);
 
     if (!isDemo && selectedCampaign) {
-      console.log('🔧 [handleAddStepToBranch] Saving to backend...');
       try {
         await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
           condition_branches: newBranches
         });
-        console.log('🔧 [handleAddStepToBranch] Backend save successful');
       } catch (e) {
-        console.error('🔧 [handleAddStepToBranch] Error adding step to branch:', e);
+        console.error('Error adding step to branch:', e);
       }
     }
   };
@@ -1143,10 +1127,7 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
             x: conditionStep.x + offsetX - 15,
             y: conditionStep.y + 200 + (branchSteps.length * 150),
             branchCondition: branch.condition,
-            onAddStep: (stepType) => {
-              console.log('🔷 [WorkflowCanvas] onAddStep callback triggered:', { conditionStepId: conditionStep.id, branchIndex: bi, stepType });
-              onAddStepToBranch(conditionStep.id, bi, stepType);
-            }
+            onAddStep: (stepType) => onAddStepToBranch(conditionStep.id, bi, stepType)
           }));
         });
 
@@ -1249,8 +1230,6 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
   const [showMenu, setShowMenu] = React.useState(false);
   const conditionOpt = CONDITION_OPTIONS.find(o => o.value === branchCondition);
 
-  console.log('🎯 [AddStepPlaceholder] Rendering:', { x, y, branchCondition, showMenu });
-
   const stepOptions = [
     { type: 'email', icon: 'Mail', label: 'Email', color: '#3b82f6' },
     { type: 'wait', icon: 'Clock', label: 'Wait', color: '#8b5cf6' },
@@ -1258,27 +1237,20 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
   ];
 
   const handleAddStepClick = (e, stepType) => {
-    console.log('🎯 [AddStepPlaceholder] handleAddStepClick called with:', stepType);
     e.preventDefault();
     e.stopPropagation();
-    console.log('🎯 [AddStepPlaceholder] Calling onAddStep...');
     onAddStep(stepType);
-    console.log('🎯 [AddStepPlaceholder] onAddStep called, hiding menu');
     setShowMenu(false);
   };
 
   const handlePlaceholderClick = (e) => {
-    console.log('🎯 [AddStepPlaceholder] Placeholder clicked, target:', e.target.tagName, e.target.className);
     e.stopPropagation();
-    // Only toggle menu if clicking on the placeholder itself, not on dropdown items
     if (!showMenu) {
-      console.log('🎯 [AddStepPlaceholder] Opening menu');
       setShowMenu(true);
     }
   };
 
   const handleOuterMouseDown = (e) => {
-    console.log('🎯 [AddStepPlaceholder] Outer mousedown');
     e.stopPropagation();
   };
 
@@ -1287,7 +1259,6 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
     if (!showMenu) return;
 
     const handleClickOutside = (e) => {
-      console.log('🎯 [AddStepPlaceholder] Click outside detected');
       setShowMenu(false);
     };
 
@@ -1329,8 +1300,8 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
     showMenu && h('div', {
       className: "absolute top-full left-0 mt-1 w-full bg-white rounded-lg shadow-lg border border-stone-200 overflow-hidden",
       style: { zIndex: 1000 },
-      onMouseDown: (e) => { console.log('🎯 [AddStepPlaceholder] Dropdown mousedown'); e.stopPropagation(); },
-      onClick: (e) => { console.log('🎯 [AddStepPlaceholder] Dropdown click'); e.stopPropagation(); }
+      onMouseDown: (e) => e.stopPropagation(),
+      onClick: (e) => e.stopPropagation()
     },
       stepOptions.map(opt => {
         const Icon = Icons[opt.icon];
@@ -1338,8 +1309,8 @@ const AddStepPlaceholder = ({ x, y, branchCondition, onAddStep }) => {
           key: opt.type,
           type: 'button',
           className: "w-full px-3 py-2 flex items-center gap-2 hover:bg-stone-100 transition-colors text-left",
-          onMouseDown: (e) => { console.log('🎯 [AddStepPlaceholder] Button mousedown:', opt.type); e.stopPropagation(); },
-          onClick: (e) => { console.log('🎯 [AddStepPlaceholder] Button click:', opt.type); handleAddStepClick(e, opt.type); }
+          onMouseDown: (e) => e.stopPropagation(),
+          onClick: (e) => handleAddStepClick(e, opt.type)
         },
           h('div', {
             className: "w-6 h-6 rounded flex items-center justify-center",
@@ -1613,18 +1584,129 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
       ),
 
       step.step_type === 'condition' && h('div', { className: "space-y-4" },
-        h('div', { className: "p-3 bg-amber-500/20 rounded-xl border border-amber-500/30" },
-          h('div', { className: "flex items-center gap-2 mb-2" },
-            h(Icons.Split, { size: 16, className: "text-amber-300" }),
-            h('span', { className: "font-medium text-amber-200" }, "Condition Branches")
-          ),
-          h('p', { className: "text-sm text-amber-200/70" },
-            "Each branch evaluates a condition. Configure branches directly on the canvas node."
-          )
+        // Branch List
+        h('div', { className: "space-y-3" },
+          h('label', { className: "block text-sm font-medium text-white mb-2" }, "Condition Branches"),
+          (data.condition_branches || []).map((branch, bi) => {
+            const conditionOpt = CONDITION_OPTIONS.find(o => o.value === branch.condition);
+            return h('div', {
+              key: bi,
+              className: "p-3 bg-white/5 rounded-xl border border-white/10"
+            },
+              // Branch header with condition selector
+              h('div', { className: "flex items-center gap-2 mb-3" },
+                h('div', { className: `w-3 h-3 rounded-full ${conditionOpt?.color || 'bg-stone-400'}` }),
+                h('select', {
+                  className: "glass-input flex-1 px-2 py-1.5 rounded-lg text-sm",
+                  value: branch.condition,
+                  onChange: e => {
+                    const newCondition = e.target.value;
+                    const newOpt = CONDITION_OPTIONS.find(o => o.value === newCondition);
+                    const defaultWait = newOpt?.hasWait ? { wait_days: 2, wait_hours: 0, wait_minutes: 0 } : { wait_days: 0, wait_hours: 0, wait_minutes: 0 };
+                    const newBranches = [...data.condition_branches];
+                    newBranches[bi] = { ...branch, condition: newCondition, ...defaultWait };
+                    setData({ ...data, condition_branches: newBranches });
+                    onUpdate(step.id, { condition_branches: newBranches });
+                  }
+                },
+                  CONDITION_OPTIONS.map(o => h('option', { key: o.value, value: o.value }, o.label))
+                ),
+                (data.condition_branches || []).length > 1 && h('button', {
+                  onClick: () => {
+                    const newBranches = data.condition_branches.filter((_, i) => i !== bi);
+                    setData({ ...data, condition_branches: newBranches });
+                    onUpdate(step.id, { condition_branches: newBranches });
+                  },
+                  className: "p-1.5 text-white/40 hover:text-red-400 hover:bg-red-500/20 rounded-lg transition-colors"
+                }, h(Icons.Trash2, { size: 14 }))
+              ),
+
+              // Wait time inputs (for conditions that have wait)
+              conditionOpt?.hasWait && h('div', { className: "mt-2" },
+                h('label', { className: "block text-xs text-white/50 mb-2" }, "Wait before checking:"),
+                h('div', { className: "grid grid-cols-3 gap-2" },
+                  h('div', null,
+                    h('label', { className: "block text-xs text-white/40 mb-1" }, "Days"),
+                    h('input', {
+                      type: "number",
+                      min: "0",
+                      className: "glass-input w-full px-2 py-1 rounded-lg text-sm text-center",
+                      value: branch.wait_days || 0,
+                      onChange: e => {
+                        const v = Math.max(0, parseInt(e.target.value) || 0);
+                        const newBranches = [...data.condition_branches];
+                        newBranches[bi] = { ...branch, wait_days: v };
+                        setData({ ...data, condition_branches: newBranches });
+                        onUpdate(step.id, { condition_branches: newBranches });
+                      }
+                    })
+                  ),
+                  h('div', null,
+                    h('label', { className: "block text-xs text-white/40 mb-1" }, "Hours"),
+                    h('input', {
+                      type: "number",
+                      min: "0",
+                      max: "23",
+                      className: "glass-input w-full px-2 py-1 rounded-lg text-sm text-center",
+                      value: branch.wait_hours || 0,
+                      onChange: e => {
+                        const v = Math.min(23, Math.max(0, parseInt(e.target.value) || 0));
+                        const newBranches = [...data.condition_branches];
+                        newBranches[bi] = { ...branch, wait_hours: v };
+                        setData({ ...data, condition_branches: newBranches });
+                        onUpdate(step.id, { condition_branches: newBranches });
+                      }
+                    })
+                  ),
+                  h('div', null,
+                    h('label', { className: "block text-xs text-white/40 mb-1" }, "Min"),
+                    h('input', {
+                      type: "number",
+                      min: "0",
+                      max: "59",
+                      className: "glass-input w-full px-2 py-1 rounded-lg text-sm text-center",
+                      value: branch.wait_minutes || 0,
+                      onChange: e => {
+                        const v = Math.min(59, Math.max(0, parseInt(e.target.value) || 0));
+                        const newBranches = [...data.condition_branches];
+                        newBranches[bi] = { ...branch, wait_minutes: v };
+                        setData({ ...data, condition_branches: newBranches });
+                        onUpdate(step.id, { condition_branches: newBranches });
+                      }
+                    })
+                  )
+                )
+              ),
+
+              // Branch steps count
+              h('div', { className: "mt-2 text-xs text-white/40" },
+                `${(branch.branch_steps || []).length} step(s) in this branch`
+              )
+            );
+          })
         ),
+
+        // Add Branch Button
+        (data.condition_branches || []).length < CONDITION_OPTIONS.length && h('button', {
+          onClick: () => {
+            const usedConditions = (data.condition_branches || []).map(b => b.condition);
+            const available = CONDITION_OPTIONS.find(opt => !usedConditions.includes(opt.value));
+            if (!available) return;
+            const defaultWait = available.hasWait ? { wait_days: 2, wait_hours: 0, wait_minutes: 0 } : { wait_days: 0, wait_hours: 0, wait_minutes: 0 };
+            const newBranches = [...(data.condition_branches || []), { condition: available.value, ...defaultWait, branch_steps: [] }];
+            setData({ ...data, condition_branches: newBranches });
+            onUpdate(step.id, { condition_branches: newBranches });
+          },
+          className: "w-full p-2 border border-dashed border-white/20 rounded-xl text-white/60 hover:border-amber-500/50 hover:text-amber-300 transition-colors flex items-center justify-center gap-2"
+        },
+          h(Icons.Plus, { size: 16 }),
+          "Add Branch"
+        ),
+
+        // Info panel
         h('div', { className: "p-3 bg-blue-500/20 rounded-xl border border-blue-500/30" },
           h('p', { className: "text-sm text-blue-200/70" },
-            "For 'NOT' conditions, the system waits the specified time before checking if the condition was met."
+            "For 'NOT' conditions (Not Opened, Not Replied), the system waits the specified time before checking if the condition was met."
           )
         )
       )
