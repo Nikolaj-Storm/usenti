@@ -523,7 +523,8 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
 
     const {
       subject, body, wait_days, wait_hours, wait_minutes,
-      condition_type, condition_branches, step_order
+      condition_type, condition_branches, step_order,
+      position_x, position_y
     } = req.body;
 
     // DEBUG: Log what we received from the frontend
@@ -540,6 +541,8 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     if (condition_type !== undefined) updates.condition_type = condition_type;
     if (condition_branches !== undefined) updates.condition_branches = condition_branches;
     if (step_order !== undefined) updates.step_order = step_order;
+    if (position_x !== undefined) updates.position_x = position_x;
+    if (position_y !== undefined) updates.position_y = position_y;
 
     console.log('[WAIT DEBUG] Updates object to save:', JSON.stringify(updates));
 
