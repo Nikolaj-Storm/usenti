@@ -236,11 +236,18 @@ async function sendEmail({
  * @returns {Object} Result with messageId
  */
 async function sendViaSMTP({ account, to, subject, body, attachments = [] }) {
+  // Parse port as integer (stored as string in database)
+  const smtpPort = parseInt(account.smtp_port, 10) || 587;
+  const isSecure = smtpPort === 465;
+  const isStalwart = account.account_type === 'stalwart';
+  const isZoho = account.account_type === 'zoho' || account.smtp_host?.toLowerCase().includes('zoho');
+
   // Debug logging for SMTP configuration
   console.log(`[EMAIL-SERVICE] 🔧 SMTP Configuration:`);
   console.log(`[EMAIL-SERVICE]    Host: ${account.smtp_host}`);
-  console.log(`[EMAIL-SERVICE]    Port: ${account.smtp_port}`);
-  console.log(`[EMAIL-SERVICE]    Secure: ${account.smtp_port === 465}`);
+  console.log(`[EMAIL-SERVICE]    Port: ${smtpPort}`);
+  console.log(`[EMAIL-SERVICE]    Secure: ${isSecure}`);
+  console.log(`[EMAIL-SERVICE]    Account type: ${account.account_type}`);
   console.log(`[EMAIL-SERVICE]    Username: ${account.smtp_username}`);
   console.log(`[EMAIL-SERVICE]    Password stored: ${account.smtp_password ? 'YES (encrypted)' : 'NO'}`);
 
@@ -254,17 +261,36 @@ async function sendViaSMTP({ account, to, subject, body, attachments = [] }) {
     throw new Error(`Failed to decrypt SMTP password: ${decryptError.message}`);
   }
 
-  // Create SMTP transporter
-  const transporter = nodemailer.createTransport({
+  // Build transporter config with account-type-specific settings
+  const transporterConfig = {
     host: account.smtp_host,
-    port: account.smtp_port,
-    secure: account.smtp_port === 465,
+    port: smtpPort,
+    secure: isSecure,
     auth: {
       user: account.smtp_username,
       pass: decryptedPassword
     },
-    tls: { rejectUnauthorized: false }
-  });
+    tls: {
+      rejectUnauthorized: false,
+      minVersion: 'TLSv1.2'
+    }
+  };
+
+  // Stalwart requires STARTTLS on port 587 and prefers PLAIN auth
+  if (isStalwart && !isSecure) {
+    transporterConfig.requireTLS = true;
+    transporterConfig.authMethod = 'PLAIN';
+    console.log(`[EMAIL-SERVICE]    Stalwart mode: requireTLS=true, authMethod=PLAIN`);
+  }
+
+  // Zoho requires LOGIN auth method
+  if (isZoho) {
+    transporterConfig.authMethod = 'LOGIN';
+    console.log(`[EMAIL-SERVICE]    Zoho mode: authMethod=LOGIN`);
+  }
+
+  // Create SMTP transporter
+  const transporter = nodemailer.createTransport(transporterConfig);
 
   // Build from address with sender name if available
   const fromAddress = account.sender_name

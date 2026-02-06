@@ -437,6 +437,16 @@ class CampaignExecutor {
       console.error(`[EXECUTOR]         Error: ${error.message}`);
       console.error(`[EXECUTOR]         Stack: ${error.stack}`);
 
+      // Provide actionable guidance for common SMTP errors
+      if (error.message.includes('Authentication credentials invalid') || error.message.includes('Invalid login')) {
+        console.error(`[EXECUTOR]      💡 TROUBLESHOOTING: SMTP authentication rejected. Check that:`);
+        console.error(`[EXECUTOR]         1. The password in Snowman matches the mail server password`);
+        console.error(`[EXECUTOR]         2. The SMTP username format is correct (full email vs local part)`);
+        console.error(`[EXECUTOR]         3. SMTP authentication is enabled on the mail server`);
+      } else if (error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND')) {
+        console.error(`[EXECUTOR]      💡 TROUBLESHOOTING: Cannot connect to SMTP server. Check hostname/IP and firewall rules.`);
+      }
+
       // Mark as failed
       console.log(`[EXECUTOR]      🔴 Marking contact as failed...`);
       await supabase
