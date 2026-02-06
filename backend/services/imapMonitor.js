@@ -42,7 +42,7 @@ class ImapMonitor {
   }
 
   // Resolve the correct IMAP host for a Zoho account (with regional fallback)
-  // Returns the working host, or falls back to account.imap_host
+  // Returns the working host, or throws with a helpful error if IMAP is disabled
   async resolveImapHost(account, decryptedPassword) {
     if (!this.isZohoAccount(account)) {
       return account.imap_host;
@@ -63,14 +63,28 @@ class ImapMonitor {
       hostsToTry.unshift(account.imap_host);
     }
 
+    let imapDisabledHost = null;
+
     for (const host of hostsToTry) {
       console.log(`[IMAP]    🔄 Testing Zoho host: ${host}...`);
-      const success = await this.quickTestHost(host, account, decryptedPassword);
-      if (success) {
+      const result = await this.quickTestHost(host, account, decryptedPassword);
+      if (result.success) {
         this.zohoHostCache.set(account.id, host);
         console.log(`[IMAP]    ✅ Zoho host resolved: ${host}`);
         return host;
       }
+      // "enable IMAP" error means credentials are valid but IMAP is disabled
+      if (result.error && result.error.toLowerCase().includes('enable imap')) {
+        imapDisabledHost = host;
+        console.log(`[IMAP]    ⚠️ Correct Zoho datacenter found (${host}) but IMAP is disabled`);
+      }
+    }
+
+    // If we found the correct datacenter but IMAP is disabled, throw a clear error
+    if (imapDisabledHost) {
+      const errorMsg = `IMAP is not enabled for ${account.email_address}. Please enable IMAP access in your Zoho Mail settings: go to Zoho Mail → Settings → Mail Accounts → IMAP Access, and enable it. Your Zoho datacenter is ${imapDisabledHost}.`;
+      console.error(`[IMAP] ❌ ${errorMsg}`);
+      throw new Error(errorMsg);
     }
 
     console.error(`[IMAP] ❌ All Zoho hosts failed for ${account.email_address}, using configured: ${account.imap_host}`);
@@ -78,10 +92,12 @@ class ImapMonitor {
   }
 
   // Quick IMAP host connectivity test (connect + auth + disconnect)
+  // Returns { success: boolean, error?: string }
   quickTestHost(host, account, decryptedPassword) {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        resolve(false);
+        console.log(`[IMAP]       ⏱️ Timeout: ${host}`);
+        resolve({ success: false, error: 'timeout' });
       }, 10000);
 
       try {
@@ -99,18 +115,20 @@ class ImapMonitor {
         imap.once('ready', () => {
           clearTimeout(timeout);
           imap.end();
-          resolve(true);
+          resolve({ success: true });
         });
 
-        imap.once('error', () => {
+        imap.once('error', (err) => {
           clearTimeout(timeout);
-          resolve(false);
+          console.log(`[IMAP]       ❌ ${host}: ${err.message}`);
+          resolve({ success: false, error: err.message });
         });
 
         imap.connect();
       } catch (error) {
         clearTimeout(timeout);
-        resolve(false);
+        console.log(`[IMAP]       ❌ ${host}: ${error.message}`);
+        resolve({ success: false, error: error.message });
       }
     });
   }
