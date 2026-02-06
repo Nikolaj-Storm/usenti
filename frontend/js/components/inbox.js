@@ -38,12 +38,26 @@ const Inbox = () => {
     }
   };
 
+  const [syncWarning, setSyncWarning] = React.useState(null);
+
   const handleSyncInbox = async () => {
     setSyncing(true);
+    setSyncWarning(null);
     try {
       console.log('📥 [Inbox] Starting IMAP sync...');
       const result = await api.syncInbox(selectedAccount === 'all' ? null : selectedAccount, 50);
       console.log('✅ [Inbox] Sync complete:', result);
+
+      // Check for per-account errors in the sync result
+      if (result && result.accounts) {
+        const failedAccounts = result.accounts.filter(a => a.status === 'error');
+        if (failedAccounts.length > 0) {
+          const errorMessages = failedAccounts.map(a => `${a.email}: ${a.error}`).join('\n');
+          console.warn('⚠️ [Inbox] Some accounts failed to sync:', errorMessages);
+          setSyncWarning(failedAccounts.map(a => `${a.email}: ${a.error}`));
+        }
+      }
+
       // Reload inbox data after sync
       await loadData();
     } catch (error) {
@@ -242,6 +256,25 @@ const Inbox = () => {
           className: "p-3 glass-card hover:bg-white/15 text-white/60 hover:text-white transition-colors disabled:opacity-50",
           title: "Refresh inbox"
         }, h(Icons.RefreshCw, { size: 20, className: loading ? "animate-spin" : "" }))
+      )
+    ),
+
+    // Sync warning banner
+    syncWarning && h('div', { className: "mb-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30" },
+      h('div', { className: "flex justify-between items-start" },
+        h('div', { className: "flex gap-3 items-start" },
+          h(Icons.AlertCircle, { size: 20, className: "text-amber-400 mt-0.5 flex-shrink-0" }),
+          h('div', null,
+            h('p', { className: "text-amber-200 font-medium text-sm mb-1" }, "Some accounts failed to sync:"),
+            syncWarning.map((msg, i) =>
+              h('p', { key: i, className: "text-amber-200/80 text-sm" }, msg)
+            )
+          )
+        ),
+        h('button', {
+          className: "text-amber-400/60 hover:text-amber-400 transition-colors p-1",
+          onClick: () => setSyncWarning(null)
+        }, h(Icons.X, { size: 16 }))
       )
     ),
 
