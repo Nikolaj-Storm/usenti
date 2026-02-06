@@ -34,6 +34,87 @@ class ImapMonitor {
            ZOHO_IMAP_HOSTS.some(zh => lowerHost.includes(zh.replace('imap.', '').replace('imappro.', '')));
   }
 
+  // Check if an account is a Zoho account
+  isZohoAccount(account) {
+    return this.isZohoHost(account.imap_host) ||
+           account.email_address?.toLowerCase().includes('@zoho') ||
+           account.account_type === 'zoho';
+  }
+
+  // Resolve the correct IMAP host for a Zoho account (with regional fallback)
+  // Returns the working host, or falls back to account.imap_host
+  async resolveImapHost(account, decryptedPassword) {
+    if (!this.isZohoAccount(account)) {
+      return account.imap_host;
+    }
+
+    // Check cache first - if monitoring already found a working host, use it
+    const cachedHost = this.zohoHostCache.get(account.id);
+    if (cachedHost) {
+      console.log(`[IMAP] Using cached Zoho host for ${account.email_address}: ${cachedHost}`);
+      return cachedHost;
+    }
+
+    console.log(`[IMAP] 🌐 Resolving Zoho IMAP host for ${account.email_address}...`);
+
+    // Build list of hosts to try (configured first, then all regional)
+    let hostsToTry = [...ZOHO_IMAP_HOSTS];
+    if (account.imap_host && !hostsToTry.includes(account.imap_host)) {
+      hostsToTry.unshift(account.imap_host);
+    }
+
+    for (const host of hostsToTry) {
+      console.log(`[IMAP]    🔄 Testing Zoho host: ${host}...`);
+      const success = await this.quickTestHost(host, account, decryptedPassword);
+      if (success) {
+        this.zohoHostCache.set(account.id, host);
+        console.log(`[IMAP]    ✅ Zoho host resolved: ${host}`);
+        return host;
+      }
+    }
+
+    console.error(`[IMAP] ❌ All Zoho hosts failed for ${account.email_address}, using configured: ${account.imap_host}`);
+    return account.imap_host;
+  }
+
+  // Quick IMAP host connectivity test (connect + auth + disconnect)
+  quickTestHost(host, account, decryptedPassword) {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve(false);
+      }, 10000);
+
+      try {
+        const imap = new Imap({
+          user: account.imap_username,
+          password: decryptedPassword,
+          host: host,
+          port: account.imap_port || 993,
+          tls: true,
+          tlsOptions: { rejectUnauthorized: false },
+          connTimeout: 10000,
+          authTimeout: 10000
+        });
+
+        imap.once('ready', () => {
+          clearTimeout(timeout);
+          imap.end();
+          resolve(true);
+        });
+
+        imap.once('error', () => {
+          clearTimeout(timeout);
+          resolve(false);
+        });
+
+        imap.connect();
+      } catch (error) {
+        clearTimeout(timeout);
+        resolve(false);
+      }
+    });
+  }
+
   // Cleanup old messages to prevent database bloat
   async cleanupOldMessages(accountId = null) {
     try {
@@ -165,9 +246,7 @@ class ImapMonitor {
     }
 
     // Check if this is a Zoho account - if so, try multiple regional hosts
-    const isZoho = this.isZohoHost(account.imap_host) ||
-                   account.email_address?.toLowerCase().includes('@zoho') ||
-                   account.account_type === 'zoho';
+    const isZoho = this.isZohoAccount(account);
 
     if (isZoho) {
       // Try Zoho hosts with regional fallback
@@ -432,13 +511,19 @@ class ImapMonitor {
           return reject(new Error(`Password decryption failed: ${decryptError.message}`));
         }
 
+        // Resolve the correct IMAP host (handles Zoho regional fallback)
+        const imapHost = await this.resolveImapHost(account, decryptedPassword);
+        console.log(`[${requestId}]   - Resolved host: ${imapHost}`);
+
         const imap = new Imap({
           user: account.imap_username,
           password: decryptedPassword,
-          host: account.imap_host,
-          port: account.imap_port,
-          tls: account.imap_port === 993,
+          host: imapHost,
+          port: account.imap_port || 993,
+          tls: true,
           tlsOptions: { rejectUnauthorized: false },
+          connTimeout: 15000,
+          authTimeout: 15000,
           debug: (msg) => console.log(`[${requestId} DEBUG] ${msg}`)
         });
 
@@ -629,13 +714,19 @@ class ImapMonitor {
           return reject(new Error(`Password decryption failed: ${decryptError.message}`));
         }
 
+        // Resolve the correct IMAP host (handles Zoho regional fallback)
+        const imapHost = await this.resolveImapHost(account, decryptedPassword);
+        console.log(`[${requestId}]   - Resolved host: ${imapHost}`);
+
         const imap = new Imap({
           user: account.imap_username,
           password: decryptedPassword,
-          host: account.imap_host,
-          port: account.imap_port,
-          tls: account.imap_port === 993,
-          tlsOptions: { rejectUnauthorized: false }
+          host: imapHost,
+          port: account.imap_port || 993,
+          tls: true,
+          tlsOptions: { rejectUnauthorized: false },
+          connTimeout: 15000,
+          authTimeout: 15000
         });
 
         imap.once('ready', () => {
