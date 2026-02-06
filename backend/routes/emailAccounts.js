@@ -98,45 +98,53 @@ router.post('/:id/test-imap', authenticateUser, async (req, res) => {
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
       .single();
-    
+
     if (!account) {
       return res.status(404).json({ error: 'Account not found' });
     }
 
-    // Test IMAP connection
+    const decryptedPassword = decrypt(account.imap_password);
+
+    // Use imapMonitor to resolve the correct host (handles Zoho regional fallback)
+    const imapMonitor = require('../services/imapMonitor');
+    const resolvedHost = await imapMonitor.resolveImapHost(account, decryptedPassword);
+
+    // Test IMAP connection with resolved host
     const imap = new Imap({
       user: account.imap_username,
-      password: decrypt(account.imap_password),
-      host: account.imap_host,
-      port: account.imap_port,
+      password: decryptedPassword,
+      host: resolvedHost,
+      port: account.imap_port || 993,
       tls: true,
-      tlsOptions: { rejectUnauthorized: false }
+      tlsOptions: { rejectUnauthorized: false },
+      connTimeout: 15000,
+      authTimeout: 15000
     });
 
     return new Promise((resolve) => {
       let timeout = setTimeout(() => {
         imap.end();
-        resolve(res.status(400).json({ 
-          success: false, 
-          error: 'Connection timeout - please check your credentials and server settings' 
+        resolve(res.status(400).json({
+          success: false,
+          error: 'Connection timeout - please check your credentials and server settings'
         }));
-      }, 10000);
+      }, 15000);
 
       imap.once('ready', () => {
         clearTimeout(timeout);
         imap.end();
-        resolve(res.json({ 
-          success: true, 
-          message: 'IMAP connection successful' 
+        resolve(res.json({
+          success: true,
+          message: `IMAP connection successful (host: ${resolvedHost})`
         }));
       });
 
       imap.once('error', (err) => {
         clearTimeout(timeout);
         console.error('IMAP error:', err);
-        resolve(res.status(400).json({ 
-          success: false, 
-          error: `IMAP connection failed: ${err.message}` 
+        resolve(res.status(400).json({
+          success: false,
+          error: `IMAP connection failed: ${err.message}`
         }));
       });
 
