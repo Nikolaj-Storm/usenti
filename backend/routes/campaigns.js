@@ -509,15 +509,14 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
 // Update campaign step
 router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   try {
-    // 1. Verify campaign ownership
-    const { data: campaign } = await supabase
+    // 1. Verify campaign ownership (array query to avoid PGRST116)
+    const { data: campaigns } = await supabase
       .from('campaigns')
       .select('id')
       .eq('id', req.params.campaignId)
-      .eq('user_id', req.user.id)
-      .single();
+      .eq('user_id', req.user.id);
 
-    if (!campaign) {
+    if (!campaigns || campaigns.length === 0) {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
@@ -541,8 +540,8 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     if (condition_type !== undefined) updates.condition_type = condition_type;
     if (condition_branches !== undefined) updates.condition_branches = condition_branches;
     if (step_order !== undefined) updates.step_order = step_order;
-    if (position_x !== undefined) updates.position_x = position_x;
-    if (position_y !== undefined) updates.position_y = position_y;
+    if (position_x !== undefined) updates.position_x = Math.round(Number(position_x));
+    if (position_y !== undefined) updates.position_y = Math.round(Number(position_y));
 
     console.log('[WAIT DEBUG] Updates object to save:', JSON.stringify(updates));
 
@@ -587,15 +586,14 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
 // Delete campaign step
 router.delete('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   try {
-    // Verify campaign belongs to user
-    const { data: campaign } = await supabase
+    // Verify campaign belongs to user (array query to avoid PGRST116)
+    const { data: campaigns } = await supabase
       .from('campaigns')
       .select('id')
       .eq('id', req.params.campaignId)
-      .eq('user_id', req.user.id)
-      .single();
+      .eq('user_id', req.user.id);
 
-    if (!campaign) {
+    if (!campaigns || campaigns.length === 0) {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
