@@ -329,6 +329,61 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
 
     console.log(`[${requestId}] ✓ Both passwords encrypted successfully`);
 
+    // Verify SMTP credentials before saving (for stalwart and custom accounts)
+    if (account_type === 'stalwart' || account_type === 'custom') {
+      console.log(`\n[${requestId}] === STEP 3.5: SMTP CREDENTIAL VERIFICATION ===`);
+      console.log(`[${requestId}] Verifying SMTP credentials before saving...`);
+
+      const verifyPort = parseInt(smtp_port, 10) || 587;
+      const verifySecure = verifyPort === 465;
+      const isStalwart = account_type === 'stalwart';
+
+      const verifyConfig = {
+        host: smtp_host,
+        port: verifyPort,
+        secure: verifySecure,
+        auth: {
+          user: smtp_username || email_address,
+          pass: smtp_password
+        },
+        tls: {
+          rejectUnauthorized: false,
+          minVersion: 'TLSv1.2'
+        },
+        connectionTimeout: 15000,
+        greetingTimeout: 15000
+      };
+
+      // Stalwart prefers PLAIN auth over STARTTLS
+      if (isStalwart && !verifySecure) {
+        verifyConfig.requireTLS = true;
+        verifyConfig.authMethod = 'PLAIN';
+      }
+
+      try {
+        const testTransporter = nodemailer.createTransport(verifyConfig);
+        await testTransporter.verify();
+        console.log(`[${requestId}] ✓ SMTP credentials verified successfully`);
+      } catch (smtpError) {
+        console.log(`[${requestId}] ❌ SMTP VERIFICATION FAILED: ${smtpError.message}`);
+
+        let userMessage = `SMTP connection failed: ${smtpError.message}`;
+        if (smtpError.message.includes('Authentication credentials invalid') || smtpError.message.includes('Invalid login')) {
+          userMessage = `SMTP authentication failed - the username or password was rejected by ${smtp_host}. Please verify: (1) the password matches what is set in your mail server, (2) the username format is correct (try "${email_address}" or just the local part), (3) SMTP authentication is enabled on your mail server's submission port (${verifyPort}).`;
+        } else if (smtpError.message.includes('ECONNREFUSED') || smtpError.message.includes('ENOTFOUND')) {
+          userMessage = `Cannot reach SMTP server at ${smtp_host}:${verifyPort}. Please verify the hostname resolves to your server's IP and that port ${verifyPort} is open in your firewall.`;
+        } else if (smtpError.message.includes('STARTTLS')) {
+          userMessage = `TLS/STARTTLS negotiation failed with ${smtp_host}:${verifyPort}. Ensure your mail server has a valid TLS certificate configured for SMTP.`;
+        }
+
+        return res.status(400).json({
+          error: userMessage,
+          errorType: 'smtp_verification_failed',
+          requestId
+        });
+      }
+    }
+
     // Prepare insert data
     console.log(`\n[${requestId}] === STEP 4: PREPARE DATABASE INSERT ===`);
 
@@ -648,24 +703,42 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
       });
     }
 
-    // Determine if this is a Zoho account (needs special handling)
+    // Determine account-type-specific handling
     const isZoho = account.smtp_host?.toLowerCase().includes('zoho') || account.account_type === 'zoho';
+    const isStalwart = account.account_type === 'stalwart';
 
     // Helper to create transporter config
-    const createConfig = (host) => ({
-      host,
-      port: smtpPort,
-      secure: isSecure,
-      auth: {
-        user: account.smtp_username,
-        pass: decryptedPassword
-      },
-      tls: {
-        rejectUnauthorized: false,
-        minVersion: 'TLSv1.2'
-      },
-      ...(isZoho && { authMethod: 'LOGIN' })
-    });
+    const createConfig = (host) => {
+      const config = {
+        host,
+        port: smtpPort,
+        secure: isSecure,
+        auth: {
+          user: account.smtp_username,
+          pass: decryptedPassword
+        },
+        tls: {
+          rejectUnauthorized: false,
+          minVersion: 'TLSv1.2'
+        },
+        connectionTimeout: 15000,
+        greetingTimeout: 15000
+      };
+
+      // Zoho requires LOGIN auth method
+      if (isZoho) {
+        config.authMethod = 'LOGIN';
+      }
+
+      // Stalwart prefers PLAIN auth and requires STARTTLS on non-SSL ports
+      if (isStalwart && !isSecure) {
+        config.requireTLS = true;
+        config.authMethod = 'PLAIN';
+        console.log(`[TEST-SMTP] Stalwart mode: requireTLS=true, authMethod=PLAIN`);
+      }
+
+      return config;
+    };
 
     // For Zoho accounts, try multiple data centers
     if (isZoho) {
@@ -730,9 +803,19 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
   } catch (error) {
     console.error(`[TEST-SMTP] ❌ Connection failed: ${error.message}`);
     console.error(`[TEST-SMTP] Error code: ${error.code}`);
+
+    let errorDetail = `SMTP failed: ${error.message}`;
+    if (error.message.includes('Authentication credentials invalid') || error.message.includes('Invalid login')) {
+      errorDetail = `Authentication failed - the mail server rejected the credentials. Verify the password matches your mail server account and the username format is correct.`;
+    } else if (error.message.includes('ECONNREFUSED')) {
+      errorDetail = `Cannot connect to ${account.smtp_host}:${smtpPort}. Check that the hostname is correct and the port is open in your firewall.`;
+    } else if (error.message.includes('ENOTFOUND')) {
+      errorDetail = `DNS lookup failed for ${account.smtp_host}. Make sure the hostname has a DNS record pointing to your server.`;
+    }
+
     res.status(400).json({
       success: false,
-      error: `SMTP failed: ${error.message}`,
+      error: errorDetail,
       errorCode: error.code
     });
   }
