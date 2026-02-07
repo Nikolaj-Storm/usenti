@@ -459,12 +459,9 @@ const AccountModal = ({ account, onClose, onSave }) => {
               const email = e.target.value;
               const updates = { email_address: email };
               if (accountType === 'stalwart' && email.includes('@')) {
-                const localPart = email.split('@')[0];
                 const domain = email.split('@')[1];
                 if (!formData.smtp_host) updates.smtp_host = 'mail.' + domain;
                 if (!formData.imap_host) updates.imap_host = 'mail.' + domain;
-                if (!formData.smtp_username) updates.smtp_username = localPart;
-                if (!formData.imap_username) updates.imap_username = localPart;
               }
               setFormData(prev => ({ ...prev, ...updates }));
             },
