@@ -255,7 +255,13 @@ const AccountModal = ({ account, onClose, onSave }) => {
     setAccountType(type);
 
     if (!isEditing) {
-      if (type === 'zoho') {
+      if (type === 'stalwart') {
+        setFormData(prev => ({
+          ...prev,
+          smtp_port: '587',
+          imap_port: '993'
+        }));
+      } else if (type === 'zoho') {
         setFormData(prev => ({
           ...prev,
           smtp_host: 'smtp.zoho.com',
@@ -402,6 +408,22 @@ const AccountModal = ({ account, onClose, onSave }) => {
         )
       ),
       step === 'details' && h('form', { onSubmit: handleSubmit, className: "space-y-6" },
+        accountType === 'stalwart' && h('div', { className: "p-4 glass-card border-indigo-500/30" },
+          h('div', { className: "flex gap-3" },
+            h(Icons.Server, { size: 20, className: "text-indigo-400 shrink-0 mt-0.5" }),
+            h('div', null,
+              h('h4', { className: "font-medium text-indigo-300 mb-1" }, 'Stalwart Mail Server Setup'),
+              h('p', { className: "text-sm text-indigo-200/80 mb-2" },
+                'Connect your self-hosted Stalwart mail server. Uses STARTTLS on port 587 for SMTP and TLS on port 993 for IMAP.'
+              ),
+              h('ul', { className: "text-sm text-indigo-200/80 list-disc list-inside space-y-1" },
+                h('li', { key: 1 }, 'SMTP/IMAP Host: Your server hostname (e.g., mail.yourdomain.com)'),
+                h('li', { key: 2 }, 'Username: Your Stalwart account username (usually just the local part, e.g., "storm")'),
+                h('li', { key: 3 }, 'Password: The password set in Stalwart for your account')
+              )
+            )
+          )
+        ),
         (accountType === 'outlook' || accountType === 'gmail') && h('div', { className: "p-4 glass-card border-amber-500/30" },
           h('div', { className: "flex gap-3" },
             h(Icons.AlertCircle, { size: 20, className: "text-amber-400 shrink-0 mt-0.5" }),
@@ -433,7 +455,19 @@ const AccountModal = ({ account, onClose, onSave }) => {
             type: "email",
             required: true,
             value: formData.email_address,
-            onChange: (e) => setFormData({ ...formData, email_address: e.target.value }),
+            onChange: (e) => {
+              const email = e.target.value;
+              const updates = { email_address: email };
+              if (accountType === 'stalwart' && email.includes('@')) {
+                const localPart = email.split('@')[0];
+                const domain = email.split('@')[1];
+                if (!formData.smtp_host) updates.smtp_host = 'mail.' + domain;
+                if (!formData.imap_host) updates.imap_host = 'mail.' + domain;
+                if (!formData.smtp_username) updates.smtp_username = localPart;
+                if (!formData.imap_username) updates.imap_username = localPart;
+              }
+              setFormData(prev => ({ ...prev, ...updates }));
+            },
             className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
             placeholder: "john@company.com"
           })
