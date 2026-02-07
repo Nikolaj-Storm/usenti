@@ -278,8 +278,8 @@ const CampaignBuilder = () => {
   // Add step to canvas
   const handleAddStep = async (stepType, position = null) => {
     const newPos = position || {
-      x: 400 + (Math.random() - 0.5) * 100,
-      y: 100 + steps.length * 180
+      x: Math.round(400 + (Math.random() - 0.5) * 100),
+      y: Math.round(100 + steps.length * 180)
     };
 
     const newStepRaw = {
@@ -333,8 +333,8 @@ const CampaignBuilder = () => {
     if (!isDemo && selectedCampaign) {
       try {
         await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, {
-          position_x: newX,
-          position_y: newY
+          position_x: Math.round(newX),
+          position_y: Math.round(newY)
         });
       } catch (e) {
         console.error('Failed to save position:', e);
@@ -368,8 +368,8 @@ const CampaignBuilder = () => {
         for (const step of reorderedSteps) {
           await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${step.id}`, {
             step_order: step.step_order,
-            position_x: step.x,
-            position_y: step.y
+            position_x: Math.round(step.x),
+            position_y: Math.round(step.y)
           });
         }
       } catch (e) {
