@@ -355,17 +355,23 @@ const CampaignBuilder = () => {
 
     setSteps(reorderedSteps);
 
-    // Save to backend
+    // Save to backend - sequential updates to avoid UNIQUE constraint violations on step_order
     if (!isDemo && selectedCampaign) {
       try {
-        // Update each step's order
-        await Promise.all(reorderedSteps.map(step =>
-          api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${step.id}`, {
+        // First pass: set all step_orders to temporary negative values to avoid conflicts
+        for (const step of reorderedSteps) {
+          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${step.id}`, {
+            step_order: -(step.step_order + 1000)
+          });
+        }
+        // Second pass: set final step_order values and positions
+        for (const step of reorderedSteps) {
+          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${step.id}`, {
             step_order: step.step_order,
             position_x: step.x,
             position_y: step.y
-          })
-        ));
+          });
+        }
       } catch (e) {
         console.error('Failed to reorder steps:', e);
       }
