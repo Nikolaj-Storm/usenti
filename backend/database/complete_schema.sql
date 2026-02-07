@@ -316,6 +316,7 @@ CREATE TABLE IF NOT EXISTS campaign_contacts (
   next_send_time TIMESTAMP WITH TIME ZONE,
   emails_sent INTEGER DEFAULT 0,
   replied_at TIMESTAMP WITH TIME ZONE,
+  branch_context JSONB, -- Tracks progress through condition branch steps
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
 

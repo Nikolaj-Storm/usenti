@@ -346,7 +346,7 @@ class CampaignExecutor {
         await this.handleWaitStep(campaignContact, campaign, step);
         break;
       case 'condition':
-        await this.handleConditionStep(campaignContact, campaign, step);
+        await this.handleConditionStep(campaignContact, campaign, contact, step);
         break;
       default:
         console.error(`[EXECUTOR] ❌ Unknown step type: ${step.step_type}`);
@@ -547,7 +547,15 @@ class CampaignExecutor {
   }
 
   // Handle condition step - supports multiple condition branches with wait times
-  async handleConditionStep(campaignContact, campaign, step) {
+  async handleConditionStep(campaignContact, campaign, contact, step) {
+    // Check if we're resuming branch step execution from a previous cycle
+    const branchContext = campaignContact.branch_context;
+    if (branchContext && branchContext.condition_step_id === step.id) {
+      console.log(`[EXECUTOR] 🔀 Resuming branch execution for contact ${campaignContact.contact_id}`);
+      console.log(`[EXECUTOR]   Branch ${branchContext.branch_index}, step ${branchContext.branch_step_index}`);
+      return await this.processBranchStep(campaignContact, campaign, contact, step, branchContext);
+    }
+
     // Get events for this contact
     const { data: events } = await supabase
       .from('email_events')
@@ -599,6 +607,7 @@ class CampaignExecutor {
     let nextStepId = null;
     let matchedCondition = null;
     let matchedBranchSteps = null;
+    let matchedBranchIndex = null;
 
     if (branches && Array.isArray(branches) && branches.length > 0) {
       // New multi-branch evaluation with wait time support
@@ -606,7 +615,8 @@ class CampaignExecutor {
 
       const now = Date.now();
 
-      for (const branch of branches) {
+      for (let bi = 0; bi < branches.length; bi++) {
+        const branch = branches[bi];
         const branchWaitMs = getBranchWaitMs(branch);
         const isNegativeCondition = branch.condition.includes('not_');
 
@@ -639,6 +649,7 @@ class CampaignExecutor {
 
         if (conditionMet) {
           matchedCondition = branch.condition;
+          matchedBranchIndex = bi;
           nextStepId = branch.next_step_id;
           matchedBranchSteps = branch.branch_steps || [];
           break; // First match wins
@@ -653,13 +664,15 @@ class CampaignExecutor {
       nextStepId = conditionMet ? step.next_step_if_true : step.next_step_if_false;
     }
 
-    // If the matched branch has branch_steps, we need to process those
-    // For now, we'll move to the first branch step if available
+    // If the matched branch has branch_steps, start processing them
     if (matchedBranchSteps && matchedBranchSteps.length > 0) {
-      console.log(`[EXECUTOR]   📋 Branch has ${matchedBranchSteps.length} inline steps`);
-      // Branch steps are stored inline in the condition_branches JSONB
-      // For complex branching, these would need their own step processing
-      // For now, log that we found them (full implementation would require DB schema changes)
+      console.log(`[EXECUTOR]   📋 Branch has ${matchedBranchSteps.length} inline steps, starting branch execution`);
+      const newContext = {
+        condition_step_id: step.id,
+        branch_index: matchedBranchIndex,
+        branch_step_index: 0
+      };
+      return await this.processBranchStep(campaignContact, campaign, contact, step, newContext);
     }
 
     // If no next_step_id from condition, get next sequential step
@@ -694,6 +707,199 @@ class CampaignExecutor {
         .eq('id', campaignContact.id);
 
       console.log(`[EXECUTOR]   ✓ Campaign completed for contact ${campaignContact.contact_id}`);
+    }
+  }
+
+  // Process a single branch step within a condition branch
+  async processBranchStep(campaignContact, campaign, contact, conditionStep, branchContext) {
+    let branches = conditionStep.condition_branches;
+    if (typeof branches === 'string') {
+      try { branches = JSON.parse(branches); } catch(e) { branches = []; }
+    }
+
+    const branch = branches[branchContext.branch_index];
+    if (!branch) {
+      console.error(`[EXECUTOR]   Branch index ${branchContext.branch_index} not found, clearing context`);
+      return await this.finishBranchAndMoveNext(campaignContact, campaign, conditionStep);
+    }
+
+    const branchSteps = branch.branch_steps || [];
+    const currentIndex = branchContext.branch_step_index;
+
+    // If we've processed all branch steps, move to next main step
+    if (currentIndex >= branchSteps.length) {
+      console.log(`[EXECUTOR]   All ${branchSteps.length} branch steps completed, moving to next main step`);
+      return await this.finishBranchAndMoveNext(campaignContact, campaign, conditionStep);
+    }
+
+    const currentBranchStep = branchSteps[currentIndex];
+    const isLastBranchStep = currentIndex >= branchSteps.length - 1;
+
+    console.log(`[EXECUTOR]   Processing branch step ${currentIndex + 1}/${branchSteps.length}: ${currentBranchStep.step_type}`);
+
+    // Prepare the context for after this step completes
+    const nextContext = {
+      ...branchContext,
+      branch_step_index: currentIndex + 1
+    };
+
+    switch (currentBranchStep.step_type) {
+      case 'email':
+        await this.executeBranchEmailStep(campaignContact, campaign, contact, currentBranchStep);
+
+        if (isLastBranchStep) {
+          return await this.finishBranchAndMoveNext(campaignContact, campaign, conditionStep);
+        } else {
+          // More branch steps to process - save progress and continue immediately
+          await supabase
+            .from('campaign_contacts')
+            .update({
+              branch_context: nextContext,
+              next_send_time: new Date().toISOString(),
+              status: 'in_progress'
+            })
+            .eq('id', campaignContact.id);
+          console.log(`[EXECUTOR]   Advancing to branch step ${currentIndex + 2}/${branchSteps.length}`);
+        }
+        break;
+
+      case 'wait': {
+        const waitDays = parseInt(currentBranchStep.wait_days) || 0;
+        const waitHours = parseInt(currentBranchStep.wait_hours) || 0;
+        const waitMinutes = parseInt(currentBranchStep.wait_minutes) || 0;
+        const totalMs = (waitDays * 24 * 60 * 60 * 1000) +
+                       (waitHours * 60 * 60 * 1000) +
+                       (waitMinutes * 60 * 1000);
+        const actualDelayMs = totalMs > 0 ? totalMs : (60 * 1000);
+        const nextSendTime = new Date(Date.now() + actualDelayMs);
+
+        console.log(`[EXECUTOR]   Wait branch step: ${waitDays}d ${waitHours}h ${waitMinutes}m`);
+        console.log(`[EXECUTOR]   Scheduling resume at ${nextSendTime.toISOString()}`);
+
+        // Save progress pointing to the NEXT branch step, scheduled after the wait
+        await supabase
+          .from('campaign_contacts')
+          .update({
+            branch_context: nextContext,
+            next_send_time: nextSendTime.toISOString(),
+            status: 'in_progress'
+          })
+          .eq('id', campaignContact.id);
+        break;
+      }
+
+      default:
+        console.log(`[EXECUTOR]   Unsupported branch step type: ${currentBranchStep.step_type}, skipping`);
+        if (isLastBranchStep) {
+          return await this.finishBranchAndMoveNext(campaignContact, campaign, conditionStep);
+        } else {
+          await supabase
+            .from('campaign_contacts')
+            .update({
+              branch_context: nextContext,
+              next_send_time: new Date().toISOString(),
+              status: 'in_progress'
+            })
+            .eq('id', campaignContact.id);
+        }
+        break;
+    }
+  }
+
+  // Send an email from an inline branch step
+  async executeBranchEmailStep(campaignContact, campaign, contact, branchStep) {
+    const personalizedSubject = emailService.personalizeContent(
+      branchStep.subject || 'No Subject',
+      contact
+    );
+    const personalizedBody = emailService.personalizeContent(
+      branchStep.body || '',
+      contact
+    );
+
+    console.log(`[EXECUTOR]      Branch email: "${personalizedSubject}" to ${contact.email}`);
+
+    const accountSelection = await this.getNextEmailAccount(
+      campaign.id,
+      campaign.email_account_id
+    );
+
+    if (accountSelection.exhausted) {
+      console.log(`[EXECUTOR]      All email accounts exhausted, rescheduling to tomorrow`);
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0);
+      await this.updateNextSendTime(campaignContact.id, tomorrow);
+      return;
+    }
+
+    if (!accountSelection.accountId) {
+      throw new Error('No email account available for sending');
+    }
+
+    const result = await emailService.sendEmail({
+      emailAccountId: accountSelection.accountId,
+      to: contact.email,
+      subject: personalizedSubject,
+      body: personalizedBody,
+      campaignId: campaign.id,
+      contactId: contact.id,
+      trackOpens: true,
+      trackClicks: true
+    });
+
+    console.log(`[EXECUTOR]      Branch email sent! Message ID: ${result.messageId}`);
+
+    // Increment emails_sent counter
+    const newEmailsSent = (campaignContact.emails_sent || 0) + 1;
+    await supabase
+      .from('campaign_contacts')
+      .update({ emails_sent: newEmailsSent })
+      .eq('id', campaignContact.id);
+
+    if (accountSelection.junctionId) {
+      await this.incrementAccountCounterSafe(accountSelection.junctionId);
+    }
+  }
+
+  // Clear branch context and move to the next main step after condition
+  async finishBranchAndMoveNext(campaignContact, campaign, conditionStep) {
+    console.log(`[EXECUTOR]   Branch execution complete, clearing context`);
+
+    // Find next main step after the condition step
+    const { data: nextSteps, error } = await supabase
+      .from('campaign_steps')
+      .select('id, step_type, step_order')
+      .eq('campaign_id', campaign.id)
+      .eq('step_order', conditionStep.step_order + 1);
+
+    if (error) {
+      console.error(`[EXECUTOR]   Error finding next main step:`, error);
+      return;
+    }
+
+    const nextStep = nextSteps && nextSteps.length > 0 ? nextSteps[0] : null;
+
+    if (nextStep) {
+      console.log(`[EXECUTOR]   Moving to next main step: ${nextStep.step_type} (order ${nextStep.step_order})`);
+      await supabase
+        .from('campaign_contacts')
+        .update({
+          current_step_id: nextStep.id,
+          branch_context: null,
+          next_send_time: new Date().toISOString(),
+          status: 'in_progress'
+        })
+        .eq('id', campaignContact.id);
+    } else {
+      console.log(`[EXECUTOR]   No more main steps, marking campaign complete for contact`);
+      await supabase
+        .from('campaign_contacts')
+        .update({
+          branch_context: null,
+          status: 'completed'
+        })
+        .eq('id', campaignContact.id);
     }
   }
 

@@ -259,7 +259,10 @@ CREATE TABLE IF NOT EXISTS campaign_contacts (
   -- Stats
   emails_sent INTEGER DEFAULT 0, -- Verified: Exists in CSV
   replied_at TIMESTAMP WITH TIME ZONE, -- Verified: Exists in CSV
-  
+
+  -- Branch execution tracking (v2.0)
+  branch_context JSONB, -- Tracks progress through condition branch steps
+
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
 
