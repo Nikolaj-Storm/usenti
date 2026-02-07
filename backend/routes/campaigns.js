@@ -560,13 +560,20 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     if (updateError) throw updateError;
 
     // 3. Fetch the updated record explicitly for the response
-    const { data: updatedStep, error: fetchError } = await supabase
+    // Use array query instead of .single() to avoid PGRST116 coercion errors
+    const { data: updatedSteps, error: fetchError } = await supabase
       .from('campaign_steps')
       .select('*')
       .eq('id', req.params.stepId)
-      .single();
+      .eq('campaign_id', req.params.campaignId);
 
     if (fetchError) throw fetchError;
+
+    const updatedStep = updatedSteps && updatedSteps.length > 0 ? updatedSteps[0] : null;
+
+    if (!updatedStep) {
+      return res.status(404).json({ error: 'Step not found after update' });
+    }
 
     console.log('[WAIT DEBUG] After save, DB has:', JSON.stringify({ wait_days: updatedStep.wait_days, wait_hours: updatedStep.wait_hours, wait_minutes: updatedStep.wait_minutes }));
 
