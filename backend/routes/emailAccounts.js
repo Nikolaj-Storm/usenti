@@ -171,18 +171,29 @@ router.post('/:id/test-smtp', authenticateUser, async (req, res) => {
     }
 
     // Test SMTP connection
-    const transporter = nodemailer.createTransporter({
+    const smtpPort = parseInt(account.smtp_port, 10) || 587;
+    const isSecure = smtpPort === 465;
+    const isStalwart = account.account_type === 'stalwart';
+
+    const smtpConfig = {
       host: account.smtp_host,
-      port: account.smtp_port,
-      secure: account.smtp_port === 465,
+      port: smtpPort,
+      secure: isSecure,
       auth: {
         user: account.smtp_username,
         pass: decrypt(account.smtp_password)
       },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
+      tls: { rejectUnauthorized: false, minVersion: 'TLSv1.2' },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000
+    };
+
+    if (isStalwart && !isSecure) {
+      smtpConfig.requireTLS = true;
+      smtpConfig.authMethod = 'PLAIN';
+    }
+
+    const transporter = nodemailer.createTransport(smtpConfig);
 
     await transporter.verify();
     

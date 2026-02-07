@@ -178,7 +178,7 @@ app.get('/api/email-accounts', authenticateUser, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('email_accounts')
-      .select('id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
+      .select('id, email_address, account_type, sender_name, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at, smtp_host, smtp_port, smtp_username, imap_host, imap_port, imap_username')
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false });
 
@@ -202,7 +202,7 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
     console.log(`[${requestId}] User Email: ${req.user?.email}`);
 
     const {
-      email_address, account_type, imap_host, imap_port, imap_username, imap_password,
+      email_address, account_type, sender_name, imap_host, imap_port, imap_username, imap_password,
       smtp_host, smtp_port, smtp_username, smtp_password, daily_send_limit
     } = req.body;
 
@@ -391,6 +391,7 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
       user_id: req.user.id,
       email_address: email_address.toLowerCase(),
       account_type,
+      sender_name: sender_name || null,
       imap_host,
       imap_port: imap_port || 993,
       imap_username: imap_username || email_address,
@@ -428,7 +429,7 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
     const { data, error } = await supabase
       .from('email_accounts')
       .insert(insertData)
-      .select('id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
+      .select('id, email_address, account_type, sender_name, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at, smtp_host, smtp_port, smtp_username, imap_host, imap_port, imap_username')
       .single();
 
     if (error) {
@@ -498,7 +499,8 @@ app.post('/api/email-accounts/test', async (req, res) => {
   try {
     const {
       smtp_host, smtp_port, smtp_username, smtp_password,
-      imap_host, imap_port, imap_username, imap_password
+      imap_host, imap_port, imap_username, imap_password,
+      account_type
     } = req.body;
 
     const results = {
@@ -509,16 +511,29 @@ app.post('/api/email-accounts/test', async (req, res) => {
     // Test SMTP
     if (smtp_host && smtp_username && smtp_password) {
       try {
-        const transporter = nodemailer.createTransporter({
+        const smtpPort = parseInt(smtp_port, 10) || 587;
+        const isSecure = smtpPort === 465;
+        const isStalwart = account_type === 'stalwart';
+
+        const smtpConfig = {
           host: smtp_host,
-          port: smtp_port || 587,
-          secure: smtp_port === 465,
+          port: smtpPort,
+          secure: isSecure,
           auth: {
             user: smtp_username,
             pass: smtp_password
           },
-          tls: { rejectUnauthorized: false }
-        });
+          tls: { rejectUnauthorized: false, minVersion: 'TLSv1.2' },
+          connectionTimeout: 15000,
+          greetingTimeout: 15000
+        };
+
+        if (isStalwart && !isSecure) {
+          smtpConfig.requireTLS = true;
+          smtpConfig.authMethod = 'PLAIN';
+        }
+
+        const transporter = nodemailer.createTransport(smtpConfig);
 
         await transporter.verify();
         results.smtp = { success: true, message: 'SMTP connection successful' };
