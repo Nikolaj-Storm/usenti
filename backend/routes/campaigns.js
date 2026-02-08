@@ -402,15 +402,14 @@ router.patch('/:campaignId/email-accounts/:accountId', authenticateUser, async (
 // Get campaign steps
 router.get('/:id/steps', authenticateUser, async (req, res) => {
   try {
-    // Verify campaign belongs to user
-    const { data: campaign } = await supabase
+    // Verify campaign belongs to user (array query to avoid PGRST116)
+    const { data: campaigns } = await supabase
       .from('campaigns')
       .select('id')
       .eq('id', req.params.id)
-      .eq('user_id', req.user.id)
-      .single();
+      .eq('user_id', req.user.id);
 
-    if (!campaign) {
+    if (!campaigns || campaigns.length === 0) {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
