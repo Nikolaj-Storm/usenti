@@ -191,6 +191,36 @@ router.put('/:id', authenticateUser, async (req, res) => {
     if (daily_limit !== undefined) updates.daily_limit = daily_limit;
     if (status) updates.status = status;
 
+        // Handle steps if provided
+    const { steps } = req.body;
+    if (steps && Array.isArray(steps)) {
+      // Delete existing steps
+      const { error: deleteError } = await supabase
+        .from('campaign_steps')
+        .delete()
+        .eq('campaign_id', req.params.id);
+      
+      if (deleteError) throw deleteError;
+      
+      // Re-insert steps with parent_id and branch_index
+      for (const step of steps) {
+        const { error: insertError } = await supabase
+          .from('campaign_steps')
+          .insert({
+            id: step.id,
+            campaign_id: req.params.id,
+            step_type: step.step_type || step.type,
+            config: step.config,
+            step_order: step.step_order || step.position,
+            branch_id: step.branch_id,
+            parent_id: step.parent_id || null,
+            branch_index: step.branch_index || null
+          });
+        
+        if (insertError) throw insertError;
+      }
+    }
+
     const { data, error } = await supabase
       .from('campaigns')
       .update(updates)
