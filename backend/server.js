@@ -2479,41 +2479,63 @@ async function handleWaitStep(campaignContact, campaign, step) {
 }
 
 async function handleConditionStep(campaignContact, campaign, step) {
-  const { data: events } = await supabase
+  // 1. Find the LAST email sent to this contact in this campaign
+  const { data: lastEmailEvent } = await supabase
     .from('email_events')
-    .select('event_type')
+    .select('campaign_step_id, created_at')
     .eq('campaign_id', campaign.id)
-    .eq('contact_id', campaignContact.contact_id);
+    .eq('contact_id', campaignContact.contact_id)
+    .eq('event_type', 'sent')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
 
   let conditionMet = false;
 
-  switch (step.condition_type) {
-    case 'if_opened':
-      conditionMet = events.some(e => e.event_type === 'opened');
-      break;
-    case 'if_not_opened':
-      conditionMet = !events.some(e => e.event_type === 'opened');
-      break;
-    case 'if_clicked':
-      conditionMet = events.some(e => e.event_type === 'clicked');
-      break;
-    case 'if_replied':
-      conditionMet = events.some(e => e.event_type === 'replied');
-      break;
+  if (lastEmailEvent && lastEmailEvent.campaign_step_id) {
+    console.log(`[CONDITION] Checking response to Step ID: ${lastEmailEvent.campaign_step_id}`);
+
+    // 2. Find INTERACTION events that happened AFTER the email was sent
+    // This prevents "Ghost Opens" from previous tests being counted
+    const { data: events } = await supabase
+      .from('email_events')
+      .select('event_type, created_at')
+      .eq('campaign_id', campaign.id)
+      .eq('contact_id', campaignContact.contact_id)
+      .eq('campaign_step_id', lastEmailEvent.campaign_step_id)
+      .gt('created_at', lastEmailEvent.created_at); // <--- CRITICAL FIX: Only check events NEWER than the sent email
+
+    const interactionEvents = events || [];
+    
+    switch (step.condition_type) {
+      case 'if_opened':
+        conditionMet = interactionEvents.some(e => e.event_type === 'opened');
+        break;
+      case 'if_not_opened':
+        conditionMet = !interactionEvents.some(e => e.event_type === 'opened');
+        break;
+      case 'if_clicked':
+        conditionMet = interactionEvents.some(e => e.event_type === 'clicked');
+        break;
+      case 'if_replied':
+        conditionMet = interactionEvents.some(e => e.event_type === 'replied');
+        break;
+    }
+  } else {
+    console.log(`[CONDITION] No previous email found to check. Defaulting to False.`);
+    // Fail-safe: If we can't find a sent email, we can't verify an open.
+    if (step.condition_type === 'if_not_opened') conditionMet = true; 
   }
 
   const nextStepId = conditionMet ? step.next_step_if_true : step.next_step_if_false;
+  
+  console.log(`[CONDITION] Result: ${conditionMet} (Events found: ${conditionMet ? 'YES' : 'NO'}) -> Next Step: ${nextStepId}`);
 
   if (nextStepId) {
     await supabase
       .from('campaign_contacts')
-      .update({
-        current_step_id: nextStepId,
-        next_send_time: new Date().toISOString()
-      })
+      .update({ current_step_id: nextStepId, next_send_time: new Date().toISOString() })
       .eq('id', campaignContact.id);
-
-    console.log(`[EXECUTOR] 🔀 Condition ${step.condition_type}: ${conditionMet ? 'TRUE' : 'FALSE'}`);
   } else {
     await supabase
       .from('campaign_contacts')
