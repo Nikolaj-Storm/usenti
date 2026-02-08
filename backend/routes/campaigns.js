@@ -191,7 +191,7 @@ router.put('/:id', authenticateUser, async (req, res) => {
     if (daily_limit !== undefined) updates.daily_limit = daily_limit;
     if (status) updates.status = status;
 
-        // Handle steps if provided
+    // Handle steps if provided
     const { steps } = req.body;
     if (steps && Array.isArray(steps)) {
       // Delete existing steps
@@ -202,7 +202,7 @@ router.put('/:id', authenticateUser, async (req, res) => {
       
       if (deleteError) throw deleteError;
       
-      // Re-insert steps with parent_id and branch_index
+      // Re-insert steps with parent_id, branch_index, and condition_branches
       for (const step of steps) {
         const { error: insertError } = await supabase
           .from('campaign_steps')
@@ -213,8 +213,15 @@ router.put('/:id', authenticateUser, async (req, res) => {
             config: step.config,
             step_order: step.step_order || step.position,
             branch_id: step.branch_id,
+            
+            // CRITICAL FIX: Ensure these fields are saved to preserve the tree structure and logic
+            condition_branches: step.condition_branches || null,
             parent_id: step.parent_id || null,
-            branch_index: step.branch_index || null
+            branch_index: step.branch_index || null,
+            
+            // Optional: Save positions if available (for visual layout)
+            position_x: step.position_x ? Math.round(Number(step.position_x)) : null,
+            position_y: step.position_y ? Math.round(Number(step.position_y)) : null
           });
         
         if (insertError) throw insertError;
@@ -459,7 +466,7 @@ router.get('/:id/steps', authenticateUser, async (req, res) => {
         if (branches && Array.isArray(branches)) {
           console.log(`[GET STEPS] Condition step ${step.id}: ${branches.length} branches`);
           branches.forEach((b, i) => {
-            console.log(`[GET STEPS]   Branch ${i}: condition=${b.condition}, branch_steps=${(b.branch_steps || []).length}`);
+            console.log(`[GET STEPS]    Branch ${i}: condition=${b.condition}, branch_steps=${(b.branch_steps || []).length}`);
           });
         } else {
           console.log(`[GET STEPS] Condition step ${step.id}: condition_branches is ${JSON.stringify(branches)}`);
@@ -580,7 +587,7 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       console.log('[STEP UPDATE] condition_branches received:', JSON.stringify(req.body.condition_branches).substring(0, 500));
       console.log('[STEP UPDATE] Number of branches:', req.body.condition_branches.length);
       req.body.condition_branches.forEach((b, i) => {
-        console.log(`[STEP UPDATE]   Branch ${i}: condition=${b.condition}, branch_steps=${(b.branch_steps || []).length}`);
+        console.log(`[STEP UPDATE]    Branch ${i}: condition=${b.condition}, branch_steps=${(b.branch_steps || []).length}`);
       });
     }
 
@@ -636,7 +643,7 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       console.log('[STEP UPDATE] ✅ After save, DB has condition_branches with', Array.isArray(branches) ? branches.length : 'non-array', 'branches');
       if (Array.isArray(branches)) {
         branches.forEach((b, i) => {
-          console.log(`[STEP UPDATE]   DB Branch ${i}: condition=${b.condition}, branch_steps=${(b.branch_steps || []).length}`);
+          console.log(`[STEP UPDATE]    DB Branch ${i}: condition=${b.condition}, branch_steps=${(b.branch_steps || []).length}`);
         });
       }
     } else {
