@@ -3,6 +3,13 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const { authenticateUser } = require('../middleware/auth');
 
+// 🔴 VERSION LOG - If you don't see this in your server logs, the deploy failed.
+console.log("==================================================================");
+console.log(">>> CAMPAIGNS ROUTE LOADED: VERSION 2.1 (DEBUG MODE)           <<<");
+console.log(">>> FIXES: Included condition_branches in bulk update          <<<");
+console.log(">>> CHECK: extensive logging enabled for step persistence      <<<");
+console.log("==================================================================");
+
 // Get all campaigns for user
 router.get('/', authenticateUser, async (req, res) => {
   try {
@@ -75,16 +82,19 @@ router.post('/', authenticateUser, async (req, res) => {
       daily_limit
     } = req.body;
 
+    // Determine which accounts to use
     const accountIds = email_account_ids && email_account_ids.length > 0
       ? email_account_ids
       : (email_account_id ? [email_account_id] : []);
 
+    // Validate required fields
     if (!name || accountIds.length === 0 || !contact_list_id) {
       return res.status(400).json({
         error: 'Name, at least one email account, and contact list are required'
       });
     }
 
+    // Verify all email accounts belong to user
     const { data: emailAccounts, error: accountsError } = await supabase
       .from('email_accounts')
       .select('id')
@@ -97,6 +107,7 @@ router.post('/', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'One or more email accounts are invalid' });
     }
 
+    // Verify contact list belongs to user
     const { data: contactList } = await supabase
       .from('contact_lists')
       .select('id')
@@ -108,6 +119,7 @@ router.post('/', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'Invalid contact list' });
     }
 
+    // Create campaign
     const { data: campaign, error: campaignError } = await supabase
       .from('campaigns')
       .insert({
@@ -128,6 +140,7 @@ router.post('/', authenticateUser, async (req, res) => {
 
     if (campaignError) throw campaignError;
 
+    // If multiple accounts, create junction table entries
     if (accountIds.length > 0) {
       const junctionEntries = accountIds.map(accountId => ({
         campaign_id: campaign.id,
@@ -144,6 +157,7 @@ router.post('/', authenticateUser, async (req, res) => {
       }
     }
 
+    // Fetch the complete campaign with all relations
     const { data: fullCampaign, error: fetchError } = await supabase
       .from('campaigns')
       .select(`
@@ -169,10 +183,12 @@ router.post('/', authenticateUser, async (req, res) => {
   }
 });
 
-// Update campaign
+// Update campaign (THE CRITICAL ROUTE FOR SAVING)
 router.put('/:id', authenticateUser, async (req, res) => {
   try {
-    const { name, send_schedule, daily_limit, status } = req.body;
+    const { name, send_schedule, daily_limit, status, steps } = req.body;
+
+    console.log(`[CAMPAIGN UPDATE] Updating campaign ${req.params.id}`);
 
     const updates = {};
     if (name) updates.name = name;
@@ -181,8 +197,21 @@ router.put('/:id', authenticateUser, async (req, res) => {
     if (status) updates.status = status;
 
     // Handle steps if provided
-    const { steps } = req.body;
     if (steps && Array.isArray(steps)) {
+      console.log(`[CAMPAIGN UPDATE] Received ${steps.length} steps to save.`);
+      
+      // LOGGING: Check if branches are present in the request
+      const conditionSteps = steps.filter(s => s.step_type === 'condition' || s.type === 'condition');
+      console.log(`[CAMPAIGN UPDATE] Found ${conditionSteps.length} condition steps in payload.`);
+      conditionSteps.forEach((s, i) => {
+        console.log(`[CAMPAIGN UPDATE] Condition Step ${i} (ID: ${s.id}):`);
+        console.log(`   - Branches array exists? ${!!s.condition_branches}`);
+        console.log(`   - Branch count: ${s.condition_branches ? s.condition_branches.length : 0}`);
+        if(s.condition_branches && s.condition_branches.length > 0) {
+            console.log(`   - First branch: ${JSON.stringify(s.condition_branches[0]).substring(0, 100)}...`);
+        }
+      });
+
       // Delete existing steps
       const { error: deleteError } = await supabase
         .from('campaign_steps')
@@ -191,28 +220,42 @@ router.put('/:id', authenticateUser, async (req, res) => {
       
       if (deleteError) throw deleteError;
       
-      // Re-insert steps with parent_id, branch_index AND condition_branches
+      // Re-insert steps with ALL required fields
       for (const step of steps) {
-        const { error: insertError } = await supabase
-          .from('campaign_steps')
-          .insert({
+        const stepPayload = {
             id: step.id,
             campaign_id: req.params.id,
             step_type: step.step_type || step.type,
             config: step.config,
             step_order: step.step_order || step.position,
             branch_id: step.branch_id,
-            // CRITICAL FIX: Save condition branches, parent_id, and branch_index
-            condition_branches: step.condition_branches || null,
+            
+            // 🔴 CRITICAL FIX: Ensure condition_branches is explicitly saved 🔴
+            condition_branches: step.condition_branches || null, 
             parent_id: step.parent_id || null,
             branch_index: step.branch_index || null,
-            // Save positions for visual editor
+            
+            // Visual positions
             position_x: step.position_x ? Math.round(Number(step.position_x)) : null,
             position_y: step.position_y ? Math.round(Number(step.position_y)) : null
-          });
+        };
+
+        // Deep debug for condition steps being inserted
+        if (stepPayload.step_type === 'condition') {
+             console.log(`[DB INSERT] Inserting Condition Step ${stepPayload.id}`);
+             console.log(`   - Saving branches: ${JSON.stringify(stepPayload.condition_branches)}`);
+        }
+
+        const { error: insertError } = await supabase
+          .from('campaign_steps')
+          .insert(stepPayload);
         
-        if (insertError) throw insertError;
+        if (insertError) {
+            console.error('[DB INSERT ERROR] Failed to insert step:', stepPayload.id, insertError);
+            throw insertError;
+        }
       }
+      console.log(`[CAMPAIGN UPDATE] Successfully saved ${steps.length} steps.`);
     }
 
     const { data, error } = await supabase
@@ -416,8 +459,10 @@ router.patch('/:campaignId/email-accounts/:accountId', authenticateUser, async (
 // CAMPAIGN STEPS
 // ============================================================================
 
+// Get campaign steps
 router.get('/:id/steps', authenticateUser, async (req, res) => {
   try {
+    // Verify campaign belongs to user
     const { data: campaigns } = await supabase
       .from('campaigns')
       .select('id')
@@ -435,6 +480,21 @@ router.get('/:id/steps', authenticateUser, async (req, res) => {
       .order('step_order');
     
     if (error) throw error;
+
+    // LOGGING: Verify what is coming out of the DB
+    console.log(`[GET STEPS] Retrieved ${data.length} steps for campaign ${req.params.id}`);
+    const conditionSteps = data.filter(s => s.step_type === 'condition');
+    if (conditionSteps.length > 0) {
+        console.log(`[GET STEPS] Verifying ${conditionSteps.length} condition steps:`);
+        conditionSteps.forEach(s => {
+            console.log(`   - Step ID: ${s.id}`);
+            console.log(`   - Branches in DB: ${s.condition_branches ? JSON.stringify(s.condition_branches).length + ' chars' : 'NULL/EMPTY'}`);
+            if (s.condition_branches && Array.isArray(s.condition_branches)) {
+                console.log(`   - Branch count: ${s.condition_branches.length}`);
+            }
+        });
+    }
+
     res.json(data);
   } catch (error) {
     console.error('Error fetching campaign steps:', error);
@@ -442,6 +502,7 @@ router.get('/:id/steps', authenticateUser, async (req, res) => {
   }
 });
 
+// Add campaign step
 router.post('/:id/steps', authenticateUser, async (req, res) => {
   try {
     const { data: campaign } = await supabase
@@ -469,6 +530,11 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       step_order
     } = req.body;
 
+    console.log(`[ADD STEP] Adding new step: ${step_type}`);
+    if (step_type === 'condition') {
+        console.log(`[ADD STEP] Condition branches payload:`, condition_branches);
+    }
+
     if (!['email', 'wait', 'condition'].includes(step_type)) {
       return res.status(400).json({ error: 'Invalid step type' });
     }
@@ -493,6 +559,7 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
 
     if (error) throw error;
     const step = Array.isArray(data) ? data[0] : data;
+    console.log(`[ADD STEP] Success. Created step ID: ${step.id}`);
     res.json(step);
   } catch (error) {
     console.error('Error adding campaign step:', error);
@@ -503,6 +570,8 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
 // Update campaign step
 router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   try {
+    console.log(`[UPDATE STEP] Updating step ${req.params.stepId}`);
+    
     // 1. Verify campaign ownership
     const { data: campaigns } = await supabase
       .from('campaigns')
@@ -520,6 +589,10 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       position_x, position_y
     } = req.body;
 
+    if (condition_branches) {
+        console.log(`[UPDATE STEP] Received updates for condition_branches. Count: ${condition_branches.length}`);
+    }
+
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
     if (body !== undefined) updates.body = body;
@@ -536,14 +609,17 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       return res.json({ message: 'No updates provided' });
     }
 
-    // 2. Perform Update without .single() to avoid coercion errors
+    // 2. Perform Update without .single() to avoid coercion errors (FIXED HERE)
     const { error: updateError } = await supabase
       .from('campaign_steps')
       .update(updates)
       .eq('id', req.params.stepId)
       .eq('campaign_id', req.params.campaignId);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+        console.error('[UPDATE STEP] DB Error:', updateError);
+        throw updateError;
+    }
 
     // 3. Fetch the updated record explicitly for the response
     const { data: updatedSteps, error: fetchError } = await supabase
@@ -559,6 +635,11 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Step not found after update' });
     }
 
+    console.log(`[UPDATE STEP] Success. Updated step ${updatedStep.id}`);
+    if (updatedStep.step_type === 'condition') {
+        console.log(`[UPDATE STEP] Saved branches: ${JSON.stringify(updatedStep.condition_branches)}`);
+    }
+
     res.json(updatedStep);
   } catch (error) {
     console.error('Error updating campaign step:', error);
@@ -566,6 +647,7 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   }
 });
 
+// Delete campaign step
 router.delete('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   try {
     const { data: campaigns } = await supabase
@@ -668,6 +750,7 @@ router.post('/:id/start', authenticateUser, async (req, res) => {
   }
 });
 
+// Pause campaign
 router.post('/:id/pause', authenticateUser, async (req, res) => {
   try {
     const { error } = await supabase
@@ -684,6 +767,7 @@ router.post('/:id/pause', authenticateUser, async (req, res) => {
   }
 });
 
+// Get campaign stats
 router.get('/:id/stats', authenticateUser, async (req, res) => {
   try {
     const { data: campaign } = await supabase
