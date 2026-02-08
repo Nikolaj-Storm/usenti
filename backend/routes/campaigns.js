@@ -420,6 +420,23 @@ router.get('/:id/steps', authenticateUser, async (req, res) => {
       .order('step_order');
     
     if (error) throw error;
+
+    // Log what we're returning, especially condition_branches
+    console.log('[GET STEPS] Returning', data.length, 'steps for campaign', req.params.id);
+    data.forEach(step => {
+      if (step.step_type === 'condition') {
+        const branches = step.condition_branches;
+        if (branches && Array.isArray(branches)) {
+          console.log(`[GET STEPS] Condition step ${step.id}: ${branches.length} branches`);
+          branches.forEach((b, i) => {
+            console.log(`[GET STEPS]   Branch ${i}: condition=${b.condition}, branch_steps=${(b.branch_steps || []).length}`);
+          });
+        } else {
+          console.log(`[GET STEPS] Condition step ${step.id}: condition_branches is ${JSON.stringify(branches)}`);
+        }
+      }
+    });
+
     res.json(data);
   } catch (error) {
     console.error('Error fetching campaign steps:', error);
@@ -527,9 +544,15 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     } = req.body;
 
     // DEBUG: Log what we received from the frontend
-    console.log('[WAIT DEBUG] Backend received update for step', req.params.stepId);
-    console.log('[WAIT DEBUG] Raw req.body:', JSON.stringify(req.body));
-    console.log('[WAIT DEBUG] Extracted wait fields - days:', wait_days, 'hours:', wait_hours, 'minutes:', wait_minutes);
+    console.log('[STEP UPDATE] Backend received update for step', req.params.stepId);
+    console.log('[STEP UPDATE] Raw req.body keys:', Object.keys(req.body));
+    if (req.body.condition_branches) {
+      console.log('[STEP UPDATE] condition_branches received:', JSON.stringify(req.body.condition_branches).substring(0, 500));
+      console.log('[STEP UPDATE] Number of branches:', req.body.condition_branches.length);
+      req.body.condition_branches.forEach((b, i) => {
+        console.log(`[STEP UPDATE]   Branch ${i}: condition=${b.condition}, branch_steps=${(b.branch_steps || []).length}`);
+      });
+    }
 
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
@@ -543,7 +566,10 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     if (position_x !== undefined) updates.position_x = Math.round(Number(position_x));
     if (position_y !== undefined) updates.position_y = Math.round(Number(position_y));
 
-    console.log('[WAIT DEBUG] Updates object to save:', JSON.stringify(updates));
+    console.log('[STEP UPDATE] Updates object keys:', Object.keys(updates));
+    if (updates.condition_branches) {
+      console.log('[STEP UPDATE] Will save condition_branches with', updates.condition_branches.length, 'branches');
+    }
 
     if (Object.keys(updates).length === 0) {
       return res.json({ message: 'No updates provided' });
@@ -574,7 +600,18 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Step not found after update' });
     }
 
-    console.log('[WAIT DEBUG] After save, DB has:', JSON.stringify({ wait_days: updatedStep.wait_days, wait_hours: updatedStep.wait_hours, wait_minutes: updatedStep.wait_minutes }));
+    // Log what's actually in the DB after save
+    if (updatedStep.condition_branches) {
+      const branches = updatedStep.condition_branches;
+      console.log('[STEP UPDATE] ✅ After save, DB has condition_branches with', Array.isArray(branches) ? branches.length : 'non-array', 'branches');
+      if (Array.isArray(branches)) {
+        branches.forEach((b, i) => {
+          console.log(`[STEP UPDATE]   DB Branch ${i}: condition=${b.condition}, branch_steps=${(b.branch_steps || []).length}`);
+        });
+      }
+    } else {
+      console.log('[STEP UPDATE] ✅ After save, DB has NO condition_branches (null/undefined)');
+    }
 
     res.json(updatedStep);
   } catch (error) {
