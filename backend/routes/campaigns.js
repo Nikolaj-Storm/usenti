@@ -64,31 +64,27 @@ router.get('/:id', authenticateUser, async (req, res) => {
 });
 
 // Create new campaign
-// Supports both legacy single email_account_id and new email_account_ids array
 router.post('/', authenticateUser, async (req, res) => {
   try {
     const {
       name,
-      email_account_id,      // Legacy: single account
-      email_account_ids,     // New: array of accounts for rotation
+      email_account_id,
+      email_account_ids,
       contact_list_id,
       send_schedule,
       daily_limit
     } = req.body;
 
-    // Determine which accounts to use
     const accountIds = email_account_ids && email_account_ids.length > 0
       ? email_account_ids
       : (email_account_id ? [email_account_id] : []);
 
-    // Validate required fields
     if (!name || accountIds.length === 0 || !contact_list_id) {
       return res.status(400).json({
         error: 'Name, at least one email account, and contact list are required'
       });
     }
 
-    // Verify all email accounts belong to user
     const { data: emailAccounts, error: accountsError } = await supabase
       .from('email_accounts')
       .select('id')
@@ -101,7 +97,6 @@ router.post('/', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'One or more email accounts are invalid' });
     }
 
-    // Verify contact list belongs to user
     const { data: contactList } = await supabase
       .from('contact_lists')
       .select('id')
@@ -113,15 +108,12 @@ router.post('/', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'Invalid contact list' });
     }
 
-    // Create campaign
-    // For multi-account campaigns, email_account_id is set to the first account for backward compatibility
-    // The actual rotation uses the campaign_email_accounts junction table
     const { data: campaign, error: campaignError } = await supabase
       .from('campaigns')
       .insert({
         user_id: req.user.id,
         name,
-        email_account_id: accountIds[0], // First account for backward compatibility
+        email_account_id: accountIds[0],
         contact_list_id,
         status: 'draft',
         send_schedule: send_schedule || {
@@ -136,7 +128,6 @@ router.post('/', authenticateUser, async (req, res) => {
 
     if (campaignError) throw campaignError;
 
-    // If multiple accounts, create junction table entries
     if (accountIds.length > 0) {
       const junctionEntries = accountIds.map(accountId => ({
         campaign_id: campaign.id,
@@ -150,11 +141,9 @@ router.post('/', authenticateUser, async (req, res) => {
 
       if (junctionError) {
         console.error('Error creating campaign_email_accounts:', junctionError);
-        // Don't fail the whole request, campaign is still usable with legacy single account
       }
     }
 
-    // Fetch the complete campaign with all relations
     const { data: fullCampaign, error: fetchError } = await supabase
       .from('campaigns')
       .select(`
@@ -202,7 +191,7 @@ router.put('/:id', authenticateUser, async (req, res) => {
       
       if (deleteError) throw deleteError;
       
-      // Re-insert steps with parent_id, branch_index, and condition_branches
+      // Re-insert steps with parent_id, branch_index AND condition_branches
       for (const step of steps) {
         const { error: insertError } = await supabase
           .from('campaign_steps')
@@ -213,13 +202,11 @@ router.put('/:id', authenticateUser, async (req, res) => {
             config: step.config,
             step_order: step.step_order || step.position,
             branch_id: step.branch_id,
-            
-            // CRITICAL FIX: Ensure these fields are saved to preserve the tree structure and logic
+            // CRITICAL FIX: Save condition branches, parent_id, and branch_index
             condition_branches: step.condition_branches || null,
             parent_id: step.parent_id || null,
             branch_index: step.branch_index || null,
-            
-            // Optional: Save positions if available (for visual layout)
+            // Save positions for visual editor
             position_x: step.position_x ? Math.round(Number(step.position_x)) : null,
             position_y: step.position_y ? Math.round(Number(step.position_y)) : null
           });
@@ -271,13 +258,11 @@ router.delete('/:id', authenticateUser, async (req, res) => {
 });
 
 // ============================================================================
-// CAMPAIGN EMAIL ACCOUNTS (Multi-Account Rotation)
+// CAMPAIGN EMAIL ACCOUNTS
 // ============================================================================
 
-// Get email accounts for a campaign
 router.get('/:id/email-accounts', authenticateUser, async (req, res) => {
   try {
-    // Verify campaign belongs to user
     const { data: campaign } = await supabase
       .from('campaigns')
       .select('id')
@@ -309,7 +294,6 @@ router.get('/:id/email-accounts', authenticateUser, async (req, res) => {
   }
 });
 
-// Add email account(s) to a campaign
 router.post('/:id/email-accounts', authenticateUser, async (req, res) => {
   try {
     const { email_account_ids } = req.body;
@@ -318,7 +302,6 @@ router.post('/:id/email-accounts', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'email_account_ids array is required' });
     }
 
-    // Verify campaign belongs to user
     const { data: campaign } = await supabase
       .from('campaigns')
       .select('id')
@@ -330,7 +313,6 @@ router.post('/:id/email-accounts', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
-    // Verify all email accounts belong to user
     const { data: emailAccounts } = await supabase
       .from('email_accounts')
       .select('id')
@@ -341,7 +323,6 @@ router.post('/:id/email-accounts', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'One or more email accounts are invalid' });
     }
 
-    // Insert new associations (ignore duplicates)
     const entries = email_account_ids.map(accountId => ({
       campaign_id: req.params.id,
       email_account_id: accountId,
@@ -354,7 +335,6 @@ router.post('/:id/email-accounts', authenticateUser, async (req, res) => {
 
     if (error) throw error;
 
-    // Return updated list
     const { data: updatedList } = await supabase
       .from('campaign_email_accounts')
       .select(`
@@ -374,10 +354,8 @@ router.post('/:id/email-accounts', authenticateUser, async (req, res) => {
   }
 });
 
-// Remove email account from a campaign
 router.delete('/:campaignId/email-accounts/:accountId', authenticateUser, async (req, res) => {
   try {
-    // Verify campaign belongs to user
     const { data: campaign } = await supabase
       .from('campaigns')
       .select('id')
@@ -403,12 +381,10 @@ router.delete('/:campaignId/email-accounts/:accountId', authenticateUser, async 
   }
 });
 
-// Toggle email account active status for a campaign
 router.patch('/:campaignId/email-accounts/:accountId', authenticateUser, async (req, res) => {
   try {
     const { is_active } = req.body;
 
-    // Verify campaign belongs to user
     const { data: campaign } = await supabase
       .from('campaigns')
       .select('id')
@@ -436,10 +412,12 @@ router.patch('/:campaignId/email-accounts/:accountId', authenticateUser, async (
   }
 });
 
-// Get campaign steps
+// ============================================================================
+// CAMPAIGN STEPS
+// ============================================================================
+
 router.get('/:id/steps', authenticateUser, async (req, res) => {
   try {
-    // Verify campaign belongs to user (array query to avoid PGRST116)
     const { data: campaigns } = await supabase
       .from('campaigns')
       .select('id')
@@ -457,23 +435,6 @@ router.get('/:id/steps', authenticateUser, async (req, res) => {
       .order('step_order');
     
     if (error) throw error;
-
-    // Log what we're returning, especially condition_branches
-    console.log('[GET STEPS] Returning', data.length, 'steps for campaign', req.params.id);
-    data.forEach(step => {
-      if (step.step_type === 'condition') {
-        const branches = step.condition_branches;
-        if (branches && Array.isArray(branches)) {
-          console.log(`[GET STEPS] Condition step ${step.id}: ${branches.length} branches`);
-          branches.forEach((b, i) => {
-            console.log(`[GET STEPS]    Branch ${i}: condition=${b.condition}, branch_steps=${(b.branch_steps || []).length}`);
-          });
-        } else {
-          console.log(`[GET STEPS] Condition step ${step.id}: condition_branches is ${JSON.stringify(branches)}`);
-        }
-      }
-    });
-
     res.json(data);
   } catch (error) {
     console.error('Error fetching campaign steps:', error);
@@ -481,10 +442,8 @@ router.get('/:id/steps', authenticateUser, async (req, res) => {
   }
 });
 
-// Add campaign step
 router.post('/:id/steps', authenticateUser, async (req, res) => {
   try {
-    // Verify campaign belongs to user
     const { data: campaign } = await supabase
       .from('campaigns')
       .select('id')
@@ -500,11 +459,9 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       step_type,
       subject,
       body,
-      // Wait step fields
       wait_days,
       wait_hours,
       wait_minutes,
-      // Condition step fields (legacy + new)
       condition_type,
       condition_branches,
       next_step_if_true,
@@ -512,15 +469,6 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       step_order
     } = req.body;
 
-    // DEBUG: Log what we received for step creation
-    if (step_type === 'wait') {
-      console.log('[WAIT DEBUG] Creating new wait step');
-      console.log('[WAIT DEBUG] Raw req.body:', JSON.stringify(req.body));
-      console.log('[WAIT DEBUG] Received wait fields - days:', wait_days, 'hours:', wait_hours, 'minutes:', wait_minutes);
-      console.log('[WAIT DEBUG] Will store - days:', wait_days || 0, 'hours:', wait_hours || 0, 'minutes:', wait_minutes || 0);
-    }
-
-    // Validate step type
     if (!['email', 'wait', 'condition'].includes(step_type)) {
       return res.status(400).json({ error: 'Invalid step type' });
     }
@@ -532,11 +480,9 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
         step_type,
         subject: step_type === 'email' ? subject : null,
         body: step_type === 'email' ? body : null,
-        // Wait step fields
         wait_days: step_type === 'wait' ? (wait_days || 0) : null,
         wait_hours: step_type === 'wait' ? (wait_hours || 0) : null,
         wait_minutes: step_type === 'wait' ? (wait_minutes || 0) : null,
-        // Condition step fields
         condition_type: step_type === 'condition' ? condition_type : null,
         condition_branches: step_type === 'condition' ? (condition_branches || null) : null,
         next_step_if_true: step_type === 'condition' ? next_step_if_true : null,
@@ -546,13 +492,7 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       .select();
 
     if (error) throw error;
-
     const step = Array.isArray(data) ? data[0] : data;
-
-    if (step_type === 'wait') {
-      console.log('[WAIT DEBUG] Created step in DB:', JSON.stringify({ id: step.id, wait_days: step.wait_days, wait_hours: step.wait_hours, wait_minutes: step.wait_minutes }));
-    }
-
     res.json(step);
   } catch (error) {
     console.error('Error adding campaign step:', error);
@@ -563,7 +503,7 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
 // Update campaign step
 router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   try {
-    // 1. Verify campaign ownership (array query to avoid PGRST116)
+    // 1. Verify campaign ownership
     const { data: campaigns } = await supabase
       .from('campaigns')
       .select('id')
@@ -580,17 +520,6 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       position_x, position_y
     } = req.body;
 
-    // DEBUG: Log what we received from the frontend
-    console.log('[STEP UPDATE] Backend received update for step', req.params.stepId);
-    console.log('[STEP UPDATE] Raw req.body keys:', Object.keys(req.body));
-    if (req.body.condition_branches) {
-      console.log('[STEP UPDATE] condition_branches received:', JSON.stringify(req.body.condition_branches).substring(0, 500));
-      console.log('[STEP UPDATE] Number of branches:', req.body.condition_branches.length);
-      req.body.condition_branches.forEach((b, i) => {
-        console.log(`[STEP UPDATE]    Branch ${i}: condition=${b.condition}, branch_steps=${(b.branch_steps || []).length}`);
-      });
-    }
-
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
     if (body !== undefined) updates.body = body;
@@ -602,11 +531,6 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     if (step_order !== undefined) updates.step_order = step_order;
     if (position_x !== undefined) updates.position_x = Math.round(Number(position_x));
     if (position_y !== undefined) updates.position_y = Math.round(Number(position_y));
-
-    console.log('[STEP UPDATE] Updates object keys:', Object.keys(updates));
-    if (updates.condition_branches) {
-      console.log('[STEP UPDATE] Will save condition_branches with', updates.condition_branches.length, 'branches');
-    }
 
     if (Object.keys(updates).length === 0) {
       return res.json({ message: 'No updates provided' });
@@ -622,7 +546,6 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     if (updateError) throw updateError;
 
     // 3. Fetch the updated record explicitly for the response
-    // Use array query instead of .single() to avoid PGRST116 coercion errors
     const { data: updatedSteps, error: fetchError } = await supabase
       .from('campaign_steps')
       .select('*')
@@ -632,22 +555,8 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     if (fetchError) throw fetchError;
 
     const updatedStep = updatedSteps && updatedSteps.length > 0 ? updatedSteps[0] : null;
-
     if (!updatedStep) {
       return res.status(404).json({ error: 'Step not found after update' });
-    }
-
-    // Log what's actually in the DB after save
-    if (updatedStep.condition_branches) {
-      const branches = updatedStep.condition_branches;
-      console.log('[STEP UPDATE] ✅ After save, DB has condition_branches with', Array.isArray(branches) ? branches.length : 'non-array', 'branches');
-      if (Array.isArray(branches)) {
-        branches.forEach((b, i) => {
-          console.log(`[STEP UPDATE]    DB Branch ${i}: condition=${b.condition}, branch_steps=${(b.branch_steps || []).length}`);
-        });
-      }
-    } else {
-      console.log('[STEP UPDATE] ✅ After save, DB has NO condition_branches (null/undefined)');
     }
 
     res.json(updatedStep);
@@ -657,10 +566,8 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   }
 });
 
-// Delete campaign step
 router.delete('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   try {
-    // Verify campaign belongs to user (array query to avoid PGRST116)
     const { data: campaigns } = await supabase
       .from('campaigns')
       .select('id')
@@ -688,7 +595,6 @@ router.delete('/:campaignId/steps/:stepId', authenticateUser, async (req, res) =
 // Start campaign
 router.post('/:id/start', authenticateUser, async (req, res) => {
   try {
-    // Verify campaign belongs to user
     const { data: campaign } = await supabase
       .from('campaigns')
       .select('id, contact_list_id')
@@ -700,7 +606,6 @@ router.post('/:id/start', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
-    // Get first step
     const { data: firstStep } = await supabase
       .from('campaign_steps')
       .select('id')
@@ -712,7 +617,6 @@ router.post('/:id/start', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'Campaign has no steps' });
     }
 
-    // Get all contacts from list
     const { data: contacts } = await supabase
       .from('contacts')
       .select('id')
@@ -723,19 +627,13 @@ router.post('/:id/start', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'No active contacts in list' });
     }
 
-    // Delete existing campaign_contacts entries to allow restart
-    // This ensures the campaign starts fresh when restarted
     const { error: deleteError } = await supabase
       .from('campaign_contacts')
       .delete()
       .eq('campaign_id', req.params.id);
 
-    if (deleteError) {
-      console.error('Error deleting existing campaign_contacts:', deleteError);
-      throw deleteError;
-    }
+    if (deleteError) throw deleteError;
 
-    // Create campaign_contacts entries
     const campaignContacts = contacts.map(contact => ({
       campaign_id: req.params.id,
       contact_id: contact.id,
@@ -750,7 +648,6 @@ router.post('/:id/start', authenticateUser, async (req, res) => {
 
     if (insertError) throw insertError;
 
-    // Update campaign status
     const { error: updateError } = await supabase
       .from('campaigns')
       .update({ 
@@ -771,7 +668,6 @@ router.post('/:id/start', authenticateUser, async (req, res) => {
   }
 });
 
-// Pause campaign
 router.post('/:id/pause', authenticateUser, async (req, res) => {
   try {
     const { error } = await supabase
@@ -788,10 +684,8 @@ router.post('/:id/pause', authenticateUser, async (req, res) => {
   }
 });
 
-// Get campaign stats
 router.get('/:id/stats', authenticateUser, async (req, res) => {
   try {
-    // Verify campaign belongs to user
     const { data: campaign } = await supabase
       .from('campaigns')
       .select('id, contact_list_id')
@@ -803,13 +697,11 @@ router.get('/:id/stats', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
-    // Get total contacts
     const { count: totalContacts } = await supabase
       .from('campaign_contacts')
       .select('*', { count: 'exact', head: true })
       .eq('campaign_id', req.params.id);
 
-    // Get event counts
     const { data: events } = await supabase
       .from('email_events')
       .select('event_type')
