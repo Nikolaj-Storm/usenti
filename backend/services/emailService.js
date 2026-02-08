@@ -158,7 +158,7 @@ async function sendEmail({
   // Add tracking pixel if requested
   if (trackOpens && campaignId && contactId) {
     const trackingToken = crypto.randomBytes(16).toString('hex');
-    const trackingUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/track/open/${campaignId}/${contactId}/${trackingToken}`;
+    const trackingUrl = `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/track/open/${campaignId}/${contactId}/${trackingToken}`;
     const trackingPixel = `<img src="${trackingUrl}" width="1" height="1" style="display:none;" alt="" />`;
     finalBody += trackingPixel;
     console.log(`[EMAIL-SERVICE]    Added open tracking pixel`);
@@ -167,7 +167,7 @@ async function sendEmail({
   // Rewrite links for click tracking if requested
   if (trackClicks && campaignId && contactId) {
     const trackingToken = crypto.randomBytes(16).toString('hex');
-    const clickTrackingUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/track/click/${campaignId}/${contactId}/${trackingToken}`;
+    const clickTrackingUrl = `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/track/click/${campaignId}/${contactId}/${trackingToken}`;
     finalBody = finalBody.replace(
       /href="(https?:\/\/[^"]+)"/g,
       (match, url) => `href="${clickTrackingUrl}?url=${encodeURIComponent(url)}"`

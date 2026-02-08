@@ -2618,12 +2618,12 @@ async function handleEmailStep(campaignContact, campaign, contact, step) {
 
     // Add tracking pixel
     const trackingToken = crypto.randomBytes(16).toString('hex');
-    const trackingUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/track/open/${campaign.id}/${contact.id}/${trackingToken}`;
+    const trackingUrl = `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/track/open/${campaign.id}/${contact.id}/${trackingToken}`;
     const trackingPixel = `<img src="${trackingUrl}" width="1" height="1" style="display:none;" alt="" />`;
     personalizedBody += trackingPixel;
 
     // Rewrite links for click tracking
-    const clickTrackingUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/track/click/${campaign.id}/${contact.id}/${trackingToken}`;
+    const clickTrackingUrl = `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/track/click/${campaign.id}/${contact.id}/${trackingToken}`;
     personalizedBody = personalizedBody.replace(
       /href="(https?:\/\/[^"]+)"/g,
       (match, url) => `href="${clickTrackingUrl}?url=${encodeURIComponent(url)}"`
