@@ -194,52 +194,22 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
   const requestId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   try {
-    console.log(`\n${'='.repeat(80)}`);
-    console.log(`[${requestId}] NEW EMAIL ACCOUNT REQUEST`);
-    console.log(`${'='.repeat(80)}`);
-    console.log(`[${requestId}] Timestamp: ${new Date().toISOString()}`);
-    console.log(`[${requestId}] User ID: ${req.user?.id}`);
-    console.log(`[${requestId}] User Email: ${req.user?.email}`);
-
     const {
       email_address, account_type, sender_name, imap_host, imap_port, imap_username, imap_password,
       smtp_host, smtp_port, smtp_username, smtp_password, daily_send_limit
     } = req.body;
 
-    console.log(`\n[${requestId}] === STEP 1: REQUEST BODY VALIDATION ===`);
-    console.log(`[${requestId}] Email Address: ${email_address}`);
-    console.log(`[${requestId}] Account Type: ${account_type}`);
-    console.log(`[${requestId}] IMAP Host: ${imap_host}`);
-    console.log(`[${requestId}] IMAP Port: ${imap_port}`);
-    console.log(`[${requestId}] IMAP Username: ${imap_username}`);
-    console.log(`[${requestId}] IMAP Password Provided: ${!!imap_password}`);
-    console.log(`[${requestId}] IMAP Password Length: ${imap_password?.length || 0}`);
-    console.log(`[${requestId}] SMTP Host: ${smtp_host}`);
-    console.log(`[${requestId}] SMTP Port: ${smtp_port}`);
-    console.log(`[${requestId}] SMTP Username: ${smtp_username}`);
-    console.log(`[${requestId}] SMTP Password Provided: ${!!smtp_password}`);
-    console.log(`[${requestId}] SMTP Password Length: ${smtp_password?.length || 0}`);
-    console.log(`[${requestId}] Daily Send Limit: ${daily_send_limit}`);
-
     // Validation
     if (!email_address || !account_type) {
-      console.log(`[${requestId}] ❌ VALIDATION FAILED: Missing required fields`);
-      console.log(`[${requestId}]    - email_address present: ${!!email_address}`);
-      console.log(`[${requestId}]    - account_type present: ${!!account_type}`);
       return res.status(400).json({
         error: 'Email address and account type are required',
         requestId
       });
     }
 
-    console.log(`[${requestId}] ✓ Basic validation passed`);
-
     // Validate account_type is one of the allowed values
     const allowedTypes = ['gmail', 'outlook', 'zoho', 'aws_workmail', 'stalwart', 'custom'];
     if (!allowedTypes.includes(account_type)) {
-      console.log(`[${requestId}] ❌ VALIDATION FAILED: Invalid account_type`);
-      console.log(`[${requestId}]    - Received: ${account_type}`);
-      console.log(`[${requestId}]    - Allowed: ${allowedTypes.join(', ')}`);
       return res.status(400).json({
         error: `Invalid account_type. Must be one of: ${allowedTypes.join(', ')}`,
         received: account_type,
@@ -247,14 +217,7 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
       });
     }
 
-    console.log(`[${requestId}] ✓ Account type validation passed`);
-
     // Check for existing account
-    console.log(`\n[${requestId}] === STEP 2: DUPLICATE CHECK ===`);
-    console.log(`[${requestId}] Querying for existing account...`);
-    console.log(`[${requestId}]    - user_id: ${req.user.id}`);
-    console.log(`[${requestId}]    - email_address: ${email_address.toLowerCase()}`);
-
     const { data: existing, error: checkError } = await supabase
       .from('email_accounts')
       .select('id, email_address, created_at')
@@ -262,23 +225,7 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
       .eq('email_address', email_address.toLowerCase())
       .single();
 
-    if (checkError) {
-      if (checkError.code === 'PGRST116') {
-        console.log(`[${requestId}] ✓ No duplicate found (PGRST116 - no rows)`);
-      } else {
-        console.log(`[${requestId}] ❌ ERROR during duplicate check:`, {
-          code: checkError.code,
-          message: checkError.message,
-          details: checkError.details
-        });
-        throw checkError;
-      }
-    } else if (existing) {
-      console.log(`[${requestId}] ❌ DUPLICATE FOUND:`, {
-        id: existing.id,
-        email: existing.email_address,
-        created_at: existing.created_at
-      });
+    if (existing) {
       return res.status(400).json({
         error: 'Email account already exists',
         existingId: existing.id,
@@ -286,54 +233,22 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
       });
     }
 
-    console.log(`[${requestId}] ✓ Duplicate check passed`);
-
-    // Encrypt passwords
-    console.log(`\n[${requestId}] === STEP 3: PASSWORD ENCRYPTION ===`);
-    console.log(`[${requestId}] Encryption key available: ${!!process.env.ENCRYPTION_KEY}`);
-    console.log(`[${requestId}] Encryption key length: ${process.env.ENCRYPTION_KEY?.length || 0}`);
-
     let encryptedImapPassword, encryptedSmtpPassword;
 
-    console.log(`[${requestId}] Encrypting IMAP password...`);
     try {
       encryptedImapPassword = encrypt(imap_password);
-      console.log(`[${requestId}] ✓ IMAP password encrypted successfully`);
-      console.log(`[${requestId}]    - Original length: ${imap_password?.length}`);
-      console.log(`[${requestId}]    - Encrypted length: ${encryptedImapPassword?.length}`);
-      console.log(`[${requestId}]    - Encrypted format: ${encryptedImapPassword?.substring(0, 20)}...`);
     } catch (encErr) {
-      console.log(`[${requestId}] ❌ IMAP ENCRYPTION ERROR:`, {
-        name: encErr.name,
-        message: encErr.message,
-        stack: encErr.stack
-      });
       throw new Error(`IMAP password encryption failed: ${encErr.message}`);
     }
 
-    console.log(`[${requestId}] Encrypting SMTP password...`);
     try {
       encryptedSmtpPassword = encrypt(smtp_password);
-      console.log(`[${requestId}] ✓ SMTP password encrypted successfully`);
-      console.log(`[${requestId}]    - Original length: ${smtp_password?.length}`);
-      console.log(`[${requestId}]    - Encrypted length: ${encryptedSmtpPassword?.length}`);
-      console.log(`[${requestId}]    - Encrypted format: ${encryptedSmtpPassword?.substring(0, 20)}...`);
     } catch (encErr) {
-      console.log(`[${requestId}] ❌ SMTP ENCRYPTION ERROR:`, {
-        name: encErr.name,
-        message: encErr.message,
-        stack: encErr.stack
-      });
       throw new Error(`SMTP password encryption failed: ${encErr.message}`);
     }
 
-    console.log(`[${requestId}] ✓ Both passwords encrypted successfully`);
-
     // Verify SMTP credentials before saving (for stalwart and custom accounts)
     if (account_type === 'stalwart' || account_type === 'custom') {
-      console.log(`\n[${requestId}] === STEP 3.5: SMTP CREDENTIAL VERIFICATION ===`);
-      console.log(`[${requestId}] Verifying SMTP credentials before saving...`);
-
       const verifyPort = parseInt(smtp_port, 10) || 587;
       const verifySecure = verifyPort === 465;
       const isStalwart = account_type === 'stalwart';
@@ -354,7 +269,6 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
         greetingTimeout: 15000
       };
 
-      // Stalwart prefers PLAIN auth over STARTTLS
       if (isStalwart && !verifySecure) {
         verifyConfig.requireTLS = true;
         verifyConfig.authMethod = 'PLAIN';
@@ -363,19 +277,8 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
       try {
         const testTransporter = nodemailer.createTransport(verifyConfig);
         await testTransporter.verify();
-        console.log(`[${requestId}] ✓ SMTP credentials verified successfully`);
       } catch (smtpError) {
-        console.log(`[${requestId}] ❌ SMTP VERIFICATION FAILED: ${smtpError.message}`);
-
         let userMessage = `SMTP connection failed: ${smtpError.message}`;
-        if (smtpError.message.includes('Authentication credentials invalid') || smtpError.message.includes('Invalid login')) {
-          userMessage = `SMTP authentication failed - the username or password was rejected by ${smtp_host}. Please verify: (1) the password matches what is set in your mail server, (2) the username format is correct (try "${email_address}" or just the local part), (3) SMTP authentication is enabled on your mail server's submission port (${verifyPort}).`;
-        } else if (smtpError.message.includes('ECONNREFUSED') || smtpError.message.includes('ENOTFOUND')) {
-          userMessage = `Cannot reach SMTP server at ${smtp_host}:${verifyPort}. Please verify the hostname resolves to your server's IP and that port ${verifyPort} is open in your firewall.`;
-        } else if (smtpError.message.includes('STARTTLS')) {
-          userMessage = `TLS/STARTTLS negotiation failed with ${smtp_host}:${verifyPort}. Ensure your mail server has a valid TLS certificate configured for SMTP.`;
-        }
-
         return res.status(400).json({
           error: userMessage,
           errorType: 'smtp_verification_failed',
@@ -383,9 +286,6 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
         });
       }
     }
-
-    // Prepare insert data
-    console.log(`\n[${requestId}] === STEP 4: PREPARE DATABASE INSERT ===`);
 
     const insertData = {
       user_id: req.user.id,
@@ -405,27 +305,6 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
       health_score: 100
     };
 
-    console.log(`[${requestId}] Insert data prepared:`, {
-      user_id: insertData.user_id,
-      email_address: insertData.email_address,
-      account_type: insertData.account_type,
-      imap_host: insertData.imap_host,
-      imap_port: insertData.imap_port,
-      imap_username: insertData.imap_username,
-      imap_password: '[ENCRYPTED]',
-      smtp_host: insertData.smtp_host,
-      smtp_port: insertData.smtp_port,
-      smtp_username: insertData.smtp_username,
-      smtp_password: '[ENCRYPTED]',
-      daily_send_limit: insertData.daily_send_limit,
-      is_active: insertData.is_active,
-      health_score: insertData.health_score
-    });
-
-    console.log(`[${requestId}] Attempting database insert...`);
-    console.log(`[${requestId}] Target table: email_accounts`);
-    console.log(`[${requestId}] Select fields: id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at`);
-
     const { data, error } = await supabase
       .from('email_accounts')
       .insert(insertData)
@@ -433,56 +312,11 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
       .single();
 
     if (error) {
-      console.log(`\n[${requestId}] === STEP 5: DATABASE INSERT FAILED ===`);
-      console.log(`[${requestId}] ❌ DATABASE ERROR DETAILS:`);
-      console.log(`[${requestId}]    - Error Code: ${error.code}`);
-      console.log(`[${requestId}]    - Error Message: ${error.message}`);
-      console.log(`[${requestId}]    - Error Details: ${error.details}`);
-      console.log(`[${requestId}]    - Error Hint: ${error.hint}`);
-      console.log(`[${requestId}]    - Full Error Object:`, JSON.stringify(error, null, 2));
-
-      // Specific error code handling
-      if (error.code === '23514') {
-        console.log(`[${requestId}] 🔍 CHECK CONSTRAINT VIOLATION DETECTED`);
-        console.log(`[${requestId}]    This usually means the account_type value is not in the allowed list`);
-        console.log(`[${requestId}]    Attempted account_type: ${account_type}`);
-        console.log(`[${requestId}]    Allowed types: gmail, outlook, zoho, aws_workmail, stalwart, custom`);
-      } else if (error.code === '23505') {
-        console.log(`[${requestId}] 🔍 UNIQUE CONSTRAINT VIOLATION`);
-        console.log(`[${requestId}]    An account with this email already exists`);
-      } else if (error.code === '23503') {
-        console.log(`[${requestId}] 🔍 FOREIGN KEY CONSTRAINT VIOLATION`);
-        console.log(`[${requestId}]    The user_id doesn't exist in the users table`);
-      }
-
       throw error;
     }
 
-    console.log(`\n[${requestId}] === STEP 5: DATABASE INSERT SUCCESS ===`);
-    console.log(`[${requestId}] ✅ Account created successfully!`);
-    console.log(`[${requestId}] Account ID: ${data.id}`);
-    console.log(`[${requestId}] Response data:`, data);
-    console.log(`${'='.repeat(80)}`);
-    console.log(`[${requestId}] REQUEST COMPLETED SUCCESSFULLY`);
-    console.log(`${'='.repeat(80)}\n`);
-
     res.json(data);
   } catch (error) {
-    console.log(`\n${'='.repeat(80)}`);
-    console.log(`[${requestId}] ❌❌❌ FATAL ERROR ❌❌❌`);
-    console.log(`${'='.repeat(80)}`);
-    console.log(`[${requestId}] Error Type: ${error.constructor.name}`);
-    console.log(`[${requestId}] Error Name: ${error.name}`);
-    console.log(`[${requestId}] Error Message: ${error.message}`);
-    console.log(`[${requestId}] Error Code: ${error.code || 'N/A'}`);
-    console.log(`[${requestId}] Error Details: ${error.details || 'N/A'}`);
-    console.log(`[${requestId}] Error Hint: ${error.hint || 'N/A'}`);
-    console.log(`[${requestId}] Full Error:`, JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-    console.log(`[${requestId}] Stack Trace:\n${error.stack}`);
-    console.log(`${'='.repeat(80)}`);
-    console.log(`[${requestId}] REQUEST FAILED`);
-    console.log(`${'='.repeat(80)}\n`);
-
     res.status(500).json({
       error: error.message,
       code: error.code,
@@ -593,8 +427,6 @@ app.post('/api/email-accounts/test', async (req, res) => {
 
 app.post('/api/email-accounts/:id/test-imap', authenticateUser, async (req, res) => {
   try {
-    console.log(`[TEST-IMAP] Testing IMAP for account ${req.params.id}...`);
-
     const { data: account } = await supabase
       .from('email_accounts')
       .select('*')
@@ -607,20 +439,10 @@ app.post('/api/email-accounts/:id/test-imap', authenticateUser, async (req, res)
     // Ensure port is a number
     const imapPort = parseInt(account.imap_port, 10) || 993;
 
-    console.log(`[TEST-IMAP] Account: ${account.email_address}`);
-    console.log(`[TEST-IMAP] IMAP Host: ${account.imap_host}:${imapPort}`);
-    console.log(`[TEST-IMAP] IMAP User: ${account.imap_username}`);
-
-    // Decrypt password with debug logging
-    console.log(`[TEST-IMAP] Encrypted password length: ${account.imap_password?.length || 0}`);
-    console.log(`[TEST-IMAP] Encrypted password has separator: ${account.imap_password?.includes(':')}`);
-
     let decryptedPassword;
     try {
       decryptedPassword = decrypt(account.imap_password);
-      console.log(`[TEST-IMAP] Decrypted password length: ${decryptedPassword?.length || 0}`);
     } catch (decryptError) {
-      console.error(`[TEST-IMAP] Decryption failed: ${decryptError.message}`);
       return res.status(400).json({
         success: false,
         error: `Password decryption failed: ${decryptError.message}`
@@ -638,7 +460,6 @@ app.post('/api/email-accounts/:id/test-imap', authenticateUser, async (req, res)
 
     return new Promise((resolve) => {
       let timeout = setTimeout(() => {
-        console.log(`[TEST-IMAP] ⏱️ Connection timeout`);
         imap.end();
         resolve(res.status(400).json({
           success: false,
@@ -648,25 +469,21 @@ app.post('/api/email-accounts/:id/test-imap', authenticateUser, async (req, res)
 
       imap.once('ready', () => {
         clearTimeout(timeout);
-        console.log(`[TEST-IMAP] ✅ Connection successful!`);
         imap.end();
         resolve(res.json({ success: true, message: 'IMAP connection successful' }));
       });
 
       imap.once('error', (err) => {
         clearTimeout(timeout);
-        console.error(`[TEST-IMAP] ❌ Connection failed: ${err.message}`);
         resolve(res.status(400).json({
           success: false,
           error: `IMAP failed: ${err.message}`
         }));
       });
 
-      console.log(`[TEST-IMAP] Connecting...`);
       imap.connect();
     });
   } catch (error) {
-    console.error(`[TEST-IMAP] Error: ${error.message}`);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -682,8 +499,6 @@ const ZOHO_SMTP_HOSTS = [
 
 app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res) => {
   try {
-    console.log(`[TEST-SMTP] Testing SMTP for account ${req.params.id}...`);
-
     const { data: account } = await supabase
       .from('email_accounts')
       .select('*')
@@ -697,21 +512,10 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
     const smtpPort = parseInt(account.smtp_port, 10) || 587;
     const isSecure = smtpPort === 465;
 
-    console.log(`[TEST-SMTP] Account: ${account.email_address}`);
-    console.log(`[TEST-SMTP] SMTP Host: ${account.smtp_host}:${smtpPort}`);
-    console.log(`[TEST-SMTP] SMTP User: ${account.smtp_username}`);
-    console.log(`[TEST-SMTP] Secure: ${isSecure ? 'YES (SSL)' : 'NO (TLS/STARTTLS)'}`);
-
-    // Decrypt password with debug logging
-    console.log(`[TEST-SMTP] Encrypted password length: ${account.smtp_password?.length || 0}`);
-    console.log(`[TEST-SMTP] Encrypted password has separator: ${account.smtp_password?.includes(':')}`);
-
     let decryptedPassword;
     try {
       decryptedPassword = decrypt(account.smtp_password);
-      console.log(`[TEST-SMTP] Decrypted password length: ${decryptedPassword?.length || 0}`);
     } catch (decryptError) {
-      console.error(`[TEST-SMTP] Decryption failed: ${decryptError.message}`);
       return res.status(400).json({
         success: false,
         error: `Password decryption failed: ${decryptError.message}`
@@ -749,7 +553,6 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
       if (isStalwart && !isSecure) {
         config.requireTLS = true;
         config.authMethod = 'PLAIN';
-        console.log(`[TEST-SMTP] Stalwart mode: requireTLS=true, authMethod=PLAIN`);
       }
 
       return config;
@@ -757,8 +560,6 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
 
     // For Zoho accounts, try multiple data centers
     if (isZoho) {
-      console.log(`[TEST-SMTP] Detected Zoho account - will try multiple data centers`);
-
       // Build list of hosts to try
       const hostsToTry = [account.smtp_host];
       for (const host of ZOHO_SMTP_HOSTS) {
@@ -767,19 +568,14 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
         }
       }
 
-      console.log(`[TEST-SMTP] Will try hosts: ${hostsToTry.join(', ')}`);
-
       let lastError;
       for (const host of hostsToTry) {
-        console.log(`[TEST-SMTP] Trying ${host}...`);
         try {
           const transporter = nodemailer.createTransport(createConfig(host));
           await transporter.verify();
-          console.log(`[TEST-SMTP] ✅ Connected to ${host}!`);
 
           // Update account if we found a working host different from configured
           if (host !== account.smtp_host) {
-            console.log(`[TEST-SMTP] Updating account SMTP host to ${host}`);
             await supabase
               .from('email_accounts')
               .update({ smtp_host: host })
@@ -792,13 +588,11 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
             host
           });
         } catch (err) {
-          console.log(`[TEST-SMTP] ❌ Failed with ${host}: ${err.message}`);
           lastError = err;
         }
       }
 
       // All hosts failed
-      console.error(`[TEST-SMTP] All Zoho hosts failed`);
       return res.status(400).json({
         success: false,
         error: `SMTP failed on all Zoho data centers: ${lastError?.message}`,
@@ -808,17 +602,11 @@ app.post('/api/email-accounts/:id/test-smtp', authenticateUser, async (req, res)
     }
 
     // Non-Zoho: standard single host test
-    console.log(`[TEST-SMTP] Testing non-Zoho SMTP...`);
     const transporter = nodemailer.createTransport(createConfig(account.smtp_host));
 
-    console.log(`[TEST-SMTP] Verifying connection...`);
     await transporter.verify();
-    console.log(`[TEST-SMTP] ✅ Connection successful!`);
     res.json({ success: true, message: 'SMTP connection successful' });
   } catch (error) {
-    console.error(`[TEST-SMTP] ❌ Connection failed: ${error.message}`);
-    console.error(`[TEST-SMTP] Error code: ${error.code}`);
-
     let errorDetail = `SMTP failed: ${error.message}`;
     if (error.message.includes('Authentication credentials invalid') || error.message.includes('Invalid login')) {
       errorDetail = `Authentication failed - the mail server rejected the credentials. Verify the password matches your mail server account and the username format is correct.`;
@@ -888,9 +676,6 @@ app.get('/api/inbox', authenticateUser, async (req, res) => {
   try {
     const { account_id, limit = 50, offset = 0 } = req.query;
 
-    console.log(`[${requestId}] Fetching inbox for user ${req.user.id}`);
-    console.log(`[${requestId}] Filters - account_id: ${account_id || 'all'}, limit: ${limit}, offset: ${offset}`);
-
     // First, get all email accounts that belong to the user
     const { data: userAccounts, error: accountsError } = await supabase
       .from('email_accounts')
@@ -898,14 +683,12 @@ app.get('/api/inbox', authenticateUser, async (req, res) => {
       .eq('user_id', req.user.id);
 
     if (accountsError) {
-      console.error(`[${requestId}] Error fetching user accounts:`, accountsError);
       throw accountsError;
     }
 
     const userAccountIds = userAccounts.map(a => a.id);
 
     if (userAccountIds.length === 0) {
-      console.log(`[${requestId}] No email accounts found for user`);
       return res.json([]);
     }
 
@@ -923,25 +706,20 @@ app.get('/api/inbox', authenticateUser, async (req, res) => {
     if (account_id && account_id !== 'all') {
       // Verify the account belongs to the user
       if (!userAccountIds.includes(account_id)) {
-        console.warn(`[${requestId}] Unauthorized access attempt to account ${account_id}`);
         return res.status(403).json({ error: 'Unauthorized access to this email account' });
       }
       query = query.eq('email_account_id', account_id);
-      console.log(`[${requestId}] Filtering by account_id: ${account_id}`);
     } else {
       // Show all messages from all user's accounts
       query = query.in('email_account_id', userAccountIds);
-      console.log(`[${requestId}] Fetching from all accounts (${userAccountIds.length} accounts)`);
     }
 
     const { data, error } = await query;
 
     if (error) {
-      console.error(`[${requestId}] Error fetching inbox:`, error);
       throw error;
     }
 
-    console.log(`[${requestId}] Successfully fetched ${data?.length || 0} inbox messages`);
     res.json(data);
   } catch (error) {
     console.error(`[${requestId}] Error in inbox route:`, error);
@@ -957,8 +735,6 @@ app.put('/api/inbox/:id/read', authenticateUser, async (req, res) => {
     const { id } = req.params;
     const { is_read } = req.body;
 
-    console.log(`[${requestId}] Marking inbox message ${id} as ${is_read ? 'read' : 'unread'}`);
-
     // Verify the message belongs to user's email account
     const { data: message, error: fetchError } = await supabase
       .from('inbox_messages')
@@ -967,12 +743,10 @@ app.put('/api/inbox/:id/read', authenticateUser, async (req, res) => {
       .single();
 
     if (fetchError || !message) {
-      console.error(`[${requestId}] Message not found:`, fetchError);
       return res.status(404).json({ error: 'Message not found' });
     }
 
     if (message.email_accounts.user_id !== req.user.id) {
-      console.warn(`[${requestId}] Unauthorized access attempt`);
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
@@ -985,11 +759,9 @@ app.put('/api/inbox/:id/read', authenticateUser, async (req, res) => {
       .single();
 
     if (error) {
-      console.error(`[${requestId}] Error updating message:`, error);
       throw error;
     }
 
-    console.log(`[${requestId}] Successfully updated message`);
     res.json(data);
   } catch (error) {
     console.error(`[${requestId}] Error in route:`, error);
@@ -1003,9 +775,6 @@ app.post('/api/inbox/sync', authenticateUser, async (req, res) => {
 
   try {
     const { account_id, limit = 50 } = req.body;
-
-    console.log(`[${requestId}] Inbox sync request for user ${req.user.id}`);
-    console.log(`[${requestId}] Account filter: ${account_id || 'all'}, Limit: ${limit}`);
 
     // Get user's email accounts
     let accountsQuery = supabase
@@ -1021,16 +790,12 @@ app.post('/api/inbox/sync', authenticateUser, async (req, res) => {
     const { data: accounts, error: accountsError } = await accountsQuery;
 
     if (accountsError) {
-      console.error(`[${requestId}] Error fetching accounts:`, accountsError);
       throw accountsError;
     }
 
     if (!accounts || accounts.length === 0) {
-      console.log(`[${requestId}] No email accounts found`);
       return res.json({ synced: 0, message: 'No email accounts to sync' });
     }
-
-    console.log(`[${requestId}] Syncing ${accounts.length} account(s)...`);
 
     const imapMonitor = require('./services/imapMonitor');
     let totalSynced = 0;
@@ -1038,7 +803,6 @@ app.post('/api/inbox/sync', authenticateUser, async (req, res) => {
 
     for (const account of accounts) {
       try {
-        console.log(`[${requestId}] Syncing account: ${account.email_address}`);
         const messages = await imapMonitor.syncInbox(account.id, limit);
         totalSynced += messages.length;
         results.push({
@@ -1059,7 +823,6 @@ app.post('/api/inbox/sync', authenticateUser, async (req, res) => {
       }
     }
 
-    console.log(`[${requestId}] ✅ Sync complete. Total messages synced: ${totalSynced}`);
     res.json({
       synced: totalSynced,
       accounts: results
@@ -1076,7 +839,6 @@ app.get('/api/inbox/:id/content', authenticateUser, async (req, res) => {
 
   try {
     const { id } = req.params;
-    console.log(`[${requestId}] Fetching content for message ${id}`);
 
     // Get the inbox message record
     const { data: message, error: msgError } = await supabase
@@ -1096,7 +858,6 @@ app.get('/api/inbox/:id/content', authenticateUser, async (req, res) => {
 
     // If we already have the body stored, return it
     if (message.body_html || message.body_text) {
-      console.log(`[${requestId}] Returning stored content`);
       return res.json({
         body_html: message.body_html,
         body_text: message.body_text,
@@ -1108,7 +869,6 @@ app.get('/api/inbox/:id/content', authenticateUser, async (req, res) => {
     }
 
     // Fetch from IMAP if not stored
-    console.log(`[${requestId}] Fetching from IMAP server...`);
     const imapMonitor = require('./services/imapMonitor');
 
     try {
@@ -1126,7 +886,6 @@ app.get('/api/inbox/:id/content', authenticateUser, async (req, res) => {
         })
         .eq('id', id);
 
-      console.log(`[${requestId}] ✅ Fetched and cached content`);
       res.json(content);
     } catch (imapError) {
       console.error(`[${requestId}] IMAP fetch failed:`, imapError.message);
@@ -1166,8 +925,6 @@ app.post('/api/inbox/:id/reply', authenticateUser, upload.any(), async (req, res
       contentType: file.mimetype
     }));
 
-    console.log(`[${requestId}] Sending reply to message ${id} with ${attachments.length} attachment(s)`);
-
     // Get the original message
     const { data: originalMessage, error: msgError } = await supabase
       .from('inbox_messages')
@@ -1196,8 +953,6 @@ app.post('/api/inbox/:id/reply', authenticateUser, upload.any(), async (req, res
     // Use emailService to send the reply
     const emailService = require('./services/emailService');
 
-    console.log(`[${requestId}] Sending reply from ${emailAccount.email_address} to ${originalMessage.from_address}`);
-
     await emailService.sendEmail({
       emailAccountId: emailAccount.id,
       to: originalMessage.from_address,
@@ -1210,7 +965,6 @@ app.post('/api/inbox/:id/reply', authenticateUser, upload.any(), async (req, res
       trackClicks: false
     });
 
-    console.log(`[${requestId}] ✅ Reply sent successfully`);
     res.json({ success: true, message: 'Reply sent successfully' });
   } catch (error) {
     console.error(`[${requestId}] Error sending reply:`, error);
@@ -1362,8 +1116,6 @@ app.get('/api/contacts/lists/:listId/contacts', authenticateUser, async (req, re
     const { listId } = req.params;
     const { search, status, limit = 100, offset = 0 } = req.query;
 
-    console.log(`[CONTACTS] Fetching contacts for list ${listId}, user ${req.user.id}`);
-
     // Verify list belongs to user
     const { data: list, error: listError } = await supabase
       .from('contact_lists')
@@ -1373,7 +1125,6 @@ app.get('/api/contacts/lists/:listId/contacts', authenticateUser, async (req, re
       .single();
 
     if (listError || !list) {
-      console.error('[CONTACTS] List not found or unauthorized:', listError);
       return res.status(404).json({ error: 'List not found' });
     }
 
@@ -1395,11 +1146,8 @@ app.get('/api/contacts/lists/:listId/contacts', authenticateUser, async (req, re
     const { data, error, count } = await query;
 
     if (error) {
-      console.error('[CONTACTS] Error fetching contacts:', error);
       throw error;
     }
-
-    console.log(`[CONTACTS] Found ${data?.length || 0} contacts (total: ${count})`);
 
     res.json({
       contacts: data || [],
@@ -1417,8 +1165,6 @@ app.get('/api/contacts/lists/:listId/contacts', authenticateUser, async (req, re
 app.delete('/api/contacts/lists/:listId', authenticateUser, async (req, res) => {
   try {
     const { listId } = req.params;
-
-    console.log(`[CONTACTS] Deleting list ${listId} for user ${req.user.id}`);
 
     // Verify list belongs to user
     const { data: list } = await supabase
@@ -1439,7 +1185,6 @@ app.delete('/api/contacts/lists/:listId', authenticateUser, async (req, res) => 
 
     if (error) throw error;
 
-    console.log(`[CONTACTS] Successfully deleted list ${listId}`);
     res.json({ success: true });
   } catch (error) {
     console.error('[CONTACTS] Error deleting list:', error);
@@ -1453,8 +1198,6 @@ app.put('/api/contacts/:contactId', authenticateUser, async (req, res) => {
     const { contactId } = req.params;
     const { email, first_name, last_name, company, custom_fields, status } = req.body;
 
-    console.log(`[CONTACTS] Updating contact ${contactId}`);
-
     // Verify contact belongs to user's list
     const { data: contact, error: fetchError } = await supabase
       .from('contacts')
@@ -1463,7 +1206,6 @@ app.put('/api/contacts/:contactId', authenticateUser, async (req, res) => {
       .single();
 
     if (fetchError || !contact) {
-      console.error('[CONTACTS] Contact not found:', fetchError);
       return res.status(404).json({ error: 'Contact not found' });
     }
 
@@ -1489,7 +1231,6 @@ app.put('/api/contacts/:contactId', authenticateUser, async (req, res) => {
 
     if (error) throw error;
 
-    console.log(`[CONTACTS] Successfully updated contact ${contactId}`);
     res.json(data);
   } catch (error) {
     console.error('[CONTACTS] Error updating contact:', error);
@@ -1501,8 +1242,6 @@ app.put('/api/contacts/:contactId', authenticateUser, async (req, res) => {
 app.delete('/api/contacts/:contactId', authenticateUser, async (req, res) => {
   try {
     const { contactId } = req.params;
-
-    console.log(`[CONTACTS] Deleting contact ${contactId}`);
 
     // Get contact to verify ownership
     const { data: contact, error: fetchError } = await supabase
@@ -1527,7 +1266,6 @@ app.delete('/api/contacts/:contactId', authenticateUser, async (req, res) => {
 
     if (error) throw error;
 
-    console.log(`[CONTACTS] Successfully deleted contact ${contactId}`);
     res.json({ success: true });
   } catch (error) {
     console.error('[CONTACTS] Error deleting contact:', error);
@@ -1815,9 +1553,9 @@ app.get('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
   }
 });
 
+// FIXED POST ROUTE: Includes condition_branches
 app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
   try {
-    // Verify campaign belongs to user
     const { data: campaign } = await supabase
       .from('campaigns')
       .select('id')
@@ -1827,7 +1565,23 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
 
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-    const { step_type, subject, body, wait_days, condition_type, next_step_if_true, next_step_if_false, step_order } = req.body;
+    const { 
+      step_type, 
+      subject, 
+      body, 
+      wait_days, 
+      wait_hours, 
+      wait_minutes, 
+      condition_type, 
+      condition_branches, // <--- Added
+      next_step_if_true, 
+      next_step_if_false, 
+      step_order,
+      position_x, 
+      position_y,
+      parent_id,
+      branch_index 
+    } = req.body;
 
     if (!['email', 'wait', 'condition'].includes(step_type)) {
       return res.status(400).json({ error: 'Invalid step type' });
@@ -1840,11 +1594,22 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
         step_type,
         subject: step_type === 'email' ? subject : null,
         body: step_type === 'email' ? body : null,
-        wait_days: step_type === 'wait' ? wait_days : null,
+        wait_days: wait_days || 0,
+        wait_hours: wait_hours || 0,
+        wait_minutes: wait_minutes || 0,
         condition_type: step_type === 'condition' ? condition_type : null,
+        // CRITICAL FIX: Save branches
+        condition_branches: step_type === 'condition' ? (condition_branches || null) : null,
+        
         next_step_if_true: step_type === 'condition' ? next_step_if_true : null,
         next_step_if_false: step_type === 'condition' ? next_step_if_false : null,
-        step_order: step_order || 1
+        
+        parent_id: parent_id || null,
+        branch_index: branch_index || null,
+        
+        step_order: step_order || 1,
+        position_x: position_x || null,
+        position_y: position_y || null
       })
       .select()
       .single();
@@ -1856,6 +1621,7 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
   }
 });
 
+// FIXED PUT ROUTE: Removes .single() and adds condition_branches
 app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   try {
     const { data: campaign } = await supabase
@@ -1867,7 +1633,11 @@ app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req
 
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-    const { subject, body, wait_days, wait_hours, wait_minutes, condition_type, step_order, position_x, position_y } = req.body;
+    const { 
+      subject, body, wait_days, wait_hours, wait_minutes, 
+      condition_type, condition_branches, // <--- Added
+      step_order, position_x, position_y 
+    } = req.body;
 
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
@@ -1876,6 +1646,10 @@ app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req
     if (wait_hours !== undefined) updates.wait_hours = wait_hours;
     if (wait_minutes !== undefined) updates.wait_minutes = wait_minutes;
     if (condition_type !== undefined) updates.condition_type = condition_type;
+    
+    // CRITICAL FIX: Add condition_branches to updates
+    if (condition_branches !== undefined) updates.condition_branches = condition_branches;
+    
     if (step_order !== undefined) updates.step_order = step_order;
     if (position_x !== undefined) updates.position_x = position_x;
     if (position_y !== undefined) updates.position_y = position_y;
@@ -1885,11 +1659,15 @@ app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req
       .update(updates)
       .eq('id', req.params.stepId)
       .eq('campaign_id', req.params.campaignId)
-      .select()
-      .single();
+      .select(); // <--- REMOVED .single()
     
     if (error) throw error;
-    res.json(data);
+    
+    // Handle array response
+    const step = data && data.length > 0 ? data[0] : null;
+    if (!step) return res.status(404).json({ error: 'Step not found' });
+
+    res.json(step);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
