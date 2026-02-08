@@ -489,16 +489,17 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
         next_step_if_false: step_type === 'condition' ? next_step_if_false : null,
         step_order: step_order || 1
       })
-      .select()
-      .single();
+      .select();
 
     if (error) throw error;
 
+    const step = Array.isArray(data) ? data[0] : data;
+
     if (step_type === 'wait') {
-      console.log('[WAIT DEBUG] Created step in DB:', JSON.stringify({ id: data.id, wait_days: data.wait_days, wait_hours: data.wait_hours, wait_minutes: data.wait_minutes }));
+      console.log('[WAIT DEBUG] Created step in DB:', JSON.stringify({ id: step.id, wait_days: step.wait_days, wait_hours: step.wait_hours, wait_minutes: step.wait_minutes }));
     }
 
-    res.json(data);
+    res.json(step);
   } catch (error) {
     console.error('Error adding campaign step:', error);
     res.status(500).json({ error: error.message });

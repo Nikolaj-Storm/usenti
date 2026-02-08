@@ -283,7 +283,6 @@ const CampaignBuilder = () => {
     };
 
     const newStepRaw = {
-      id: 'temp-' + Date.now(),
       step_type: stepType,
       step_order: steps.length + 1,
       subject: stepType === 'email' ? 'New Email' : '',
@@ -300,28 +299,25 @@ const CampaignBuilder = () => {
       y: newPos.y
     };
 
-    const cleanStep = sanitizeStep(newStepRaw, steps.length);
-    setSteps([...steps, cleanStep]);
-    setSelectedNodes([cleanStep.id]);
-    setActiveStep(cleanStep.id);
-
     if (!isDemo && selectedCampaign) {
+      // Create on server FIRST, then add to canvas with real UUID
       try {
         const serverStep = await api.post(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps`, newStepRaw);
         const realStep = sanitizeStep(serverStep, steps.length);
-        realStep.x = cleanStep.x;
-        realStep.y = cleanStep.y;
-        setSteps(prev => prev.map(s => s.id === cleanStep.id ? realStep : s));
+        realStep.x = newPos.x;
+        realStep.y = newPos.y;
+        setSteps(prev => [...prev, realStep]);
         setSelectedNodes([realStep.id]);
         setActiveStep(realStep.id);
       } catch(e) {
-        console.error(e);
-        // Only remove the step on server rejection, not network errors
-        // Network errors (TypeError) mean the step might still be saveable when connection returns
-        if (!(e instanceof TypeError)) {
-          setSteps(prev => prev.filter(s => s.id !== cleanStep.id));
-        }
+        console.error('Failed to create step:', e);
       }
+    } else {
+      // Demo mode: use local temp ID
+      const cleanStep = sanitizeStep({ ...newStepRaw, id: 'temp-' + Date.now() }, steps.length);
+      setSteps([...steps, cleanStep]);
+      setSelectedNodes([cleanStep.id]);
+      setActiveStep(cleanStep.id);
     }
   };
 
@@ -334,7 +330,7 @@ const CampaignBuilder = () => {
 
   // Update step position end (save)
   const handleNodeDragEnd = async (stepId, newX, newY) => {
-    if (!isDemo && selectedCampaign) {
+    if (!isDemo && selectedCampaign && !String(stepId).startsWith('temp-')) {
       try {
         await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, {
           position_x: Math.round(newX),
@@ -362,14 +358,15 @@ const CampaignBuilder = () => {
     // Save to backend - sequential updates to avoid UNIQUE constraint violations on step_order
     if (!isDemo && selectedCampaign) {
       try {
+        const savedSteps = reorderedSteps.filter(s => !String(s.id).startsWith('temp-'));
         // First pass: set all step_orders to temporary negative values to avoid conflicts
-        for (const step of reorderedSteps) {
+        for (const step of savedSteps) {
           await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${step.id}`, {
             step_order: -(step.step_order + 1000)
           });
         }
         // Second pass: set final step_order values and positions
-        for (const step of reorderedSteps) {
+        for (const step of savedSteps) {
           await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${step.id}`, {
             step_order: step.step_order,
             position_x: Math.round(step.x),
@@ -405,7 +402,7 @@ const CampaignBuilder = () => {
         return step;
       }));
 
-      if (!isDemo && selectedCampaign) {
+      if (!isDemo && selectedCampaign && !String(parentBranchId).startsWith('temp-')) {
         try {
           await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${parentBranchId}`, {
             condition_branches: newBranches
@@ -416,7 +413,7 @@ const CampaignBuilder = () => {
       }
     } else {
       setSteps(steps.map(s => s.id === stepId ? { ...s, ...updates } : s));
-      if (!isDemo && selectedCampaign) {
+      if (!isDemo && selectedCampaign && !String(stepId).startsWith('temp-')) {
         try {
           await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, updates);
         } catch (error) {
@@ -447,7 +444,7 @@ const CampaignBuilder = () => {
       if (activeStep === stepId) setActiveStep(parentBranchId);
       setSelectedNodes(prev => prev.filter(id => id !== stepId));
 
-      if (!isDemo && selectedCampaign) {
+      if (!isDemo && selectedCampaign && !String(parentBranchId).startsWith('temp-')) {
         try {
           await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${parentBranchId}`, {
             condition_branches: newBranches
@@ -500,7 +497,7 @@ const CampaignBuilder = () => {
       return step;
     }));
 
-    if (!isDemo && selectedCampaign) {
+    if (!isDemo && selectedCampaign && !String(conditionStepId).startsWith('temp-')) {
       try {
         await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
           condition_branches: newBranches
@@ -525,7 +522,7 @@ const CampaignBuilder = () => {
       return step;
     }));
 
-    if (!isDemo && selectedCampaign) {
+    if (!isDemo && selectedCampaign && !String(conditionStepId).startsWith('temp-')) {
       try {
         await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
           condition_branches: newBranches
@@ -552,7 +549,7 @@ const CampaignBuilder = () => {
       return step;
     }));
 
-    if (!isDemo && selectedCampaign) {
+    if (!isDemo && selectedCampaign && !String(conditionStepId).startsWith('temp-')) {
       try {
         await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
           condition_branches: newBranches
@@ -610,7 +607,7 @@ const CampaignBuilder = () => {
     // Select the new branch step for editing
     setActiveStep(newStepRaw.id);
 
-    if (!isDemo && selectedCampaign) {
+    if (!isDemo && selectedCampaign && !String(conditionStepId).startsWith('temp-')) {
       try {
         await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
           condition_branches: newBranches
