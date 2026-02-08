@@ -25,37 +25,47 @@ const api = {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
 
-    try {
-      const response = await fetch(url, config);
-      console.log('📡 [API] Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error('❌ [API] Request failed:', {
+    const maxRetries = 2;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, config);
+        console.log('📡 [API] Response received:', {
           status: response.status,
-          error: data.error || data.message
+          statusText: response.statusText,
+          ok: response.ok
         });
 
-        if (response.status === 401) {
-          // Unauthorized - clear auth and reload
-          console.warn('⚠️ [API] 401 Unauthorized - clearing auth and reloading page!');
-          localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
-          localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
-          window.location.reload();
-        }
-        throw new Error(data.error || data.message || 'Request failed');
-      }
+        const data = await response.json();
 
-      console.log('✅ [API] Request successful:', data);
-      return data;
-    } catch (error) {
-      console.error('💥 [API] Error during request:', error);
-      throw error;
+        if (!response.ok) {
+          console.error('❌ [API] Request failed:', {
+            status: response.status,
+            error: data.error || data.message
+          });
+
+          if (response.status === 401) {
+            // Unauthorized - clear auth and reload
+            console.warn('⚠️ [API] 401 Unauthorized - clearing auth and reloading page!');
+            localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+            localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
+            window.location.reload();
+          }
+          throw new Error(data.error || data.message || 'Request failed');
+        }
+
+        console.log('✅ [API] Request successful:', data);
+        return data;
+      } catch (error) {
+        // Retry on network errors (TypeError: Failed to fetch), not server errors
+        if (error instanceof TypeError && attempt < maxRetries) {
+          const delay = 2000 * (attempt + 1);
+          console.warn(`⚠️ [API] Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        console.error('💥 [API] Error during request:', error);
+        throw error;
+      }
     }
   },
 

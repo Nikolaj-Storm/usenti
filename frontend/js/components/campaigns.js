@@ -316,7 +316,11 @@ const CampaignBuilder = () => {
         setActiveStep(realStep.id);
       } catch(e) {
         console.error(e);
-        setSteps(prev => prev.filter(s => s.id !== cleanStep.id));
+        // Only remove the step on server rejection, not network errors
+        // Network errors (TypeError) mean the step might still be saveable when connection returns
+        if (!(e instanceof TypeError)) {
+          setSteps(prev => prev.filter(s => s.id !== cleanStep.id));
+        }
       }
     }
   };
