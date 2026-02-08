@@ -164,7 +164,20 @@ const CampaignBuilder = () => {
     try {
       const data = await api.get(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${campaign.id}/steps`);
       const rawSteps = Array.isArray(data) ? data : [];
+      // DEBUG: Log raw steps from server, especially condition_branches
+      console.log('[LOAD STEPS] Raw steps from server:', rawSteps.length, 'steps');
+      rawSteps.forEach(s => {
+        if (s.step_type === 'condition') {
+          console.log(`[LOAD STEPS] Condition step ${s.id}: condition_branches =`, JSON.stringify(s.condition_branches));
+        }
+      });
       const cleanSteps = rawSteps.map((s, i) => sanitizeStep(s, i)).filter(Boolean);
+      // DEBUG: Log sanitized steps
+      cleanSteps.forEach(s => {
+        if (s.step_type === 'condition') {
+          console.log(`[LOAD STEPS] After sanitize ${s.id}: condition_branches =`, JSON.stringify(s.condition_branches));
+        }
+      });
       setSteps(cleanSteps);
       loadCampaignStats(campaign.id);
       // Fit view after loading
@@ -404,17 +417,25 @@ const CampaignBuilder = () => {
 
       if (!isDemo && selectedCampaign && !String(parentBranchId).startsWith('temp-')) {
         try {
-          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${parentBranchId}`, {
+          console.log('[SAVE BRANCHES] Saving condition_branches for step', parentBranchId, ':', newBranches.length, 'branches');
+          newBranches.forEach((b, i) => console.log(`[SAVE BRANCHES]   Branch ${i}: ${b.condition}, ${(b.branch_steps||[]).length} steps`));
+          const result = await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${parentBranchId}`, {
             condition_branches: newBranches
           });
+          console.log('[SAVE BRANCHES] Server response condition_branches:', result?.condition_branches ? 'present (' + (Array.isArray(result.condition_branches) ? result.condition_branches.length + ' branches' : typeof result.condition_branches) + ')' : 'MISSING');
         } catch (error) {
-          console.error('Error updating branch step:', error);
+          console.error('[SAVE BRANCHES] ERROR updating branch step:', error);
         }
+      } else {
+        console.log('[SAVE BRANCHES] SKIPPED save - isDemo:', isDemo, 'selectedCampaign:', !!selectedCampaign, 'parentBranchId:', parentBranchId);
       }
     } else {
       setSteps(steps.map(s => s.id === stepId ? { ...s, ...updates } : s));
       if (!isDemo && selectedCampaign && !String(stepId).startsWith('temp-')) {
         try {
+          if (updates.condition_branches) {
+            console.log('[SAVE BRANCHES] Saving condition_branches via direct update for step', stepId);
+          }
           await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, updates);
         } catch (error) {
           console.error('Update failed:', error);
@@ -499,11 +520,13 @@ const CampaignBuilder = () => {
 
     if (!isDemo && selectedCampaign && !String(conditionStepId).startsWith('temp-')) {
       try {
-        await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
+        console.log('[ADD BRANCH] Saving', newBranches.length, 'branches to step', conditionStepId);
+        const result = await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
           condition_branches: newBranches
         });
+        console.log('[ADD BRANCH] Server response has condition_branches:', !!result?.condition_branches, Array.isArray(result?.condition_branches) ? result.condition_branches.length + ' branches' : '');
       } catch (e) {
-        console.error('Error adding branch:', e);
+        console.error('[ADD BRANCH] ERROR:', e);
       }
     }
   };
@@ -609,11 +632,13 @@ const CampaignBuilder = () => {
 
     if (!isDemo && selectedCampaign && !String(conditionStepId).startsWith('temp-')) {
       try {
-        await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
+        console.log('[ADD STEP TO BRANCH] Saving branches for step', conditionStepId, '- branch', branchIndex, 'now has', newBranches[branchIndex].branch_steps.length, 'steps');
+        const result = await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
           condition_branches: newBranches
         });
+        console.log('[ADD STEP TO BRANCH] Server response has condition_branches:', !!result?.condition_branches);
       } catch (e) {
-        console.error('Error adding step to branch:', e);
+        console.error('[ADD STEP TO BRANCH] ERROR:', e);
       }
     }
   };
@@ -1450,9 +1475,19 @@ const BlockToolbar = ({ onAddStep }) => {
 const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
   const [data, setData] = React.useState(step);
   React.useEffect(() => { setData(step); }, [step.id]);
+  // Keep condition_branches in sync with parent (they change via canvas interactions)
+  const branchesKey = JSON.stringify(step.condition_branches);
+  React.useEffect(() => {
+    setData(prev => ({ ...prev, condition_branches: step.condition_branches }));
+  }, [branchesKey]);
 
   const handleChange = (key, val) => setData({...data, [key]: val});
-  const handleBlur = () => onUpdate(step.id, data);
+  // IMPORTANT: Exclude condition_branches from blur updates - they have their own save handlers
+  // Sending stale condition_branches from local data state would overwrite freshly-saved branches
+  const handleBlur = () => {
+    const { condition_branches, ...fieldsToUpdate } = data;
+    onUpdate(step.id, fieldsToUpdate);
+  };
 
   const personalizationVars = [
     { var: '{{first_name}}', label: 'First Name' },
