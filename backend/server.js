@@ -1729,6 +1729,29 @@ app.post('/api/campaigns/:id/start', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'No active contacts in list' });
     }
 
+    // Clean up data from previous runs to prevent stale events affecting condition evaluation
+    const { error: deleteContactsError } = await supabase
+      .from('campaign_contacts')
+      .delete()
+      .eq('campaign_id', req.params.id);
+
+    if (deleteContactsError) {
+      console.error('[CAMPAIGN-START] Error cleaning up old campaign contacts:', deleteContactsError);
+    } else {
+      console.log('[CAMPAIGN-START] Cleaned up old campaign contacts');
+    }
+
+    const { error: deleteEventsError } = await supabase
+      .from('email_events')
+      .delete()
+      .eq('campaign_id', req.params.id);
+
+    if (deleteEventsError) {
+      console.error('[CAMPAIGN-START] Error cleaning up old email events:', deleteEventsError);
+    } else {
+      console.log('[CAMPAIGN-START] Cleaned up old email events');
+    }
+
     // Calculate next_send_time based on schedule and send_immediately flag
     let nextSendTime;
     if (campaign.send_immediately) {

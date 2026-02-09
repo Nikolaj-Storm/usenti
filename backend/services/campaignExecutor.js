@@ -564,18 +564,27 @@ class CampaignExecutor {
       .eq('contact_id', campaignContact.contact_id)
       .order('created_at', { ascending: false });
 
-    const eventTypes = events?.map(e => e.event_type) || [];
-    const hasOpened = eventTypes.includes('opened');
-    const hasClicked = eventTypes.includes('clicked');
-    const hasReplied = eventTypes.includes('replied');
-
     // Get the last sent email time for this contact in this campaign
     const lastSentEvent = events?.find(e => e.event_type === 'sent');
     const lastSentTime = lastSentEvent ? new Date(lastSentEvent.created_at) : null;
 
+    // Only consider interaction events that occurred AFTER the last email was sent.
+    // This prevents stale events from previous campaign runs (or email client pre-fetches
+    // that happen before delivery) from affecting condition evaluation.
+    const relevantEvents = lastSentTime
+      ? (events || []).filter(e => e.event_type !== 'sent' && new Date(e.created_at) > lastSentTime)
+      : (events || []).filter(e => e.event_type !== 'sent');
+
+    const relevantEventTypes = relevantEvents.map(e => e.event_type);
+    const hasOpened = relevantEventTypes.includes('opened');
+    const hasClicked = relevantEventTypes.includes('clicked');
+    const hasReplied = relevantEventTypes.includes('replied');
+
     console.log(`[EXECUTOR] 🔀 Evaluating conditions for contact ${campaignContact.contact_id}`);
-    console.log(`[EXECUTOR]   Events: ${eventTypes.join(', ') || 'none'}`);
+    console.log(`[EXECUTOR]   All events: ${events?.map(e => e.event_type).join(', ') || 'none'}`);
+    console.log(`[EXECUTOR]   Relevant events (after last send): ${relevantEventTypes.join(', ') || 'none'}`);
     console.log(`[EXECUTOR]   Last email sent: ${lastSentTime ? lastSentTime.toISOString() : 'never'}`);
+    console.log(`[EXECUTOR]   hasOpened=${hasOpened}, hasClicked=${hasClicked}, hasReplied=${hasReplied}`);
 
     // Helper function to evaluate a single condition
     const evaluateCondition = (condition) => {
