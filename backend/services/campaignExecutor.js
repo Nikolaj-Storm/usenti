@@ -556,12 +556,16 @@ class CampaignExecutor {
       return await this.processBranchStep(campaignContact, campaign, contact, step, branchContext);
     }
 
-    // Get events for this contact
+    // Get events for this contact in THIS campaign run only.
+    // The campaign_id filter prevents cross-campaign contamination.
+    // The created_at filter prevents stale events from a previous run of the same campaign.
+    const enrollmentTime = campaignContact.created_at;
     const { data: events } = await supabase
       .from('email_events')
       .select('event_type, created_at')
       .eq('campaign_id', campaign.id)
       .eq('contact_id', campaignContact.contact_id)
+      .gte('created_at', enrollmentTime)
       .order('created_at', { ascending: false });
 
     // Minimum delay (ms) between 'sent' and 'opened' events to count as a real open.
@@ -598,7 +602,8 @@ class CampaignExecutor {
     const hasReplied = relevantEventTypes.includes('replied');
 
     console.log(`[EXECUTOR] 🔀 Evaluating conditions for contact ${contact.email} (${campaignContact.contact_id})`);
-    console.log(`[EXECUTOR]   All events: ${events?.map(e => `${e.event_type}@${e.created_at}`).join(', ') || 'none'}`);
+    console.log(`[EXECUTOR]   Campaign: ${campaign.id} | Enrolled: ${enrollmentTime}`);
+    console.log(`[EXECUTOR]   All events (since enrollment): ${events?.map(e => `${e.event_type}@${e.created_at}`).join(', ') || 'none'}`);
     console.log(`[EXECUTOR]   Last email sent: ${lastSentTime ? lastSentTime.toISOString() : 'never'}`);
     console.log(`[EXECUTOR]   Relevant events (after last send, preload-filtered): ${relevantEventTypes.join(', ') || 'none'}`);
     console.log(`[EXECUTOR]   hasOpened=${hasOpened}, hasClicked=${hasClicked}, hasReplied=${hasReplied}`);

@@ -903,42 +903,62 @@ class ImapMonitor {
         return;
       }
 
-      // Find active campaigns for this contact
-      const { data: campaignContacts } = await supabase
-        .from('campaign_contacts')
-        .select('campaign_id, contact_id')
+      // Find the campaign that most recently sent an email to this contact.
+      // This prevents cross-campaign contamination: a reply to Campaign A's email
+      // should NOT create a "replied" event for Campaign B.
+      const { data: lastSentEvent } = await supabase
+        .from('email_events')
+        .select('campaign_id')
         .eq('contact_id', contact.id)
-        .in('status', ['in_progress', 'completed']);
+        .eq('event_type', 'sent')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
 
-      if (!campaignContacts || campaignContacts.length === 0) {
+      if (!lastSentEvent) {
+        console.log(`[IMAP] No sent email found for ${fromEmail}, cannot attribute reply`);
         return;
       }
 
-      // Log reply event for each active campaign
-      for (const cc of campaignContacts) {
-        await supabase.from('email_events').insert({
-          campaign_id: cc.campaign_id,
-          contact_id: contact.id,
-          event_type: 'replied',
-          event_data: {
-            from: fromEmail,
-            subject: message.subject,
-            timestamp: new Date().toISOString()
-          }
-        });
+      const targetCampaignId = lastSentEvent.campaign_id;
 
-        // Mark campaign contact as replied
-        await supabase
-          .from('campaign_contacts')
-          .update({ 
-            status: 'replied',
-            replied_at: new Date().toISOString()
-          })
-          .eq('campaign_id', cc.campaign_id)
-          .eq('contact_id', contact.id);
+      // Verify this contact is still active in the campaign
+      const { data: campaignContact } = await supabase
+        .from('campaign_contacts')
+        .select('campaign_id, contact_id')
+        .eq('contact_id', contact.id)
+        .eq('campaign_id', targetCampaignId)
+        .in('status', ['in_progress', 'completed'])
+        .single();
 
-        console.log(`[IMAP] ✓ Logged reply from ${fromEmail} for campaign ${cc.campaign_id}`);
+      if (!campaignContact) {
+        console.log(`[IMAP] Contact ${fromEmail} not active in campaign ${targetCampaignId}`);
+        return;
       }
+
+      // Log reply event only for the specific campaign the contact is replying to
+      await supabase.from('email_events').insert({
+        campaign_id: targetCampaignId,
+        contact_id: contact.id,
+        event_type: 'replied',
+        event_data: {
+          from: fromEmail,
+          subject: message.subject,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+      // Mark campaign contact as replied
+      await supabase
+        .from('campaign_contacts')
+        .update({
+          status: 'replied',
+          replied_at: new Date().toISOString()
+        })
+        .eq('campaign_id', targetCampaignId)
+        .eq('contact_id', contact.id);
+
+      console.log(`[IMAP] ✓ Logged reply from ${fromEmail} for campaign ${targetCampaignId} (most recent sender)`);
     } catch (error) {
       console.error('[IMAP] Error handling campaign reply:', error);
     }
