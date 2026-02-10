@@ -2026,10 +2026,10 @@ app.get('/api/track/open/:campaign_id/:contact_id/:token', async (req, res) => {
   try {
     console.log(`[TRACKING] API open tracking: campaign=${req.params.campaign_id}, contact=${req.params.contact_id}`);
 
-    // Check if this contact already has an 'opened' event for this campaign (prevent duplicate counting)
+    // Check if this contact already has an 'opened' event for this campaign
     const { data: existingOpen } = await supabase
       .from('email_events')
-      .select('id')
+      .select('id, event_data, created_at')
       .eq('campaign_id', req.params.campaign_id)
       .eq('contact_id', req.params.contact_id)
       .eq('event_type', 'opened')
@@ -2037,7 +2037,27 @@ app.get('/api/track/open/:campaign_id/:contact_id/:token', async (req, res) => {
       .single();
 
     if (existingOpen) {
-      console.log(`[TRACKING] ⏭️ Open already recorded for contact ${req.params.contact_id}, skipping duplicate`);
+      // Update the existing open event with the latest timestamp.
+      // This ensures that if the first "open" was an automated preload by the email client
+      // (e.g. Gmail image proxy), the timestamp gets updated when the user actually opens.
+      const { error: updateError } = await supabase
+        .from('email_events')
+        .update({
+          created_at: new Date().toISOString(),
+          event_data: {
+            user_agent: req.headers['user-agent'],
+            ip: req.ip,
+            timestamp: new Date().toISOString(),
+            first_opened_at: existingOpen.event_data?.first_opened_at || existingOpen.event_data?.timestamp || existingOpen.created_at
+          }
+        })
+        .eq('id', existingOpen.id);
+
+      if (updateError) {
+        console.error(`[TRACKING] Failed to update open event:`, updateError);
+      } else {
+        console.log(`[TRACKING] 🔄 Updated open event timestamp for contact ${req.params.contact_id} (previous open at ${existingOpen.created_at})`);
+      }
     } else {
       const { error: insertError } = await supabase.from('email_events').insert({
         campaign_id: req.params.campaign_id,
@@ -2046,7 +2066,8 @@ app.get('/api/track/open/:campaign_id/:contact_id/:token', async (req, res) => {
         event_data: {
           user_agent: req.headers['user-agent'],
           ip: req.ip,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          first_opened_at: new Date().toISOString()
         }
       });
 
@@ -2126,10 +2147,10 @@ app.get('/img/e/:campaign_id/:contact_id/:token', async (req, res) => {
       }
     }
 
-    // Check if this contact already has an 'opened' event for this campaign (prevent duplicate counting)
+    // Check if this contact already has an 'opened' event for this campaign
     const { data: existingOpen } = await supabase
       .from('email_events')
-      .select('id')
+      .select('id, event_data, created_at')
       .eq('campaign_id', campaignIdToUse)
       .eq('contact_id', contactIdToUse)
       .eq('event_type', 'opened')
@@ -2137,9 +2158,30 @@ app.get('/img/e/:campaign_id/:contact_id/:token', async (req, res) => {
       .single();
 
     if (existingOpen) {
-      console.log(`[TRACKING] ⏭️ Open already recorded for contact ${contactIdToUse}, skipping duplicate`);
+      // Update the existing open event with the latest timestamp.
+      // This ensures that if the first "open" was an automated preload by the email client
+      // (e.g. Gmail image proxy), the timestamp gets updated when the user actually opens.
+      const { error: updateError } = await supabase
+        .from('email_events')
+        .update({
+          created_at: new Date().toISOString(),
+          event_data: {
+            user_agent: req.headers['user-agent'],
+            ip: req.ip,
+            timestamp: new Date().toISOString(),
+            first_opened_at: existingOpen.event_data?.first_opened_at || existingOpen.event_data?.timestamp || existingOpen.created_at,
+            tracking_type: isShortened ? 'legacy_pixel' : 'improved_pixel'
+          }
+        })
+        .eq('id', existingOpen.id);
+
+      if (updateError) {
+        console.error(`[TRACKING] Failed to update open event:`, updateError);
+      } else {
+        console.log(`[TRACKING] 🔄 Updated open event timestamp for contact ${contactIdToUse} (previous open at ${existingOpen.created_at})`);
+      }
     } else {
-      // Insert the open event
+      // Insert new open event
       const { error: insertError } = await supabase.from('email_events').insert({
         campaign_id: campaignIdToUse,
         contact_id: contactIdToUse,
@@ -2148,6 +2190,7 @@ app.get('/img/e/:campaign_id/:contact_id/:token', async (req, res) => {
           user_agent: req.headers['user-agent'],
           ip: req.ip,
           timestamp: new Date().toISOString(),
+          first_opened_at: new Date().toISOString(),
           tracking_type: isShortened ? 'legacy_pixel' : 'improved_pixel'
         }
       });
