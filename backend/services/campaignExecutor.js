@@ -564,15 +564,32 @@ class CampaignExecutor {
       .eq('contact_id', campaignContact.contact_id)
       .order('created_at', { ascending: false });
 
+    // Minimum delay (ms) between 'sent' and 'opened' events to count as a real open.
+    // Email clients (Gmail, Apple Mail, Outlook) often preload tracking pixels automatically
+    // within seconds of delivery, creating false "opened" events. Real human opens take longer.
+    const MIN_OPEN_DELAY_MS = 3000; // 3 seconds
+
     // Get the last sent email time for this contact in this campaign
     const lastSentEvent = events?.find(e => e.event_type === 'sent');
     const lastSentTime = lastSentEvent ? new Date(lastSentEvent.created_at) : null;
 
     // Only consider interaction events that occurred AFTER the last email was sent.
-    // This prevents stale events from previous campaign runs (or email client pre-fetches
-    // that happen before delivery) from affecting condition evaluation.
+    // Also filter out opens that happened too quickly after send (likely automated preloads).
     const relevantEvents = lastSentTime
-      ? (events || []).filter(e => e.event_type !== 'sent' && new Date(e.created_at) > lastSentTime)
+      ? (events || []).filter(e => {
+          if (e.event_type === 'sent') return false;
+          const eventTime = new Date(e.created_at);
+          if (eventTime <= lastSentTime) return false;
+          // Filter out opens that happened within MIN_OPEN_DELAY_MS of send - likely preloaded by email client
+          if (e.event_type === 'opened') {
+            const delayMs = eventTime.getTime() - lastSentTime.getTime();
+            if (delayMs < MIN_OPEN_DELAY_MS) {
+              console.log(`[EXECUTOR]   ⚠️  Filtered out likely preloaded open (${delayMs}ms after send, threshold: ${MIN_OPEN_DELAY_MS}ms)`);
+              return false;
+            }
+          }
+          return true;
+        })
       : (events || []).filter(e => e.event_type !== 'sent');
 
     const relevantEventTypes = relevantEvents.map(e => e.event_type);
@@ -580,10 +597,10 @@ class CampaignExecutor {
     const hasClicked = relevantEventTypes.includes('clicked');
     const hasReplied = relevantEventTypes.includes('replied');
 
-    console.log(`[EXECUTOR] 🔀 Evaluating conditions for contact ${campaignContact.contact_id}`);
-    console.log(`[EXECUTOR]   All events: ${events?.map(e => e.event_type).join(', ') || 'none'}`);
-    console.log(`[EXECUTOR]   Relevant events (after last send): ${relevantEventTypes.join(', ') || 'none'}`);
+    console.log(`[EXECUTOR] 🔀 Evaluating conditions for contact ${contact.email} (${campaignContact.contact_id})`);
+    console.log(`[EXECUTOR]   All events: ${events?.map(e => `${e.event_type}@${e.created_at}`).join(', ') || 'none'}`);
     console.log(`[EXECUTOR]   Last email sent: ${lastSentTime ? lastSentTime.toISOString() : 'never'}`);
+    console.log(`[EXECUTOR]   Relevant events (after last send, preload-filtered): ${relevantEventTypes.join(', ') || 'none'}`);
     console.log(`[EXECUTOR]   hasOpened=${hasOpened}, hasClicked=${hasClicked}, hasReplied=${hasReplied}`);
 
     // Helper function to evaluate a single condition
@@ -620,7 +637,14 @@ class CampaignExecutor {
 
     if (branches && Array.isArray(branches) && branches.length > 0) {
       // New multi-branch evaluation with wait time support
-      console.log(`[EXECUTOR]   Evaluating ${branches.length} condition branches...`);
+      console.log(`[EXECUTOR]   Evaluating ${branches.length} condition branches for ${contact.email}...`);
+
+      // Log branch overview for diagnosis
+      for (let i = 0; i < branches.length; i++) {
+        const b = branches[i];
+        const firstStepSubject = b.branch_steps?.[0]?.subject || '(no steps)';
+        console.log(`[EXECUTOR]   Branch ${i}: condition="${b.condition}", wait=${b.wait_days || 0}d ${b.wait_hours || 0}h ${b.wait_minutes || 0}m, steps=${(b.branch_steps || []).length}, first_subject="${firstStepSubject}"`);
+      }
 
       const now = Date.now();
 
@@ -634,11 +658,11 @@ class CampaignExecutor {
           const waitDeadline = new Date(lastSentTime.getTime() + branchWaitMs);
           const waitRemaining = waitDeadline.getTime() - now;
 
-          console.log(`[EXECUTOR]   - ${branch.condition} (wait ${branch.wait_days || 0}d ${branch.wait_hours || 0}h): deadline ${waitDeadline.toISOString()}`);
+          console.log(`[EXECUTOR]   - ${branch.condition} (wait ${branch.wait_days || 0}d ${branch.wait_hours || 0}h ${branch.wait_minutes || 0}m): deadline ${waitDeadline.toISOString()}`);
 
           if (waitRemaining > 0) {
             // Not enough time has passed - reschedule to check again
-            console.log(`[EXECUTOR]   ⏳ Wait time not elapsed, ${Math.ceil(waitRemaining / 3600000)}h remaining`);
+            console.log(`[EXECUTOR]   ⏳ Wait time not elapsed for ${contact.email}, ${Math.ceil(waitRemaining / 60000)}m remaining`);
             console.log(`[EXECUTOR]   📅 Rescheduling condition check to ${waitDeadline.toISOString()}`);
 
             await supabase
@@ -654,13 +678,15 @@ class CampaignExecutor {
         }
 
         const conditionMet = evaluateCondition(branch.condition);
-        console.log(`[EXECUTOR]   - ${branch.condition}: ${conditionMet ? '✅ MATCH' : '❌ no match'}`);
+        console.log(`[EXECUTOR]   - ${branch.condition}: ${conditionMet ? '✅ MATCH' : '❌ no match'} (for ${contact.email})`);
 
         if (conditionMet) {
           matchedCondition = branch.condition;
           matchedBranchIndex = bi;
           nextStepId = branch.next_step_id;
           matchedBranchSteps = branch.branch_steps || [];
+          const matchedSubject = matchedBranchSteps[0]?.subject || '(no steps)';
+          console.log(`[EXECUTOR]   ✅ MATCHED Branch ${bi} for ${contact.email}: "${branch.condition}" → first email subject: "${matchedSubject}"`);
           break; // First match wins
         }
       }
