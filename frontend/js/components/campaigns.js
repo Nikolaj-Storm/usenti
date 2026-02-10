@@ -57,6 +57,8 @@ const CONDITION_OPTIONS = [
   { value: 'if_not_replied', label: 'If NOT Replied', color: 'bg-pink-500', hasWait: true, shortLabel: 'Not Replied' }
 ];
 
+const START_NODE = { x: 300, y: 30, width: 120, height: 50 };
+
 const NODE_TYPES = {
   start: { icon: 'Play', color: '#10b981', label: 'Start', bgClass: 'start' },
   email: { icon: 'Mail', color: '#3b82f6', label: 'Email', bgClass: 'email' },
@@ -85,15 +87,17 @@ const useCanvasState = (initialZoom = 1, initialPan = { x: 0, y: 0 }) => {
   const zoomOut = () => setZoom(z => Math.max(z / 1.2, 0.25));
   const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
   const fitView = (nodes, containerWidth, containerHeight) => {
-    if (!nodes || nodes.length === 0) {
-      resetView();
-      return;
+    // Always include the Start node in bounds calculation
+    const allPoints = [{ x: START_NODE.x, y: START_NODE.y, w: START_NODE.width, h: START_NODE.height }];
+    if (nodes && nodes.length > 0) {
+      nodes.forEach(n => allPoints.push({ x: n.x, y: n.y, w: 220, h: 120 }));
     }
+
     const padding = 100;
-    const minX = Math.min(...nodes.map(n => n.x)) - padding;
-    const maxX = Math.max(...nodes.map(n => n.x + 220)) + padding;
-    const minY = Math.min(...nodes.map(n => n.y)) - padding;
-    const maxY = Math.max(...nodes.map(n => n.y + 120)) + padding;
+    const minX = Math.min(...allPoints.map(p => p.x)) - padding;
+    const maxX = Math.max(...allPoints.map(p => p.x + p.w)) + padding;
+    const minY = Math.min(...allPoints.map(p => p.y)) - padding;
+    const maxY = Math.max(...allPoints.map(p => p.y + p.h)) + padding;
 
     const contentWidth = maxX - minX;
     const contentHeight = maxY - minY;
@@ -180,9 +184,9 @@ const CampaignBuilder = () => {
       });
       setSteps(cleanSteps);
       loadCampaignStats(campaign.id);
-      // Fit view after loading
+      // Fit view after loading (always center, even with no steps, so Start node is visible)
       setTimeout(() => {
-        if (containerRef.current && cleanSteps.length > 0) {
+        if (containerRef.current) {
           const rect = containerRef.current.getBoundingClientRect();
           canvasState.fitView(cleanSteps, rect.width, rect.height);
         }
@@ -959,7 +963,7 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
       const firstStep = sortedSteps[0];
       connections.push({
         id: 'start-' + firstStep.id,
-        from: { x: 100, y: 80 },
+        from: { x: START_NODE.x + START_NODE.width / 2, y: START_NODE.y + START_NODE.height },
         to: { x: firstStep.x + 110, y: firstStep.y },
         type: 'main'
       });
@@ -1114,7 +1118,7 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
       ),
 
       // Start node
-      h(StartNode, { x: 300, y: 30 }),
+      h(StartNode, { x: START_NODE.x, y: START_NODE.y }),
 
       // Step nodes
       steps.map(step => h(CanvasNode, {
