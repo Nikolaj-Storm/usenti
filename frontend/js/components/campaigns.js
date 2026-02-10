@@ -67,6 +67,116 @@ const NODE_TYPES = {
   end: { icon: 'Check', color: '#ef4444', label: 'End', bgClass: 'end' }
 };
 
+// --- Branch width calculation for dynamic fan-out ---
+const BASE_BRANCH_WIDTH = 250;
+
+// Recursively calculate horizontal width needed for a single branch
+const calculateBranchWidth = (branch) => {
+  const branchSteps = branch.branch_steps || [];
+  const conditionSteps = branchSteps.filter(s => s.step_type === 'condition');
+  if (conditionSteps.length === 0) return BASE_BRANCH_WIDTH;
+
+  let maxWidth = BASE_BRANCH_WIDTH;
+  for (const condStep of conditionSteps) {
+    const subBranches = condStep.condition_branches || [];
+    if (subBranches.length > 0) {
+      const totalSubWidth = subBranches.reduce((sum, b) => sum + calculateBranchWidth(b), 0);
+      maxWidth = Math.max(maxWidth, totalSubWidth);
+    }
+  }
+  return maxWidth;
+};
+
+// Compute X offsets for each branch based on their recursive widths
+const getBranchOffsets = (conditionBranches) => {
+  if (!conditionBranches || conditionBranches.length === 0) return [];
+  const widths = conditionBranches.map(b => calculateBranchWidth(b));
+  const totalWidth = widths.reduce((sum, w) => sum + w, 0);
+  const offsets = [];
+  let currentX = -totalWidth / 2;
+  for (let i = 0; i < widths.length; i++) {
+    offsets.push(currentX + widths[i] / 2);
+    currentX += widths[i];
+  }
+  return offsets;
+};
+
+// Recursively find a step anywhere in the step tree (returns { step, rootStepId, parentId, branchIndex } or null)
+const deepFindStep = (steps, targetId) => {
+  for (const step of steps) {
+    if (step.id === targetId) return { step, rootStepId: step.id, parentId: null, branchIndex: null };
+    if (step.step_type === 'condition' && step.condition_branches) {
+      const result = deepFindInBranches(step.condition_branches, targetId);
+      if (result) return { ...result, rootStepId: step.id };
+    }
+  }
+  return null;
+};
+
+const deepFindInBranches = (branches, targetId) => {
+  for (let bi = 0; bi < branches.length; bi++) {
+    const branch = branches[bi];
+    const branchSteps = branch.branch_steps || [];
+    for (const bs of branchSteps) {
+      if (bs.id === targetId) return { step: bs, parentId: null, branchIndex: bi };
+      if (bs.step_type === 'condition' && bs.condition_branches) {
+        const deeper = deepFindInBranches(bs.condition_branches, targetId);
+        if (deeper) return deeper;
+      }
+    }
+  }
+  return null;
+};
+
+// Recursively update a step anywhere in the step tree
+const deepUpdateStepTree = (stepsArray, targetId, updateFn) => {
+  return stepsArray.map(step => {
+    if (step.id === targetId) return updateFn(step);
+    if (step.step_type === 'condition' && step.condition_branches) {
+      return {
+        ...step,
+        condition_branches: step.condition_branches.map(branch => ({
+          ...branch,
+          branch_steps: branch.branch_steps
+            ? deepUpdateStepTree(branch.branch_steps, targetId, updateFn)
+            : []
+        }))
+      };
+    }
+    return step;
+  });
+};
+
+// Find the root-level step that contains a nested step ID
+const findRootStepId = (steps, nestedId) => {
+  for (const step of steps) {
+    if (step.id === nestedId) return step.id;
+    if (step.step_type === 'condition' && step.condition_branches) {
+      const found = deepFindInBranches(step.condition_branches, nestedId);
+      if (found) return step.id;
+    }
+  }
+  return null;
+};
+
+// Recursively remove a step from any branch_steps in the tree
+const deepRemoveFromTree = (stepsArray, targetId) => {
+  return stepsArray.map(step => {
+    if (step.step_type === 'condition' && step.condition_branches) {
+      return {
+        ...step,
+        condition_branches: step.condition_branches.map(branch => ({
+          ...branch,
+          branch_steps: branch.branch_steps
+            ? deepRemoveFromTree(branch.branch_steps.filter(bs => bs.id !== targetId), targetId)
+            : []
+        }))
+      };
+    }
+    return step;
+  });
+};
+
 const formatWaitDuration = (step) => {
   const parts = [];
   if (step.wait_days > 0) parts.push(`${step.wait_days}d`);
@@ -404,51 +514,31 @@ const CampaignBuilder = () => {
 
   const handleUpdateStep = async (stepId, updates, parentBranchId = null, branchIndex = null) => {
     setSaving(true);
+    const isTopLevel = steps.some(s => s.id === stepId);
 
-    if (parentBranchId !== null && branchIndex !== null) {
-      const conditionStep = steps.find(s => s.id === parentBranchId);
-      if (!conditionStep) {
-        setSaving(false);
-        return;
-      }
-      const newBranches = [...conditionStep.condition_branches];
-      const branch = newBranches[branchIndex];
-      const branchSteps = (branch.branch_steps || []).map(bs =>
-        bs.id === stepId ? { ...bs, ...updates } : bs
-      );
-      newBranches[branchIndex] = { ...branch, branch_steps: branchSteps };
-
-      setSteps(prevSteps => prevSteps.map(step => {
-        if (step.id === parentBranchId && step.step_type === 'condition') {
-          return { ...step, condition_branches: newBranches };
-        }
-        return step;
-      }));
-
-      if (!isDemo && selectedCampaign && !String(parentBranchId).startsWith('temp-')) {
-        try {
-          console.log('[SAVE BRANCHES] Saving condition_branches for step', parentBranchId, ':', newBranches.length, 'branches');
-          newBranches.forEach((b, i) => console.log(`[SAVE BRANCHES]   Branch ${i}: ${b.condition}, ${(b.branch_steps || []).length} steps`));
-          const result = await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${parentBranchId}`, {
-            condition_branches: newBranches
-          });
-          console.log('[SAVE BRANCHES] Server response condition_branches:', result?.condition_branches ? 'present (' + (Array.isArray(result.condition_branches) ? result.condition_branches.length + ' branches' : typeof result.condition_branches) + ')' : 'MISSING');
-        } catch (error) {
-          console.error('[SAVE BRANCHES] ERROR updating branch step:', error);
-        }
-      } else {
-        console.log('[SAVE BRANCHES] SKIPPED save - isDemo:', isDemo, 'selectedCampaign:', !!selectedCampaign, 'parentBranchId:', parentBranchId);
-      }
-    } else {
+    if (isTopLevel) {
       setSteps(steps.map(s => s.id === stepId ? { ...s, ...updates } : s));
       if (!isDemo && selectedCampaign && !String(stepId).startsWith('temp-')) {
         try {
-          if (updates.condition_branches) {
-            console.log('[SAVE BRANCHES] Saving condition_branches via direct update for step', stepId);
-          }
           await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`, updates);
         } catch (error) {
           console.error('Update failed:', error);
+        }
+      }
+    } else {
+      // Nested step - deep update through the tree
+      const updatedSteps = deepUpdateStepTree(steps, stepId, step => ({ ...step, ...updates }));
+      setSteps(updatedSteps);
+
+      const rootId = findRootStepId(steps, stepId);
+      if (rootId && !isDemo && selectedCampaign && !String(rootId).startsWith('temp-')) {
+        try {
+          const rootStep = updatedSteps.find(s => s.id === rootId);
+          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${rootId}`, {
+            condition_branches: rootStep.condition_branches
+          });
+        } catch (error) {
+          console.error('[SAVE BRANCHES] ERROR updating nested branch step:', error);
         }
       }
     }
@@ -456,29 +546,22 @@ const CampaignBuilder = () => {
   };
 
   const handleDeleteStep = async (stepId, parentBranchId = null, branchIndex = null) => {
-    if (parentBranchId !== null && branchIndex !== null) {
-      const conditionStep = steps.find(s => s.id === parentBranchId);
-      if (!conditionStep) return;
+    const isTopLevel = steps.some(s => s.id === stepId);
 
-      const newBranches = [...conditionStep.condition_branches];
-      const branch = newBranches[branchIndex];
-      const branchSteps = (branch.branch_steps || []).filter(bs => bs.id !== stepId);
-      newBranches[branchIndex] = { ...branch, branch_steps: branchSteps };
+    if (!isTopLevel) {
+      // Nested step - deep remove from tree
+      const rootId = findRootStepId(steps, stepId);
+      const updatedSteps = deepRemoveFromTree(steps, stepId);
+      setSteps(updatedSteps);
 
-      setSteps(prevSteps => prevSteps.map(step => {
-        if (step.id === parentBranchId && step.step_type === 'condition') {
-          return { ...step, condition_branches: newBranches };
-        }
-        return step;
-      }));
-
-      if (activeStep === stepId) setActiveStep(parentBranchId);
+      if (activeStep === stepId) setActiveStep(null);
       setSelectedNodes(prev => prev.filter(id => id !== stepId));
 
-      if (!isDemo && selectedCampaign && !String(parentBranchId).startsWith('temp-')) {
+      if (rootId && !isDemo && selectedCampaign && !String(rootId).startsWith('temp-')) {
         try {
-          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${parentBranchId}`, {
-            condition_branches: newBranches
+          const rootStep = updatedSteps.find(s => s.id === rootId);
+          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${rootId}`, {
+            condition_branches: rootStep.condition_branches
           });
         } catch (error) {
           console.error('Error deleting branch step:', error);
@@ -510,165 +593,131 @@ const CampaignBuilder = () => {
     }
   };
 
-  const handleAddBranch = async (conditionStepId) => {
-    const conditionStep = steps.find(s => s.id === conditionStepId);
-    if (!conditionStep || conditionStep.step_type !== 'condition') return;
+  // Helper to find a condition step (top-level or nested) and save after mutation
+  const findConditionAndSave = async (conditionStepId, updateFn) => {
+    const isTopLevel = steps.some(s => s.id === conditionStepId);
+    let conditionStep = isTopLevel ? steps.find(s => s.id === conditionStepId) : null;
 
-    const usedConditions = conditionStep.condition_branches.map(b => b.condition);
-    const available = CONDITION_OPTIONS.find(opt => !usedConditions.includes(opt.value));
-    if (!available) return;
+    if (!conditionStep) {
+      const found = deepFindStep(steps, conditionStepId);
+      if (!found) return null;
+      conditionStep = found.step;
+    }
+    if (conditionStep.step_type !== 'condition') return null;
 
-    const defaultWait = available.hasWait ? { wait_days: 2, wait_hours: 0, wait_minutes: 0 } : { wait_days: 0, wait_hours: 0, wait_minutes: 0 };
-    const newBranches = [...conditionStep.condition_branches, { condition: available.value, ...defaultWait, branch_steps: [] }];
+    const updated = updateFn(conditionStep);
 
-    setSteps(prevSteps => prevSteps.map(step => {
-      if (step.id === conditionStepId) {
-        return { ...step, condition_branches: newBranches };
-      }
-      return step;
-    }));
+    if (isTopLevel) {
+      setSteps(prevSteps => prevSteps.map(s => s.id === conditionStepId ? updated : s));
+    } else {
+      setSteps(prevSteps => deepUpdateStepTree(prevSteps, conditionStepId, () => updated));
+    }
 
-    if (!isDemo && selectedCampaign && !String(conditionStepId).startsWith('temp-')) {
+    // Save to API
+    const rootId = isTopLevel ? conditionStepId : findRootStepId(steps, conditionStepId);
+    if (rootId && !isDemo && selectedCampaign && !String(rootId).startsWith('temp-')) {
       try {
-        console.log('[ADD BRANCH] Saving', newBranches.length, 'branches to step', conditionStepId);
-        const result = await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
-          condition_branches: newBranches
-        });
-        console.log('[ADD BRANCH] Server response has condition_branches:', !!result?.condition_branches, Array.isArray(result?.condition_branches) ? result.condition_branches.length + ' branches' : '');
+        if (isTopLevel) {
+          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${rootId}`, {
+            condition_branches: updated.condition_branches
+          });
+        } else {
+          const updatedSteps = deepUpdateStepTree(steps, conditionStepId, () => updated);
+          const rootStep = updatedSteps.find(s => s.id === rootId);
+          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${rootId}`, {
+            condition_branches: rootStep.condition_branches
+          });
+        }
       } catch (e) {
-        console.error('[ADD BRANCH] ERROR:', e);
+        console.error('Error saving condition step:', e);
       }
     }
+    return updated;
+  };
+
+  const handleAddBranch = async (conditionStepId) => {
+    await findConditionAndSave(conditionStepId, (conditionStep) => {
+      const usedConditions = conditionStep.condition_branches.map(b => b.condition);
+      const available = CONDITION_OPTIONS.find(opt => !usedConditions.includes(opt.value));
+      if (!available) return conditionStep;
+
+      const defaultWait = available.hasWait ? { wait_days: 2, wait_hours: 0, wait_minutes: 0 } : { wait_days: 0, wait_hours: 0, wait_minutes: 0 };
+      return {
+        ...conditionStep,
+        condition_branches: [...conditionStep.condition_branches, { condition: available.value, ...defaultWait, branch_steps: [] }]
+      };
+    });
   };
 
   const handleRemoveBranch = async (conditionStepId, branchIndex) => {
-    const conditionStep = steps.find(s => s.id === conditionStepId);
-    if (!conditionStep || conditionStep.step_type !== 'condition') return;
-    if (conditionStep.condition_branches.length <= 1) return;
-
-    const newBranches = conditionStep.condition_branches.filter((_, i) => i !== branchIndex);
-
-    setSteps(prevSteps => prevSteps.map(step => {
-      if (step.id === conditionStepId) {
-        return { ...step, condition_branches: newBranches };
-      }
-      return step;
-    }));
-
-    if (!isDemo && selectedCampaign && !String(conditionStepId).startsWith('temp-')) {
-      try {
-        await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
-          condition_branches: newBranches
-        });
-      } catch (e) {
-        console.error('Error removing branch:', e);
-      }
-    }
+    await findConditionAndSave(conditionStepId, (conditionStep) => {
+      if (conditionStep.condition_branches.length <= 1) return conditionStep;
+      return {
+        ...conditionStep,
+        condition_branches: conditionStep.condition_branches.filter((_, i) => i !== branchIndex)
+      };
+    });
   };
 
   const handleUpdateBranchCondition = async (conditionStepId, branchIndex, newCondition) => {
-    const conditionStep = steps.find(s => s.id === conditionStepId);
-    if (!conditionStep || conditionStep.step_type !== 'condition') return;
-
-    const newBranches = [...conditionStep.condition_branches];
-    const conditionOpt = CONDITION_OPTIONS.find(o => o.value === newCondition);
-    const defaultWait = conditionOpt?.hasWait ? { wait_days: 2, wait_hours: 0, wait_minutes: 0 } : { wait_days: 0, wait_hours: 0, wait_minutes: 0 };
-    newBranches[branchIndex] = { ...newBranches[branchIndex], condition: newCondition, ...defaultWait };
-
-    setSteps(prevSteps => prevSteps.map(step => {
-      if (step.id === conditionStepId) {
-        return { ...step, condition_branches: newBranches };
-      }
-      return step;
-    }));
-
-    if (!isDemo && selectedCampaign && !String(conditionStepId).startsWith('temp-')) {
-      try {
-        await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
-          condition_branches: newBranches
-        });
-      } catch (e) {
-        console.error('Error updating branch condition:', e);
-      }
-    }
+    await findConditionAndSave(conditionStepId, (conditionStep) => {
+      const newBranches = [...conditionStep.condition_branches];
+      const conditionOpt = CONDITION_OPTIONS.find(o => o.value === newCondition);
+      const defaultWait = conditionOpt?.hasWait ? { wait_days: 2, wait_hours: 0, wait_minutes: 0 } : { wait_days: 0, wait_hours: 0, wait_minutes: 0 };
+      newBranches[branchIndex] = { ...newBranches[branchIndex], condition: newCondition, ...defaultWait };
+      return { ...conditionStep, condition_branches: newBranches };
+    });
   };
 
-  // Add step to a specific branch
+  // Add step to a specific branch (works for nested conditions too)
   const handleAddStepToBranch = async (conditionStepId, branchIndex, stepType) => {
-    const conditionStep = steps.find(s => s.id === conditionStepId);
-    if (!conditionStep || conditionStep.step_type !== 'condition') return;
+    let newStepRaw = null;
 
-    const newBranches = [...conditionStep.condition_branches];
-    const branch = newBranches[branchIndex];
-    const branchSteps = branch.branch_steps || [];
+    await findConditionAndSave(conditionStepId, (conditionStep) => {
+      const branches = conditionStep.condition_branches || [];
+      const branch = branches[branchIndex];
+      const branchSteps = branch.branch_steps || [];
+      const offsets = getBranchOffsets(branches);
+      const offsetX = offsets[branchIndex] || 0;
+      const branchStepY = conditionStep.y + 200 + branchSteps.length * 150;
 
-    // Calculate position for the new branch step
-    const branches = conditionStep.condition_branches || [];
-    const offsetX = (branchIndex - (branches.length - 1) / 2) * 250;
-    const branchStepY = conditionStep.y + 200 + branchSteps.length * 150;
+      newStepRaw = {
+        id: 'branch-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+        step_type: stepType,
+        step_order: branchSteps.length + 1,
+        subject: stepType === 'email' ? 'Follow-up Email' : '',
+        body: '',
+        wait_days: stepType === 'wait' ? 1 : 0,
+        wait_hours: 0,
+        wait_minutes: 0,
+        condition_type: 'if_opened',
+        condition_branches: stepType === 'condition' ? [
+          { condition: 'if_opened', wait_days: 0, branch_steps: [] },
+          { condition: 'if_not_opened', wait_days: 2, branch_steps: [] }
+        ] : [],
+        x: conditionStep.x + offsetX,
+        y: branchStepY
+      };
 
-    const newStepRaw = {
-      id: 'branch-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-      step_type: stepType,
-      step_order: branchSteps.length + 1,
-      subject: stepType === 'email' ? 'Follow-up Email' : '',
-      body: '',
-      wait_days: stepType === 'wait' ? 1 : 0,
-      wait_hours: 0,
-      wait_minutes: 0,
-      condition_type: 'if_opened',
-      condition_branches: stepType === 'condition' ? [
-        { condition: 'if_opened', wait_days: 0, branch_steps: [] },
-        { condition: 'if_not_opened', wait_days: 2, branch_steps: [] }
-      ] : [],
-      x: conditionStep.x + offsetX,
-      y: branchStepY
-    };
+      const newBranches = [...branches];
+      newBranches[branchIndex] = {
+        ...branch,
+        branch_steps: [...branchSteps, newStepRaw]
+      };
+      return { ...conditionStep, condition_branches: newBranches };
+    });
 
-    newBranches[branchIndex] = {
-      ...branch,
-      branch_steps: [...branchSteps, newStepRaw]
-    };
-
-    setSteps(prevSteps => prevSteps.map(step => {
-      if (step.id === conditionStepId) {
-        return { ...step, condition_branches: newBranches };
-      }
-      return step;
-    }));
-
-    // Select the new branch step for editing
-    setActiveStep(newStepRaw.id);
-
-    if (!isDemo && selectedCampaign && !String(conditionStepId).startsWith('temp-')) {
-      try {
-        console.log('[ADD STEP TO BRANCH] Saving branches for step', conditionStepId, '- branch', branchIndex, 'now has', newBranches[branchIndex].branch_steps.length, 'steps');
-        const result = await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${conditionStepId}`, {
-          condition_branches: newBranches
-        });
-        console.log('[ADD STEP TO BRANCH] Server response has condition_branches:', !!result?.condition_branches);
-      } catch (e) {
-        console.error('[ADD STEP TO BRANCH] ERROR:', e);
-      }
-    }
+    if (newStepRaw) setActiveStep(newStepRaw.id);
   };
 
-  // Get active step data
+  // Get active step data (searches recursively through nested conditions)
   const getActiveStepData = () => {
+    if (!activeStep) return null;
     const mainStep = steps.find(s => s.id === activeStep);
     if (mainStep) return { step: mainStep, parentBranchId: null, branchIndex: null };
 
-    for (const step of steps) {
-      if (step.step_type === 'condition' && step.condition_branches) {
-        for (let bi = 0; bi < step.condition_branches.length; bi++) {
-          const branch = step.condition_branches[bi];
-          if (branch.branch_steps) {
-            const branchStep = branch.branch_steps.find(bs => bs.id === activeStep);
-            if (branchStep) return { step: branchStep, parentBranchId: step.id, branchIndex: bi };
-          }
-        }
-      }
-    }
+    const result = deepFindStep(steps, activeStep);
+    if (result) return { step: result.step, parentBranchId: result.rootStepId, branchIndex: null };
     return null;
   };
 
@@ -954,6 +1003,58 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
   };
 
   // Calculate connections
+  // Recursive helper to add connections for condition branches at any nesting depth
+  const addBranchConnections = (connections, parentCenterX, parentY, branches, parentId) => {
+    const offsets = getBranchOffsets(branches);
+    branches.forEach((branch, bi) => {
+      const branchSteps = branch.branch_steps || [];
+      const laneCenterX = parentCenterX + offsets[bi];
+      const conditionOpt = CONDITION_OPTIONS.find(o => o.value === branch.condition);
+      const label = conditionOpt?.shortLabel || branch.condition;
+
+      if (branchSteps.length > 0) {
+        connections.push({
+          id: `${parentId}-branch-${bi}-start`,
+          from: { x: parentCenterX, y: parentY + 100 },
+          to: { x: laneCenterX, y: parentY + 200 },
+          type: 'branch',
+          label: label
+        });
+
+        for (let j = 0; j < branchSteps.length - 1; j++) {
+          connections.push({
+            id: `${parentId}-branch-${bi}-step-${j}`,
+            from: { x: laneCenterX, y: parentY + 200 + (j * 150) + 100 },
+            to: { x: laneCenterX, y: parentY + 200 + ((j + 1) * 150) },
+            type: 'branch'
+          });
+        }
+
+        connections.push({
+          id: `${parentId}-branch-${bi}-to-add`,
+          from: { x: laneCenterX, y: parentY + 200 + ((branchSteps.length - 1) * 150) + 100 },
+          to: { x: laneCenterX, y: parentY + 200 + (branchSteps.length * 150) },
+          type: 'branch-add'
+        });
+
+        // Recurse into nested condition steps within this branch
+        branchSteps.forEach((bs, bsi) => {
+          if (bs.step_type === 'condition' && bs.condition_branches && bs.condition_branches.length > 0) {
+            addBranchConnections(connections, laneCenterX, parentY + 200 + bsi * 150, bs.condition_branches, bs.id);
+          }
+        });
+      } else {
+        connections.push({
+          id: `${parentId}-branch-${bi}-empty`,
+          from: { x: parentCenterX, y: parentY + 100 },
+          to: { x: laneCenterX, y: parentY + 200 },
+          type: 'branch',
+          label: label
+        });
+      }
+    });
+  };
+
   const getConnections = () => {
     const connections = [];
     const sortedSteps = [...steps].sort((a, b) => a.step_order - b.step_order);
@@ -975,57 +1076,11 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
       const nextStep = sortedSteps[i + 1];
 
       if (step.step_type === 'condition') {
-        // Draw branch connections for ALL branches
         const branches = step.condition_branches || [];
-        branches.forEach((branch, bi) => {
-          const branchSteps = branch.branch_steps || [];
-          const offsetX = (bi - (branches.length - 1) / 2) * 250;
-          const conditionOpt = CONDITION_OPTIONS.find(o => o.value === branch.condition);
-          const label = conditionOpt?.shortLabel || branch.condition;
-
-          if (branchSteps.length > 0) {
-            // Connect condition to first branch step
-            const firstBranchStep = branchSteps[0];
-            connections.push({
-              id: `${step.id}-branch-${bi}-start`,
-              from: { x: step.x + 110, y: step.y + 100 },
-              to: { x: step.x + 110 + offsetX, y: step.y + 200 },
-              type: 'branch',
-              label: label
-            });
-
-            // Connect branch steps to each other
-            for (let j = 0; j < branchSteps.length - 1; j++) {
-              const currentBS = branchSteps[j];
-              const nextBS = branchSteps[j + 1];
-              connections.push({
-                id: `${step.id}-branch-${bi}-step-${j}`,
-                from: { x: step.x + 110 + offsetX, y: step.y + 200 + (j * 150) + 100 },
-                to: { x: step.x + 110 + offsetX, y: step.y + 200 + ((j + 1) * 150) },
-                type: 'branch'
-              });
-            }
-
-            // Connect last branch step to add-step placeholder
-            connections.push({
-              id: `${step.id}-branch-${bi}-to-add`,
-              from: { x: step.x + 110 + offsetX, y: step.y + 200 + ((branchSteps.length - 1) * 150) + 100 },
-              to: { x: step.x + 110 + offsetX, y: step.y + 200 + (branchSteps.length * 150) },
-              type: 'branch-add'
-            });
-          } else {
-            // Empty branch - connect to placeholder/add-step node
-            connections.push({
-              id: `${step.id}-branch-${bi}-empty`,
-              from: { x: step.x + 110, y: step.y + 100 },
-              to: { x: step.x + 110 + offsetX, y: step.y + 200 },
-              type: 'branch',
-              label: label
-            });
-          }
-        });
+        if (branches.length > 0) {
+          addBranchConnections(connections, step.x + 110, step.y, branches, step.id);
+        }
       } else if (nextStep) {
-        // Regular connection to next step
         connections.push({
           id: step.id + '-' + nextStep.id,
           from: { x: step.x + 110, y: step.y + 100 },
@@ -1083,6 +1138,54 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
     );
   };
 
+  // Recursive helper to render branch step nodes and add-step placeholders at any depth
+  const renderBranchElements = (conditionStep, parentCenterX, parentY) => {
+    const branches = conditionStep.condition_branches || [];
+    const offsets = getBranchOffsets(branches);
+    const elements = [];
+
+    branches.forEach((branch, bi) => {
+      const branchSteps = branch.branch_steps || [];
+      const laneCenterX = parentCenterX + offsets[bi];
+      const nodeX = laneCenterX - 125;
+
+      branchSteps.forEach((branchStep, bsi) => {
+        const nodeY = parentY + 200 + (bsi * 150);
+        elements.push(h(BranchStepNode, {
+          key: `${conditionStep.id}-branch-${bi}-step-${bsi}`,
+          step: branchStep,
+          parentStep: conditionStep,
+          branchIndex: bi,
+          stepIndex: bsi,
+          x: nodeX,
+          y: nodeY,
+          isSelected: selectedNodes.includes(branchStep.id),
+          isActive: activeStep === branchStep.id,
+          onSelect: () => {
+            setSelectedNodes([branchStep.id]);
+            setActiveStep(branchStep.id);
+          },
+          onDelete: () => onDeleteStep(branchStep.id, conditionStep.id, bi)
+        }));
+
+        // Recurse into nested condition steps
+        if (branchStep.step_type === 'condition' && branchStep.condition_branches && branchStep.condition_branches.length > 0) {
+          elements.push(...renderBranchElements(branchStep, laneCenterX, nodeY));
+        }
+      });
+
+      elements.push(h(AddStepPlaceholder, {
+        key: `${conditionStep.id}-branch-${bi}-add`,
+        x: nodeX,
+        y: parentY + 200 + (branchSteps.length * 150),
+        branchCondition: branch.condition,
+        onAddStep: (stepType) => onAddStepToBranch(conditionStep.id, bi, stepType)
+      }));
+    });
+
+    return elements;
+  };
+
   return h('div', {
     className: `canvas-container ${isPanning ? 'grabbing' : ''}`,
     onWheel: handleWheel,
@@ -1134,46 +1237,9 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
         onUpdateBranchCondition: (bi, cond) => onUpdateBranchCondition(step.id, bi, cond)
       })),
 
-      // Branch step nodes and add-step placeholders for condition nodes
+      // Branch step nodes and add-step placeholders (recursive for nested conditions)
       steps.filter(s => s.step_type === 'condition').flatMap(conditionStep => {
-        const branches = conditionStep.condition_branches || [];
-        const elements = [];
-
-        branches.forEach((branch, bi) => {
-          const branchSteps = branch.branch_steps || [];
-          const offsetX = (bi - (branches.length - 1) / 2) * 250;
-
-          // Render branch step nodes
-          branchSteps.forEach((branchStep, bsi) => {
-            elements.push(h(BranchStepNode, {
-              key: `${conditionStep.id}-branch-${bi}-step-${bsi}`,
-              step: branchStep,
-              parentStep: conditionStep,
-              branchIndex: bi,
-              stepIndex: bsi,
-              x: conditionStep.x + offsetX - 15,
-              y: conditionStep.y + 200 + (bsi * 150),
-              isSelected: selectedNodes.includes(branchStep.id),
-              isActive: activeStep === branchStep.id,
-              onSelect: () => {
-                setSelectedNodes([branchStep.id]);
-                setActiveStep(branchStep.id);
-              },
-              onDelete: () => onDeleteStep(branchStep.id, conditionStep.id, bi)
-            }));
-          });
-
-          // Render add-step placeholder at the end of each branch
-          elements.push(h(AddStepPlaceholder, {
-            key: `${conditionStep.id}-branch-${bi}-add`,
-            x: conditionStep.x + offsetX - 15,
-            y: conditionStep.y + 200 + (branchSteps.length * 150),
-            branchCondition: branch.condition,
-            onAddStep: (stepType) => onAddStepToBranch(conditionStep.id, bi, stepType)
-          }));
-        });
-
-        return elements;
+        return renderBranchElements(conditionStep, conditionStep.x + 110, conditionStep.y);
       }),
 
       // End node (positioned after last step that's not a condition)
