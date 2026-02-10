@@ -1582,7 +1582,6 @@ app.get('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
   }
 });
 
-// FIXED POST ROUTE: Includes condition_branches
 app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
   try {
     const { data: campaign } = await supabase
@@ -1601,19 +1600,13 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
       wait_days,
       wait_hours,
       wait_minutes,
-      condition_type,
-      condition_branches, // <--- Added
-      next_step_if_true,
-      next_step_if_false,
       step_order,
       position_x,
-      position_y,
-      parent_id,
-      branch_index
+      position_y
     } = req.body;
 
-    if (!['email', 'wait', 'condition'].includes(step_type)) {
-      return res.status(400).json({ error: 'Invalid step type' });
+    if (!['email', 'wait'].includes(step_type)) {
+      return res.status(400).json({ error: 'Invalid step type. Only email and wait are supported.' });
     }
 
     const { data, error } = await supabase
@@ -1626,16 +1619,6 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
         wait_days: wait_days || 0,
         wait_hours: wait_hours || 0,
         wait_minutes: wait_minutes || 0,
-        condition_type: step_type === 'condition' ? condition_type : null,
-        // CRITICAL FIX: Save branches
-        condition_branches: step_type === 'condition' ? (condition_branches || null) : null,
-
-        next_step_if_true: step_type === 'condition' ? next_step_if_true : null,
-        next_step_if_false: step_type === 'condition' ? next_step_if_false : null,
-
-        parent_id: parent_id || null,
-        branch_index: branch_index || null,
-
         step_order: step_order || 1,
         position_x: position_x || null,
         position_y: position_y || null
@@ -1650,7 +1633,6 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
   }
 });
 
-// FIXED PUT ROUTE: Removes .single() and adds condition_branches
 app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   try {
     const { data: campaign } = await supabase
@@ -1664,7 +1646,6 @@ app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req
 
     const {
       subject, body, wait_days, wait_hours, wait_minutes,
-      condition_type, condition_branches, // <--- Added
       step_order, position_x, position_y
     } = req.body;
 
@@ -1674,11 +1655,6 @@ app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req
     if (wait_days !== undefined) updates.wait_days = wait_days;
     if (wait_hours !== undefined) updates.wait_hours = wait_hours;
     if (wait_minutes !== undefined) updates.wait_minutes = wait_minutes;
-    if (condition_type !== undefined) updates.condition_type = condition_type;
-
-    // CRITICAL FIX: Add condition_branches to updates
-    if (condition_branches !== undefined) updates.condition_branches = condition_branches;
-
     if (step_order !== undefined) updates.step_order = step_order;
     if (position_x !== undefined) updates.position_x = position_x;
     if (position_y !== undefined) updates.position_y = position_y;
@@ -1688,11 +1664,10 @@ app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req
       .update(updates)
       .eq('id', req.params.stepId)
       .eq('campaign_id', req.params.campaignId)
-      .select(); // <--- REMOVED .single()
+      .select();
 
     if (error) throw error;
 
-    // Handle array response
     const step = data && data.length > 0 ? data[0] : null;
     if (!step) return res.status(404).json({ error: 'Step not found' });
 
@@ -1758,7 +1733,7 @@ app.post('/api/campaigns/:id/start', authenticateUser, async (req, res) => {
       return res.status(400).json({ error: 'No active contacts in list' });
     }
 
-    // Clean up data from previous runs to prevent stale events affecting condition evaluation
+    // Clean up data from previous runs
     const { error: deleteContactsError } = await supabase
       .from('campaign_contacts')
       .delete()
@@ -2380,8 +2355,8 @@ async function executePendingCampaigns() {
           id, email, first_name, last_name, company, custom_fields
         ),
         campaign_steps!inner(
-          id, step_type, step_order, subject, body, wait_days, condition_type,
-          next_step_if_true, next_step_if_false
+          id, step_type, step_order, subject, body, wait_days,
+          wait_hours, wait_minutes
         )
       `)
       .eq('status', 'in_progress')
@@ -2441,9 +2416,6 @@ async function processCampaignContact(campaignContact) {
       break;
     case 'wait':
       await handleWaitStep(campaignContact, campaign, step);
-      break;
-    case 'condition':
-      await handleConditionStep(campaignContact, campaign, step);
       break;
   }
 }
@@ -2570,72 +2542,6 @@ async function handleWaitStep(campaignContact, campaign, step) {
       .eq('id', campaignContact.id);
 
     console.log(`[EXECUTOR] ✓ Campaign completed for contact ${campaignContact.contact_id}`);
-  }
-}
-
-async function handleConditionStep(campaignContact, campaign, step) {
-  // 1. Find the LAST email sent to this contact in this campaign
-  const { data: lastEmailEvent } = await supabase
-    .from('email_events')
-    .select('campaign_step_id, created_at')
-    .eq('campaign_id', campaign.id)
-    .eq('contact_id', campaignContact.contact_id)
-    .eq('event_type', 'sent')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
-
-  let conditionMet = false;
-
-  if (lastEmailEvent && lastEmailEvent.campaign_step_id) {
-    console.log(`[CONDITION] Checking response to Step ID: ${lastEmailEvent.campaign_step_id}`);
-
-    // 2. Find INTERACTION events that happened AFTER the email was sent
-    // This prevents "Ghost Opens" from previous tests being counted
-    const { data: events } = await supabase
-      .from('email_events')
-      .select('event_type, created_at')
-      .eq('campaign_id', campaign.id)
-      .eq('contact_id', campaignContact.contact_id)
-      .eq('campaign_step_id', lastEmailEvent.campaign_step_id)
-      .gt('created_at', lastEmailEvent.created_at); // <--- CRITICAL FIX: Only check events NEWER than the sent email
-
-    const interactionEvents = events || [];
-
-    switch (step.condition_type) {
-      case 'if_opened':
-        conditionMet = interactionEvents.some(e => e.event_type === 'opened');
-        break;
-      case 'if_not_opened':
-        conditionMet = !interactionEvents.some(e => e.event_type === 'opened');
-        break;
-      case 'if_clicked':
-        conditionMet = interactionEvents.some(e => e.event_type === 'clicked');
-        break;
-      case 'if_replied':
-        conditionMet = interactionEvents.some(e => e.event_type === 'replied');
-        break;
-    }
-  } else {
-    console.log(`[CONDITION] No previous email found to check. Defaulting to False.`);
-    // Fail-safe: If we can't find a sent email, we can't verify an open.
-    if (step.condition_type === 'if_not_opened') conditionMet = true;
-  }
-
-  const nextStepId = conditionMet ? step.next_step_if_true : step.next_step_if_false;
-
-  console.log(`[CONDITION] Result: ${conditionMet} (Events found: ${conditionMet ? 'YES' : 'NO'}) -> Next Step: ${nextStepId}`);
-
-  if (nextStepId) {
-    await supabase
-      .from('campaign_contacts')
-      .update({ current_step_id: nextStepId, next_send_time: new Date().toISOString() })
-      .eq('id', campaignContact.id);
-  } else {
-    await supabase
-      .from('campaign_contacts')
-      .update({ status: 'completed' })
-      .eq('id', campaignContact.id);
   }
 }
 

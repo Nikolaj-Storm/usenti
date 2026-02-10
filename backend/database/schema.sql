@@ -203,22 +203,16 @@ CREATE TABLE IF NOT EXISTS campaign_steps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
   step_order INTEGER NOT NULL,
-  step_type TEXT NOT NULL CHECK (step_type IN ('email', 'wait', 'condition')),
+  step_type TEXT NOT NULL CHECK (step_type IN ('email', 'wait')),
 
   -- Email content
   subject TEXT,
   body TEXT,
 
-  -- Enhanced Wait Logic (v2.0)
+  -- Wait step fields (supports days, hours, and minutes)
   wait_days INTEGER DEFAULT 0,
-  wait_hours INTEGER DEFAULT 0,   -- New in v2.0
-  wait_minutes INTEGER DEFAULT 0, -- New in v2.0
-
-  -- Condition Logic
-  condition_type TEXT CHECK (condition_type IN ('if_opened', 'if_not_opened', 'if_clicked', 'if_not_clicked', 'if_replied', 'if_not_replied')),
-  next_step_if_true UUID REFERENCES campaign_steps(id) ON DELETE SET NULL,
-  next_step_if_false UUID REFERENCES campaign_steps(id) ON DELETE SET NULL,
-  condition_branches JSONB, -- New in v2.0
+  wait_hours INTEGER DEFAULT 0,
+  wait_minutes INTEGER DEFAULT 0,
 
   -- Visual editor position
   position_x INTEGER DEFAULT 0,
@@ -259,9 +253,6 @@ CREATE TABLE IF NOT EXISTS campaign_contacts (
   -- Stats
   emails_sent INTEGER DEFAULT 0, -- Verified: Exists in CSV
   replied_at TIMESTAMP WITH TIME ZONE, -- Verified: Exists in CSV
-
-  -- Branch execution tracking (v2.0)
-  branch_context JSONB, -- Tracks progress through condition branch steps
 
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,

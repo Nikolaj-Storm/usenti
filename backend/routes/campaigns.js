@@ -3,12 +3,7 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const { authenticateUser } = require('../middleware/auth');
 
-// 🔴 VERSION LOG - If you don't see this in your server logs, the deploy failed.
-console.log("==================================================================");
-console.log(">>> CAMPAIGNS ROUTE LOADED: VERSION 2.1 (DEBUG MODE)           <<<");
-console.log(">>> FIXES: Included condition_branches in bulk update          <<<");
-console.log(">>> CHECK: extensive logging enabled for step persistence      <<<");
-console.log("==================================================================");
+console.log(">>> CAMPAIGNS ROUTE LOADED <<<");
 
 // Get all campaigns for user
 router.get('/', authenticateUser, async (req, res) => {
@@ -199,28 +194,16 @@ router.put('/:id', authenticateUser, async (req, res) => {
     // Handle steps if provided
     if (steps && Array.isArray(steps)) {
       console.log(`[CAMPAIGN UPDATE] Received ${steps.length} steps to save.`);
-      
-      // LOGGING: Check if branches are present in the request
-      const conditionSteps = steps.filter(s => s.step_type === 'condition' || s.type === 'condition');
-      console.log(`[CAMPAIGN UPDATE] Found ${conditionSteps.length} condition steps in payload.`);
-      conditionSteps.forEach((s, i) => {
-        console.log(`[CAMPAIGN UPDATE] Condition Step ${i} (ID: ${s.id}):`);
-        console.log(`   - Branches array exists? ${!!s.condition_branches}`);
-        console.log(`   - Branch count: ${s.condition_branches ? s.condition_branches.length : 0}`);
-        if(s.condition_branches && s.condition_branches.length > 0) {
-            console.log(`   - First branch: ${JSON.stringify(s.condition_branches[0]).substring(0, 100)}...`);
-        }
-      });
 
       // Delete existing steps
       const { error: deleteError } = await supabase
         .from('campaign_steps')
         .delete()
         .eq('campaign_id', req.params.id);
-      
+
       if (deleteError) throw deleteError;
-      
-      // Re-insert steps with ALL required fields
+
+      // Re-insert steps
       for (const step of steps) {
         const stepPayload = {
             id: step.id,
@@ -228,28 +211,16 @@ router.put('/:id', authenticateUser, async (req, res) => {
             step_type: step.step_type || step.type,
             config: step.config,
             step_order: step.step_order || step.position,
-            branch_id: step.branch_id,
-            
-            // 🔴 CRITICAL FIX: Ensure condition_branches is explicitly saved 🔴
-            condition_branches: step.condition_branches || null, 
-            parent_id: step.parent_id || null,
-            branch_index: step.branch_index || null,
-            
+
             // Visual positions
             position_x: step.position_x ? Math.round(Number(step.position_x)) : null,
             position_y: step.position_y ? Math.round(Number(step.position_y)) : null
         };
 
-        // Deep debug for condition steps being inserted
-        if (stepPayload.step_type === 'condition') {
-             console.log(`[DB INSERT] Inserting Condition Step ${stepPayload.id}`);
-             console.log(`   - Saving branches: ${JSON.stringify(stepPayload.condition_branches)}`);
-        }
-
         const { error: insertError } = await supabase
           .from('campaign_steps')
           .insert(stepPayload);
-        
+
         if (insertError) {
             console.error('[DB INSERT ERROR] Failed to insert step:', stepPayload.id, insertError);
             throw insertError;
@@ -480,21 +451,6 @@ router.get('/:id/steps', authenticateUser, async (req, res) => {
       .order('step_order');
     
     if (error) throw error;
-
-    // LOGGING: Verify what is coming out of the DB
-    console.log(`[GET STEPS] Retrieved ${data.length} steps for campaign ${req.params.id}`);
-    const conditionSteps = data.filter(s => s.step_type === 'condition');
-    if (conditionSteps.length > 0) {
-        console.log(`[GET STEPS] Verifying ${conditionSteps.length} condition steps:`);
-        conditionSteps.forEach(s => {
-            console.log(`   - Step ID: ${s.id}`);
-            console.log(`   - Branches in DB: ${s.condition_branches ? JSON.stringify(s.condition_branches).length + ' chars' : 'NULL/EMPTY'}`);
-            if (s.condition_branches && Array.isArray(s.condition_branches)) {
-                console.log(`   - Branch count: ${s.condition_branches.length}`);
-            }
-        });
-    }
-
     res.json(data);
   } catch (error) {
     console.error('Error fetching campaign steps:', error);
@@ -523,20 +479,11 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       wait_days,
       wait_hours,
       wait_minutes,
-      condition_type,
-      condition_branches,
-      next_step_if_true,
-      next_step_if_false,
       step_order
     } = req.body;
 
-    console.log(`[ADD STEP] Adding new step: ${step_type}`);
-    if (step_type === 'condition') {
-        console.log(`[ADD STEP] Condition branches payload:`, condition_branches);
-    }
-
-    if (!['email', 'wait', 'condition'].includes(step_type)) {
-      return res.status(400).json({ error: 'Invalid step type' });
+    if (!['email', 'wait'].includes(step_type)) {
+      return res.status(400).json({ error: 'Invalid step type. Only email and wait are supported.' });
     }
 
     const { data, error } = await supabase
@@ -549,17 +496,12 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
         wait_days: step_type === 'wait' ? (wait_days || 0) : null,
         wait_hours: step_type === 'wait' ? (wait_hours || 0) : null,
         wait_minutes: step_type === 'wait' ? (wait_minutes || 0) : null,
-        condition_type: step_type === 'condition' ? condition_type : null,
-        condition_branches: step_type === 'condition' ? (condition_branches || null) : null,
-        next_step_if_true: step_type === 'condition' ? next_step_if_true : null,
-        next_step_if_false: step_type === 'condition' ? next_step_if_false : null,
         step_order: step_order || 1
       })
       .select();
 
     if (error) throw error;
     const step = Array.isArray(data) ? data[0] : data;
-    console.log(`[ADD STEP] Success. Created step ID: ${step.id}`);
     res.json(step);
   } catch (error) {
     console.error('Error adding campaign step:', error);
@@ -585,13 +527,8 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
 
     const {
       subject, body, wait_days, wait_hours, wait_minutes,
-      condition_type, condition_branches, step_order,
-      position_x, position_y
+      step_order, position_x, position_y
     } = req.body;
-
-    if (condition_branches) {
-        console.log(`[UPDATE STEP] Received updates for condition_branches. Count: ${condition_branches.length}`);
-    }
 
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
@@ -599,8 +536,6 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     if (wait_days !== undefined) updates.wait_days = wait_days;
     if (wait_hours !== undefined) updates.wait_hours = wait_hours;
     if (wait_minutes !== undefined) updates.wait_minutes = wait_minutes;
-    if (condition_type !== undefined) updates.condition_type = condition_type;
-    if (condition_branches !== undefined) updates.condition_branches = condition_branches;
     if (step_order !== undefined) updates.step_order = step_order;
     if (position_x !== undefined) updates.position_x = Math.round(Number(position_x));
     if (position_y !== undefined) updates.position_y = Math.round(Number(position_y));
@@ -633,11 +568,6 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     const updatedStep = updatedSteps && updatedSteps.length > 0 ? updatedSteps[0] : null;
     if (!updatedStep) {
       return res.status(404).json({ error: 'Step not found after update' });
-    }
-
-    console.log(`[UPDATE STEP] Success. Updated step ${updatedStep.id}`);
-    if (updatedStep.step_type === 'condition') {
-        console.log(`[UPDATE STEP] Saved branches: ${JSON.stringify(updatedStep.condition_branches)}`);
     }
 
     res.json(updatedStep);
