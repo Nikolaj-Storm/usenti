@@ -1603,11 +1603,13 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
       condition_type,
       condition_branches,
       step_order,
-      position_x,
-      position_y,
-      parent_id,
-      branch_index
+      parent_step_id,
+      branch
     } = req.body;
+
+    // Accept both x/y and position_x/position_y from frontend
+    const position_x = req.body.position_x || req.body.x || null;
+    const position_y = req.body.position_y || req.body.y || null;
 
     if (!['email', 'wait', 'condition'].includes(step_type)) {
       return res.status(400).json({ error: 'Invalid step type. Only email, wait, and condition are supported.' });
@@ -1625,11 +1627,11 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
         wait_minutes: wait_minutes || 0,
         condition_type: step_type === 'condition' ? (condition_type || null) : null,
         condition_branches: step_type === 'condition' ? (condition_branches || null) : null,
-        parent_id: parent_id || null,
-        branch_index: branch_index || null,
+        parent_step_id: parent_step_id || null,
+        branch: branch || null,
         step_order: step_order || 1,
-        position_x: position_x || null,
-        position_y: position_y || null
+        position_x: position_x,
+        position_y: position_y
       })
       .select()
       .single();
@@ -1655,7 +1657,7 @@ app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req
     const {
       subject, body, wait_days, wait_hours, wait_minutes,
       condition_type, condition_branches,
-      step_order, position_x, position_y
+      step_order
     } = req.body;
 
     const updates = {};
@@ -1667,8 +1669,11 @@ app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req
     if (condition_type !== undefined) updates.condition_type = condition_type;
     if (condition_branches !== undefined) updates.condition_branches = condition_branches;
     if (step_order !== undefined) updates.step_order = step_order;
-    if (position_x !== undefined) updates.position_x = position_x;
-    if (position_y !== undefined) updates.position_y = position_y;
+    // Accept both x/y and position_x/position_y from frontend
+    const px = req.body.position_x !== undefined ? req.body.position_x : req.body.x;
+    const py = req.body.position_y !== undefined ? req.body.position_y : req.body.y;
+    if (px !== undefined) updates.position_x = px;
+    if (py !== undefined) updates.position_y = py;
 
     const { data, error } = await supabase
       .from('campaign_steps')
