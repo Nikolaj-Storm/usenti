@@ -203,7 +203,7 @@ CREATE TABLE IF NOT EXISTS campaign_steps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
   step_order INTEGER NOT NULL,
-  step_type TEXT NOT NULL CHECK (step_type IN ('email', 'wait')),
+  step_type TEXT NOT NULL CHECK (step_type IN ('email', 'wait', 'condition')),
 
   -- Email content
   subject TEXT,
@@ -214,14 +214,17 @@ CREATE TABLE IF NOT EXISTS campaign_steps (
   wait_hours INTEGER DEFAULT 0,
   wait_minutes INTEGER DEFAULT 0,
 
+  -- Condition fields
+  condition_type TEXT,  -- e.g., 'email_opened'
+  parent_step_id UUID REFERENCES campaign_steps(id) ON DELETE CASCADE,
+  branch TEXT,  -- 'yes' or 'no' (which branch this step belongs to)
+
   -- Visual editor position
   position_x INTEGER DEFAULT 0,
   position_y INTEGER DEFAULT 0,
 
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-
-  UNIQUE(campaign_id, step_order)
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 ALTER TABLE campaign_steps ENABLE ROW LEVEL SECURITY;
