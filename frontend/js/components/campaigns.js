@@ -29,6 +29,10 @@ const sanitizeStep = (s, index = 0) => {
     wait_days: Number(s.wait_days || 0),
     wait_hours: Number(s.wait_hours || 0),
     wait_minutes: Number(s.wait_minutes || 0),
+    // Condition fields
+    condition_type: s.condition_type ? String(s.condition_type) : null,
+    parent_step_id: s.parent_step_id ? String(s.parent_step_id) : null,
+    branch: s.branch ? String(s.branch) : null,
     // Canvas position
     x: Number(s.x || s.position_x || defaultX),
     y: Number(s.y || s.position_y || defaultY)
@@ -43,7 +47,17 @@ const NODE_TYPES = {
   start: { icon: 'Play', color: '#10b981', label: 'Start', bgClass: 'start' },
   email: { icon: 'Mail', color: '#3b82f6', label: 'Email', bgClass: 'email' },
   wait: { icon: 'Clock', color: '#8b5cf6', label: 'Wait', bgClass: 'wait' },
+  condition: { icon: 'Split', color: '#f59e0b', label: 'Condition', bgClass: 'condition' },
   end: { icon: 'Check', color: '#ef4444', label: 'End', bgClass: 'end' }
+};
+
+const CONDITION_TYPES = {
+  email_opened: { label: 'Email Opened', yesLabel: 'If Opened', noLabel: 'If NOT Opened', icon: 'Eye' }
+};
+
+const getConditionLabel = (conditionType) => {
+  const ct = CONDITION_TYPES[conditionType];
+  return ct ? ct.label : 'Unknown Condition';
 };
 
 const formatWaitDuration = (step) => {
@@ -202,7 +216,12 @@ const CampaignBuilder = () => {
     const demoSteps = [
       { id: 's1', step_type: 'email', subject: 'Initial Outreach', body: 'Hi {{first_name}}, I wanted to reach out...', step_order: 1, x: 400, y: 100 },
       { id: 's2', step_type: 'wait', wait_days: 2, step_order: 2, x: 400, y: 280 },
-      { id: 's3', step_type: 'email', subject: 'Follow-up Email', body: 'Hi {{first_name}}, just wanted to follow up...', step_order: 3, x: 400, y: 460 }
+      { id: 's3', step_type: 'condition', condition_type: 'email_opened', step_order: 3, x: 400, y: 460 },
+      // Yes branch (opened)
+      { id: 's4', step_type: 'email', subject: 'Thanks for reading!', body: 'Hi {{first_name}}, since you showed interest...', step_order: 1, parent_step_id: 's3', branch: 'yes', x: 140, y: 640 },
+      // No branch (not opened)
+      { id: 's5', step_type: 'email', subject: 'Did you miss this?', body: 'Hi {{first_name}}, I wanted to make sure you saw...', step_order: 1, parent_step_id: 's3', branch: 'no', x: 660, y: 640 },
+      { id: 's6', step_type: 'wait', wait_days: 1, step_order: 2, parent_step_id: 's3', branch: 'no', x: 660, y: 800 }
     ].map((s, i) => sanitizeStep(s, i));
 
     setIsDemo(true);
@@ -251,21 +270,54 @@ const CampaignBuilder = () => {
     }
   };
 
-  // Add step to canvas
-  const handleAddStep = async (stepType, position = null) => {
-    const newPos = position || {
-      x: Math.round(400 + (Math.random() - 0.5) * 100),
-      y: Math.round(100 + steps.length * 180)
-    };
+  // Add step to canvas (supports main flow and branch steps)
+  const handleAddStep = async (stepType, position = null, parentStepId = null, branch = null) => {
+    // Calculate position: for branch steps, position relative to parent condition
+    let newPos = position;
+    if (!newPos) {
+      if (parentStepId && branch) {
+        // Position branch step relative to parent condition
+        const parentStep = steps.find(s => s.id === parentStepId);
+        const branchSteps = steps.filter(s => s.parent_step_id === parentStepId && s.branch === branch);
+        const lastBranchStep = branchSteps.length > 0
+          ? branchSteps.sort((a, b) => a.step_order - b.step_order)[branchSteps.length - 1]
+          : null;
+        const offsetX = branch === 'yes' ? -260 : 260;
+        newPos = {
+          x: lastBranchStep ? lastBranchStep.x : (parentStep ? parentStep.x + offsetX : 400),
+          y: lastBranchStep ? lastBranchStep.y + 160 : (parentStep ? parentStep.y + 180 : 280)
+        };
+      } else {
+        // Main flow positioning
+        const mainSteps = steps.filter(s => !s.parent_step_id);
+        newPos = {
+          x: Math.round(400 + (Math.random() - 0.5) * 100),
+          y: Math.round(100 + mainSteps.length * 180)
+        };
+      }
+    }
+
+    // Calculate step_order within the relevant sequence
+    let stepOrder;
+    if (parentStepId && branch) {
+      const branchSteps = steps.filter(s => s.parent_step_id === parentStepId && s.branch === branch);
+      stepOrder = branchSteps.length + 1;
+    } else {
+      const mainSteps = steps.filter(s => !s.parent_step_id);
+      stepOrder = mainSteps.length + 1;
+    }
 
     const newStepRaw = {
       step_type: stepType,
-      step_order: steps.length + 1,
+      step_order: stepOrder,
       subject: stepType === 'email' ? 'New Email' : '',
       body: '',
       wait_days: stepType === 'wait' ? 1 : 0,
       wait_hours: 0,
       wait_minutes: 0,
+      condition_type: stepType === 'condition' ? 'email_opened' : null,
+      parent_step_id: parentStepId || null,
+      branch: branch || null,
       x: newPos.x,
       y: newPos.y
     };
@@ -313,35 +365,38 @@ const CampaignBuilder = () => {
     }
   };
 
-  // Reorder steps based on Y position (drag-drop ordering)
+  // Reorder steps based on Y position (drag-drop ordering) - only for main flow steps
   const handleReorderSteps = async (stepId, newOrder) => {
-    // Sort steps by their Y position to determine new order
-    const sortedByY = [...steps].sort((a, b) => a.y - b.y);
+    const step = steps.find(s => s.id === stepId);
+    // Only reorder main flow steps (not branch steps)
+    if (step && step.parent_step_id) {
+      // Branch step dragged - just save position, don't reorder
+      handleNodeDragEnd(stepId, step.x, step.y);
+      return;
+    }
+
+    // Sort main flow steps by their Y position to determine new order
+    const mainSteps = steps.filter(s => !s.parent_step_id);
+    const branchSteps = steps.filter(s => s.parent_step_id);
+    const sortedByY = [...mainSteps].sort((a, b) => a.y - b.y);
 
     // Update all step_order values based on Y position
-    const reorderedSteps = sortedByY.map((step, index) => ({
-      ...step,
+    const reorderedMain = sortedByY.map((s, index) => ({
+      ...s,
       step_order: index + 1
     }));
 
-    setSteps(reorderedSteps);
+    setSteps([...reorderedMain, ...branchSteps]);
 
-    // Save to backend - sequential updates to avoid UNIQUE constraint violations on step_order
+    // Save to backend
     if (!isDemo && selectedCampaign) {
       try {
-        const savedSteps = reorderedSteps.filter(s => !String(s.id).startsWith('temp-'));
-        // First pass: set all step_orders to temporary negative values to avoid conflicts
-        for (const step of savedSteps) {
-          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${step.id}`, {
-            step_order: -(step.step_order + 1000)
-          });
-        }
-        // Second pass: set final step_order values and positions
-        for (const step of savedSteps) {
-          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${step.id}`, {
-            step_order: step.step_order,
-            position_x: Math.round(step.x),
-            position_y: Math.round(step.y)
+        const savedSteps = reorderedMain.filter(s => !String(s.id).startsWith('temp-'));
+        for (const s of savedSteps) {
+          await api.put(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${s.id}`, {
+            step_order: s.step_order,
+            position_x: Math.round(s.x),
+            position_y: Math.round(s.y)
           });
         }
       } catch (e) {
@@ -363,25 +418,52 @@ const CampaignBuilder = () => {
     setTimeout(() => setSaving(false), 500);
   };
 
+  // Collect all descendant step IDs (branch steps and their nested condition branches)
+  const getDescendantIds = (parentId) => {
+    const children = steps.filter(s => s.parent_step_id === parentId);
+    let ids = children.map(c => c.id);
+    for (const child of children) {
+      if (child.step_type === 'condition') {
+        ids = ids.concat(getDescendantIds(child.id));
+      }
+    }
+    return ids;
+  };
+
   const handleDeleteStep = async (stepId) => {
-    if (!isDemo && !confirm('Delete this step?')) return;
+    const step = steps.find(s => s.id === stepId);
+    const isCondition = step && step.step_type === 'condition';
+    const descendantIds = isCondition ? getDescendantIds(stepId) : [];
+    const allIdsToDelete = [stepId, ...descendantIds];
+
+    if (!isDemo && !confirm(isCondition && descendantIds.length > 0
+      ? `Delete this condition and its ${descendantIds.length} branch step(s)?`
+      : 'Delete this step?'
+    )) return;
 
     if (isDemo) {
-      setSteps(steps.filter(s => s.id !== stepId));
-      setSelectedNodes(prev => prev.filter(id => id !== stepId));
-      if (activeStep === stepId) {
-        const remaining = steps.filter(s => s.id !== stepId);
+      const remaining = steps.filter(s => !allIdsToDelete.includes(s.id));
+      setSteps(remaining);
+      setSelectedNodes(prev => prev.filter(id => !allIdsToDelete.includes(id)));
+      if (allIdsToDelete.includes(activeStep)) {
         setActiveStep(remaining.length > 0 ? remaining[0].id : null);
       }
       return;
     }
 
     try {
+      // Delete descendants first (backend CASCADE handles this, but be explicit)
+      for (const id of descendantIds) {
+        if (!String(id).startsWith('temp-')) {
+          await api.delete(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${id}`);
+        }
+      }
+      // Delete the step itself
       await api.delete(`${APP_CONFIG.ENDPOINTS.CAMPAIGNS}/${selectedCampaign.id}/steps/${stepId}`);
-      const remaining = steps.filter(s => s.id !== stepId);
+      const remaining = steps.filter(s => !allIdsToDelete.includes(s.id));
       setSteps(remaining);
-      setSelectedNodes(prev => prev.filter(id => id !== stepId));
-      if (activeStep === stepId) setActiveStep(remaining.length > 0 ? remaining[0].id : null);
+      setSelectedNodes(prev => prev.filter(id => !allIdsToDelete.includes(id)));
+      if (allIdsToDelete.includes(activeStep)) setActiveStep(remaining.length > 0 ? remaining[0].id : null);
     } catch (err) {
       alert(err.message);
     }
@@ -672,45 +754,79 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
     e.preventDefault();
   };
 
-  // Calculate connections
+  // Calculate connections (supports branching from condition blocks)
   const getConnections = () => {
     const connections = [];
-    const sortedSteps = [...steps].sort((a, b) => a.step_order - b.step_order);
 
-    // Add start node connection to first step
-    if (sortedSteps.length > 0) {
-      const firstStep = sortedSteps[0];
-      connections.push({
-        id: 'start-' + firstStep.id,
-        from: { x: START_NODE.x + START_NODE.width / 2, y: START_NODE.y + START_NODE.height },
-        to: { x: firstStep.x + 110, y: firstStep.y },
-        type: 'main'
-      });
-    }
+    // Helper: get steps in a sequence (main flow or specific branch)
+    const getSequence = (parentId, branchName) => {
+      return steps
+        .filter(s => {
+          if (parentId === null) return !s.parent_step_id;
+          return s.parent_step_id === parentId && s.branch === branchName;
+        })
+        .sort((a, b) => a.step_order - b.step_order);
+    };
 
-    // Connect sequential steps
-    for (let i = 0; i < sortedSteps.length; i++) {
-      const step = sortedSteps[i];
-      const nextStep = sortedSteps[i + 1];
-
-      if (nextStep) {
+    // Helper: recursively process a sequence of steps and add connections
+    const processSequence = (sequence, startFrom) => {
+      if (startFrom && sequence.length > 0) {
         connections.push({
-          id: step.id + '-' + nextStep.id,
-          from: { x: step.x + 110, y: step.y + 100 },
-          to: { x: nextStep.x + 110, y: nextStep.y },
-          type: 'main'
+          id: startFrom.id,
+          from: startFrom.pos,
+          to: { x: sequence[0].x + 110, y: sequence[0].y },
+          type: startFrom.type
         });
       }
-    }
 
-    // Add end node connection from last step
-    if (sortedSteps.length > 0) {
-      const lastStep = sortedSteps[sortedSteps.length - 1];
-      connections.push({
-        id: lastStep.id + '-end',
-        from: { x: lastStep.x + 110, y: lastStep.y + 100 },
-        to: { x: lastStep.x + 110, y: lastStep.y + 200 },
-        type: 'end'
+      for (let i = 0; i < sequence.length; i++) {
+        const step = sequence[i];
+        const nextStep = sequence[i + 1];
+
+        if (step.step_type === 'condition') {
+          // Condition block: connect to branch starts
+          const yesBranch = getSequence(step.id, 'yes');
+          const noBranch = getSequence(step.id, 'no');
+
+          if (yesBranch.length > 0) {
+            processSequence(yesBranch, {
+              id: step.id + '-yes-start',
+              pos: { x: step.x + 55, y: step.y + 120 },
+              type: 'branch-yes'
+            });
+          }
+          if (noBranch.length > 0) {
+            processSequence(noBranch, {
+              id: step.id + '-no-start',
+              pos: { x: step.x + 165, y: step.y + 120 },
+              type: 'branch-no'
+            });
+          }
+          // Condition blocks don't connect to the next sequential step (flow forks)
+          continue;
+        }
+
+        // Regular step: connect to next in sequence
+        if (nextStep) {
+          connections.push({
+            id: step.id + '-' + nextStep.id,
+            from: { x: step.x + 110, y: step.y + 100 },
+            to: { x: nextStep.x + 110, y: nextStep.y },
+            type: 'main'
+          });
+        }
+      }
+    };
+
+    // Process main flow
+    const mainFlow = getSequence(null, null);
+
+    // Start node connection
+    if (mainFlow.length > 0) {
+      processSequence(mainFlow, {
+        id: 'start-' + mainFlow[0].id,
+        pos: { x: START_NODE.x + START_NODE.width / 2, y: START_NODE.y + START_NODE.height },
+        type: 'main'
       });
     }
 
@@ -721,23 +837,49 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
 
   // Render SVG path for connection
   const renderConnectionPath = (conn) => {
-    const dx = conn.to.x - conn.from.x;
     const dy = conn.to.y - conn.from.y;
     const midY = conn.from.y + dy / 2;
 
     // Bezier curve
     const path = `M ${conn.from.x} ${conn.from.y} C ${conn.from.x} ${midY}, ${conn.to.x} ${midY}, ${conn.to.x} ${conn.to.y}`;
 
+    // Color based on branch type
+    const isBranch = conn.type === 'branch-yes' || conn.type === 'branch-no';
+    const branchColor = conn.type === 'branch-yes' ? '#3b82f6' : conn.type === 'branch-no' ? '#f97316' : null;
+    const isMain = conn.type === 'main';
+
     return h('g', { key: conn.id },
       h('path', {
         d: path,
-        className: `connection-line ${conn.type === 'main' ? 'active' : ''}`
+        className: `connection-line ${isMain ? 'active' : ''}`,
+        style: isBranch ? { stroke: branchColor, strokeWidth: 2.5, strokeDasharray: '6 3' } : {}
       }),
       // Arrow head
       h('polygon', {
         points: `${conn.to.x},${conn.to.y} ${conn.to.x - 5},${conn.to.y - 8} ${conn.to.x + 5},${conn.to.y - 8}`,
-        fill: conn.type === 'main' ? '#0B2B26' : '#9ca3af'
-      })
+        fill: isBranch ? branchColor : (isMain ? '#0B2B26' : '#9ca3af')
+      }),
+      // Branch label at midpoint
+      isBranch && h('g', null,
+        h('rect', {
+          x: (conn.from.x + conn.to.x) / 2 - 40,
+          y: midY - 10,
+          width: 80,
+          height: 20,
+          rx: 10,
+          fill: conn.type === 'branch-yes' ? 'rgba(59,130,246,0.25)' : 'rgba(249,115,22,0.25)',
+          stroke: branchColor,
+          strokeWidth: 1
+        }),
+        h('text', {
+          x: (conn.from.x + conn.to.x) / 2,
+          y: midY + 4,
+          textAnchor: 'middle',
+          fill: branchColor,
+          fontSize: '10',
+          fontWeight: '600'
+        }, conn.type === 'branch-yes' ? 'If Opened' : 'If NOT Opened')
+      )
     );
   };
 
@@ -782,6 +924,7 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
       steps.map(step => h(CanvasNode, {
         key: step.id,
         step,
+        steps,
         isSelected: selectedNodes.includes(step.id),
         isActive: activeStep === step.id,
         isDragging: draggingNode === step.id,
@@ -789,11 +932,62 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
         onDelete: () => onDeleteStep(step.id)
       })),
 
-      // End node
-      steps.length > 0 && h(EndNode, {
-        x: steps[steps.length - 1].x + 85,
-        y: steps[steps.length - 1].y + 200
-      })
+      // Branch add buttons for each condition block
+      steps.filter(s => s.step_type === 'condition').map(condStep => {
+        const ct = CONDITION_TYPES[condStep.condition_type] || CONDITION_TYPES.email_opened;
+        return ['yes', 'no'].map(branchType => {
+          const branchSteps = steps
+            .filter(s => s.parent_step_id === condStep.id && s.branch === branchType)
+            .sort((a, b) => a.step_order - b.step_order);
+          const lastStep = branchSteps.length > 0 ? branchSteps[branchSteps.length - 1] : null;
+          // Check if last step in branch is a condition (no add button needed - it forks further)
+          if (lastStep && lastStep.step_type === 'condition') return null;
+          const offsetX = branchType === 'yes' ? -260 : 260;
+          const btnX = lastStep ? lastStep.x + 50 : condStep.x + offsetX + 50;
+          const btnY = lastStep ? lastStep.y + 130 : condStep.y + 180;
+          return h(BranchAddButtons, {
+            key: condStep.id + '-add-' + branchType,
+            x: btnX,
+            y: btnY,
+            label: branchType === 'yes' ? ct.yesLabel : ct.noLabel,
+            conditionStepId: condStep.id,
+            branchType,
+            onAddStep: onAddStep
+          });
+        });
+      }),
+
+      // End nodes: for main flow (last non-condition step) and for each branch terminus
+      (() => {
+        const endNodes = [];
+        // Main flow end
+        const mainSteps = steps.filter(s => !s.parent_step_id).sort((a, b) => a.step_order - b.step_order);
+        if (mainSteps.length > 0) {
+          const lastMain = mainSteps[mainSteps.length - 1];
+          if (lastMain.step_type !== 'condition') {
+            endNodes.push(h(EndNode, { key: 'end-main', x: lastMain.x + 85, y: lastMain.y + 200 }));
+          }
+        }
+        // Branch ends
+        steps.filter(s => s.step_type === 'condition').forEach(condStep => {
+          ['yes', 'no'].forEach(branchType => {
+            const branchSteps = steps
+              .filter(s => s.parent_step_id === condStep.id && s.branch === branchType)
+              .sort((a, b) => a.step_order - b.step_order);
+            if (branchSteps.length > 0) {
+              const lastBranch = branchSteps[branchSteps.length - 1];
+              if (lastBranch.step_type !== 'condition') {
+                endNodes.push(h(EndNode, {
+                  key: 'end-' + condStep.id + '-' + branchType,
+                  x: lastBranch.x + 85,
+                  y: lastBranch.y + 200
+                }));
+              }
+            }
+          });
+        });
+        return endNodes;
+      })()
     ),
 
     // Zoom indicator (small, bottom right)
@@ -837,26 +1031,37 @@ const EndNode = ({ x, y }) => {
   );
 };
 
-const CanvasNode = ({ step, isSelected, isActive, isDragging, onMouseDown, onDelete }) => {
+const CanvasNode = ({ step, steps, isSelected, isActive, isDragging, onMouseDown, onDelete }) => {
   const nodeType = NODE_TYPES[step.step_type] || NODE_TYPES.email;
   const IconComponent = Icons[nodeType.icon];
+
+  // For condition blocks, count branch steps
+  const isCondition = step.step_type === 'condition';
+  const ct = isCondition ? (CONDITION_TYPES[step.condition_type] || CONDITION_TYPES.email_opened) : null;
+  const yesBranchCount = isCondition ? steps.filter(s => s.parent_step_id === step.id && s.branch === 'yes').length : 0;
+  const noBranchCount = isCondition ? steps.filter(s => s.parent_step_id === step.id && s.branch === 'no').length : 0;
+
+  // Get node title
+  const getNodeTitle = () => {
+    if (step.step_type === 'email') return step.subject || 'New Email';
+    if (step.step_type === 'wait') return `Wait ${formatWaitDuration(step)}`;
+    if (step.step_type === 'condition') return getConditionLabel(step.condition_type);
+    return 'Step';
+  };
 
   return h('div', {
     className: `canvas-node ${isSelected ? 'selected' : ''} ${isDragging ? 'dragging' : ''} ${isActive ? 'new' : ''}`,
     style: { left: step.x, top: step.y },
     onMouseDown
   },
-    h('div', { className: "node-card" },
+    h('div', { className: "node-card", style: isCondition ? { minWidth: '240px' } : {} },
       // Header
       h('div', { className: `node-header ${nodeType.bgClass}` },
         h('div', { className: `node-icon ${nodeType.bgClass}` },
           IconComponent && h(IconComponent, { size: 16 })
         ),
         h('div', { className: "flex-1 min-w-0" },
-          h('span', { className: "font-semibold text-sm text-stone-700 block truncate" },
-            step.step_type === 'email' ? (step.subject || 'New Email') :
-              `Wait ${formatWaitDuration(step)}`
-          )
+          h('span', { className: "font-semibold text-sm text-stone-700 block truncate" }, getNodeTitle())
         ),
         h('button', {
           onClick: (e) => { e.stopPropagation(); onDelete(); },
@@ -873,13 +1078,113 @@ const CanvasNode = ({ step, isSelected, isActive, isDragging, onMouseDown, onDel
         step.step_type === 'wait' && h('div', { className: "flex items-center gap-2 text-xs text-stone-500" },
           h(Icons.Clock, { size: 12 }),
           h('span', null, 'Delay before next step')
+        ),
+
+        isCondition && h('div', { className: "space-y-2" },
+          // Branch indicators
+          h('div', { className: "flex items-center justify-between gap-3" },
+            h('div', { className: "flex items-center gap-1.5 px-2 py-1 rounded-lg bg-blue-50 border border-blue-200" },
+              h(Icons.Eye, { size: 11, className: "text-blue-500" }),
+              h('span', { className: "text-xs font-medium text-blue-600" }, ct.yesLabel),
+              h('span', { className: "text-xs text-blue-400 ml-1" }, `(${yesBranchCount})`)
+            ),
+            h('div', { className: "flex items-center gap-1.5 px-2 py-1 rounded-lg bg-orange-50 border border-orange-200" },
+              h(Icons.EyeOff, { size: 11, className: "text-orange-500" }),
+              h('span', { className: "text-xs font-medium text-orange-600" }, ct.noLabel),
+              h('span', { className: "text-xs text-orange-400 ml-1" }, `(${noBranchCount})`)
+            )
+          )
         )
       )
     ),
 
     // Connection ports
     h('div', { className: "node-port input" }),
-    h('div', { className: "node-port output" })
+    // For condition blocks: two output ports (left and right)
+    isCondition
+      ? h(React.Fragment, null,
+          h('div', { className: "node-port output", style: { left: '25%', transform: 'translateX(-50%)' } }),
+          h('div', { className: "node-port output", style: { left: '75%', transform: 'translateX(-50%)' } })
+        )
+      : h('div', { className: "node-port output" })
+  );
+};
+
+// Branch add buttons (shown below condition blocks on canvas)
+const BranchAddButtons = ({ x, y, label, conditionStepId, branchType, onAddStep }) => {
+  const [showMenu, setShowMenu] = React.useState(false);
+
+  const addOpts = [
+    { type: 'email', icon: Icons.Mail, label: 'Email', color: '#3b82f6' },
+    { type: 'wait', icon: Icons.Clock, label: 'Wait', color: '#8b5cf6' },
+    { type: 'condition', icon: Icons.Split, label: 'Condition', color: '#f59e0b' }
+  ];
+
+  return h('div', {
+    className: "canvas-node",
+    style: { left: x, top: y, cursor: 'default' }
+  },
+    h('div', {
+      className: "branch-add-container",
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '8px 12px',
+        background: 'rgba(255,255,255,0.9)',
+        borderRadius: '12px',
+        border: '2px dashed rgba(0,0,0,0.15)',
+        minWidth: '120px',
+        transition: 'all 0.2s ease'
+      }
+    },
+      h('span', {
+        style: { fontSize: '10px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }
+      }, label),
+      !showMenu
+        ? h('button', {
+            onClick: (e) => { e.stopPropagation(); setShowMenu(true); },
+            style: {
+              display: 'flex', alignItems: 'center', gap: '4px',
+              padding: '4px 12px', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)',
+              background: 'rgba(0,0,0,0.03)', cursor: 'pointer', fontSize: '11px', fontWeight: '500', color: '#374151'
+            }
+          },
+            h(Icons.Plus, { size: 12 }),
+            'Add Step'
+          )
+        : h('div', { style: { display: 'flex', gap: '4px' } },
+            addOpts.map(opt =>
+              h('button', {
+                key: opt.type,
+                onClick: (e) => {
+                  e.stopPropagation();
+                  onAddStep(opt.type, null, conditionStepId, branchType);
+                  setShowMenu(false);
+                },
+                style: {
+                  width: '32px', height: '32px', borderRadius: '8px', border: 'none',
+                  background: opt.color, cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', transition: 'transform 0.1s'
+                },
+                title: opt.label
+              },
+                h(opt.icon, { size: 14, color: 'white' })
+              )
+            ),
+            h('button', {
+              onClick: (e) => { e.stopPropagation(); setShowMenu(false); },
+              style: {
+                width: '32px', height: '32px', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)',
+                background: 'white', cursor: 'pointer', display: 'flex',
+                alignItems: 'center', justifyContent: 'center'
+              }
+            },
+              h(Icons.X, { size: 12, color: '#9ca3af' })
+            )
+          )
+    )
   );
 };
 
@@ -892,7 +1197,8 @@ const BlockToolbar = ({ onAddStep }) => {
 
   const blocks = [
     { type: 'email', icon: 'Mail', label: 'Email', color: '#3b82f6', desc: 'Send an email' },
-    { type: 'wait', icon: 'Clock', label: 'Wait', color: '#8b5cf6', desc: 'Add a delay' }
+    { type: 'wait', icon: 'Clock', label: 'Wait', color: '#8b5cf6', desc: 'Add a delay' },
+    { type: 'condition', icon: 'Split', label: 'Condition', color: '#f59e0b', desc: 'Branch based on recipient behavior' }
   ];
 
   return h('div', { className: "flex items-center gap-2 p-2 glass-card rounded-xl mb-2" },
@@ -1066,6 +1372,52 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
           h('div', { className: "flex items-center gap-2" },
             h(Icons.Clock, { size: 16, className: "text-purple-300" }),
             h('span', { className: "text-sm font-medium text-purple-200" }, `Total: ${formatWaitDuration(data)}`)
+          )
+        )
+      ),
+
+      step.step_type === 'condition' && h('div', { className: "space-y-4" },
+        h('p', { className: "text-sm text-white/60 mb-4" }, "Set a condition to branch the campaign flow. Recipients who match the condition follow one path, and those who don't follow another."),
+        h('div', null,
+          h('label', { className: "block text-sm font-medium text-white mb-1" }, "Condition Type"),
+          h('select', {
+            className: "glass-input w-full px-3 py-2 rounded-xl text-sm",
+            value: data.condition_type || 'email_opened',
+            onChange: e => {
+              handleChange('condition_type', e.target.value);
+              onUpdate(step.id, { condition_type: e.target.value });
+            }
+          },
+            Object.entries(CONDITION_TYPES).map(([key, ct]) =>
+              h('option', { key, value: key }, ct.label)
+            )
+          )
+        ),
+        // Branch summary
+        h('div', { className: "space-y-3 mt-4" },
+          h('div', { className: "p-3 bg-blue-500/20 rounded-xl border border-blue-500/30" },
+            h('div', { className: "flex items-center gap-2 mb-1" },
+              h(Icons.Eye, { size: 14, className: "text-blue-300" }),
+              h('span', { className: "text-sm font-medium text-blue-200" },
+                (CONDITION_TYPES[data.condition_type] || CONDITION_TYPES.email_opened).yesLabel
+              )
+            ),
+            h('p', { className: "text-xs text-blue-200/60" }, "Recipients who satisfy this condition will follow this branch.")
+          ),
+          h('div', { className: "p-3 bg-orange-500/20 rounded-xl border border-orange-500/30" },
+            h('div', { className: "flex items-center gap-2 mb-1" },
+              h(Icons.EyeOff, { size: 14, className: "text-orange-300" }),
+              h('span', { className: "text-sm font-medium text-orange-200" },
+                (CONDITION_TYPES[data.condition_type] || CONDITION_TYPES.email_opened).noLabel
+              )
+            ),
+            h('p', { className: "text-xs text-orange-200/60" }, "Recipients who do NOT satisfy this condition will follow this branch.")
+          )
+        ),
+        h('div', { className: "mt-4 p-3 bg-amber-500/10 rounded-xl border border-amber-500/20" },
+          h('div', { className: "flex items-center gap-2" },
+            h(Icons.Split, { size: 14, className: "text-amber-300" }),
+            h('span', { className: "text-xs text-amber-200/80" }, "Add steps to each branch using the + buttons on the canvas below this condition block.")
           )
         )
       ),

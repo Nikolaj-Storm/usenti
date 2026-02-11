@@ -571,6 +571,21 @@ html {
 .branch-label.replied { background: rgba(139, 92, 246, 0.3); color: #c4b5fd; border-color: rgba(139, 92, 246, 0.5); }
 .branch-label.not-replied { background: rgba(236, 72, 153, 0.3); color: #f9a8d4; border-color: rgba(236, 72, 153, 0.5); }
 
+/* Condition block branch add button hover */
+.branch-add-container {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.branch-add-container:hover {
+  border-color: rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Condition node wider card */
+.canvas-node .node-card .node-header.condition {
+  background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%);
+}
+
 /* Animations */
 @keyframes node-appear {
   from {

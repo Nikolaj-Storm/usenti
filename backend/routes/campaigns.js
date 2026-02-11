@@ -479,25 +479,33 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       wait_days,
       wait_hours,
       wait_minutes,
-      step_order
+      step_order,
+      condition_type,
+      parent_step_id,
+      branch
     } = req.body;
 
-    if (!['email', 'wait'].includes(step_type)) {
-      return res.status(400).json({ error: 'Invalid step type. Only email and wait are supported.' });
+    if (!['email', 'wait', 'condition'].includes(step_type)) {
+      return res.status(400).json({ error: 'Invalid step type. Only email, wait, and condition are supported.' });
     }
+
+    const insertPayload = {
+      campaign_id: req.params.id,
+      step_type,
+      subject: step_type === 'email' ? subject : null,
+      body: step_type === 'email' ? body : null,
+      wait_days: step_type === 'wait' ? (wait_days || 0) : null,
+      wait_hours: step_type === 'wait' ? (wait_hours || 0) : null,
+      wait_minutes: step_type === 'wait' ? (wait_minutes || 0) : null,
+      step_order: step_order || 1,
+      condition_type: step_type === 'condition' ? (condition_type || 'email_opened') : null,
+      parent_step_id: parent_step_id || null,
+      branch: branch || null
+    };
 
     const { data, error } = await supabase
       .from('campaign_steps')
-      .insert({
-        campaign_id: req.params.id,
-        step_type,
-        subject: step_type === 'email' ? subject : null,
-        body: step_type === 'email' ? body : null,
-        wait_days: step_type === 'wait' ? (wait_days || 0) : null,
-        wait_hours: step_type === 'wait' ? (wait_hours || 0) : null,
-        wait_minutes: step_type === 'wait' ? (wait_minutes || 0) : null,
-        step_order: step_order || 1
-      })
+      .insert(insertPayload)
       .select();
 
     if (error) throw error;
@@ -527,7 +535,8 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
 
     const {
       subject, body, wait_days, wait_hours, wait_minutes,
-      step_order, position_x, position_y
+      step_order, position_x, position_y,
+      condition_type, parent_step_id, branch
     } = req.body;
 
     const updates = {};
@@ -539,6 +548,9 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
     if (step_order !== undefined) updates.step_order = step_order;
     if (position_x !== undefined) updates.position_x = Math.round(Number(position_x));
     if (position_y !== undefined) updates.position_y = Math.round(Number(position_y));
+    if (condition_type !== undefined) updates.condition_type = condition_type;
+    if (parent_step_id !== undefined) updates.parent_step_id = parent_step_id;
+    if (branch !== undefined) updates.branch = branch;
 
     if (Object.keys(updates).length === 0) {
       return res.json({ message: 'No updates provided' });
