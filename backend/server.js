@@ -1600,13 +1600,17 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
       wait_days,
       wait_hours,
       wait_minutes,
+      condition_type,
+      condition_branches,
       step_order,
       position_x,
-      position_y
+      position_y,
+      parent_id,
+      branch_index
     } = req.body;
 
-    if (!['email', 'wait'].includes(step_type)) {
-      return res.status(400).json({ error: 'Invalid step type. Only email and wait are supported.' });
+    if (!['email', 'wait', 'condition'].includes(step_type)) {
+      return res.status(400).json({ error: 'Invalid step type. Only email, wait, and condition are supported.' });
     }
 
     const { data, error } = await supabase
@@ -1619,6 +1623,10 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
         wait_days: wait_days || 0,
         wait_hours: wait_hours || 0,
         wait_minutes: wait_minutes || 0,
+        condition_type: step_type === 'condition' ? (condition_type || null) : null,
+        condition_branches: step_type === 'condition' ? (condition_branches || null) : null,
+        parent_id: parent_id || null,
+        branch_index: branch_index || null,
         step_order: step_order || 1,
         position_x: position_x || null,
         position_y: position_y || null
@@ -1646,6 +1654,7 @@ app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req
 
     const {
       subject, body, wait_days, wait_hours, wait_minutes,
+      condition_type, condition_branches,
       step_order, position_x, position_y
     } = req.body;
 
@@ -1655,6 +1664,8 @@ app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req
     if (wait_days !== undefined) updates.wait_days = wait_days;
     if (wait_hours !== undefined) updates.wait_hours = wait_hours;
     if (wait_minutes !== undefined) updates.wait_minutes = wait_minutes;
+    if (condition_type !== undefined) updates.condition_type = condition_type;
+    if (condition_branches !== undefined) updates.condition_branches = condition_branches;
     if (step_order !== undefined) updates.step_order = step_order;
     if (position_x !== undefined) updates.position_x = position_x;
     if (position_y !== undefined) updates.position_y = position_y;
