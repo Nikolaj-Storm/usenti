@@ -255,13 +255,13 @@ CREATE INDEX idx_campaign_email_accounts_last_used ON campaign_email_accounts(ca
 -- ============================================================================
 -- SECTION 6: CAMPAIGN STEPS
 -- ============================================================================
--- Sequential steps within campaigns (emails, waits, conditions)
+-- Sequential steps within campaigns (emails, waits)
 
 CREATE TABLE IF NOT EXISTS campaign_steps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
   step_order INTEGER NOT NULL,
-  step_type TEXT NOT NULL CHECK (step_type IN ('email', 'wait', 'condition')),
+  step_type TEXT NOT NULL CHECK (step_type IN ('email', 'wait')),
 
   -- Email step fields
   subject TEXT,
@@ -271,14 +271,6 @@ CREATE TABLE IF NOT EXISTS campaign_steps (
   wait_days INTEGER DEFAULT 0,
   wait_hours INTEGER DEFAULT 0,
   wait_minutes INTEGER DEFAULT 0,
-
-  -- Condition step fields
-  -- Legacy single condition support
-  condition_type TEXT CHECK (condition_type IN ('if_opened', 'if_not_opened', 'if_clicked', 'if_not_clicked', 'if_replied', 'if_not_replied')),
-  next_step_if_true UUID REFERENCES campaign_steps(id) ON DELETE SET NULL,
-  next_step_if_false UUID REFERENCES campaign_steps(id) ON DELETE SET NULL,
-  -- Multi-branch condition support: [{condition: 'if_opened', next_step_id: 'uuid'}, ...]
-  condition_branches JSONB,
 
   -- Visual editor position
   position_x INTEGER DEFAULT 0,
@@ -316,7 +308,6 @@ CREATE TABLE IF NOT EXISTS campaign_contacts (
   next_send_time TIMESTAMP WITH TIME ZONE,
   emails_sent INTEGER DEFAULT 0,
   replied_at TIMESTAMP WITH TIME ZONE,
-  branch_context JSONB, -- Tracks progress through condition branch steps
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
 
