@@ -214,9 +214,7 @@ class CampaignExecutor {
             step_order,
             subject,
             body,
-            wait_days,
-            wait_hours,
-            wait_minutes
+            wait_days
           )
         `);
 

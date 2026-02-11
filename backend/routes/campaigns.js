@@ -203,18 +203,16 @@ router.put('/:id', authenticateUser, async (req, res) => {
 
       if (deleteError) throw deleteError;
 
-      // Re-insert steps
+      // Re-insert steps (only include columns that exist in the DB)
       for (const step of steps) {
         const stepPayload = {
-            id: step.id,
             campaign_id: req.params.id,
             step_type: step.step_type || step.type,
-            config: step.config,
             step_order: step.step_order || step.position,
-
-            // Visual positions
-            position_x: step.position_x ? Math.round(Number(step.position_x)) : null,
-            position_y: step.position_y ? Math.round(Number(step.position_y)) : null
+            subject: step.subject || null,
+            body: step.body || null,
+            wait_days: step.wait_days || 0,
+            parent_id: step.parent_step_id || step.parent_id || null
         };
 
         const { error: insertError } = await supabase
@@ -449,9 +447,15 @@ router.get('/:id/steps', authenticateUser, async (req, res) => {
       .select('*')
       .eq('campaign_id', req.params.id)
       .order('step_order');
-    
+
     if (error) throw error;
-    res.json(data);
+
+    // Map DB column names to frontend field names
+    const mappedData = (data || []).map(step => ({
+      ...step,
+      parent_step_id: step.parent_id || null
+    }));
+    res.json(mappedData);
   } catch (error) {
     console.error('Error fetching campaign steps:', error);
     res.status(500).json({ error: error.message });
@@ -477,30 +481,26 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       subject,
       body,
       wait_days,
-      wait_hours,
-      wait_minutes,
       step_order,
-      condition_type,
-      parent_step_id,
-      branch
+      parent_step_id
     } = req.body;
+
+    // Preserve frontend-only fields to echo back in response
+    const branch = req.body.branch || null;
 
     if (!['email', 'wait', 'condition'].includes(step_type)) {
       return res.status(400).json({ error: 'Invalid step type. Only email, wait, and condition are supported.' });
     }
 
+    // Only include columns that exist in the actual database schema
     const insertPayload = {
       campaign_id: req.params.id,
       step_type,
+      step_order: step_order || 1,
       subject: step_type === 'email' ? subject : null,
       body: step_type === 'email' ? body : null,
-      wait_days: step_type === 'wait' ? (wait_days || 0) : null,
-      wait_hours: step_type === 'wait' ? (wait_hours || 0) : null,
-      wait_minutes: step_type === 'wait' ? (wait_minutes || 0) : null,
-      step_order: step_order || 1,
-      condition_type: step_type === 'condition' ? (condition_type || 'email_opened') : null,
-      parent_step_id: parent_step_id || null,
-      branch: branch || null
+      wait_days: wait_days || 0,
+      parent_id: parent_step_id || null
     };
 
     const { data, error } = await supabase
@@ -510,7 +510,8 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
 
     if (error) throw error;
     const step = Array.isArray(data) ? data[0] : data;
-    res.json(step);
+    // Map DB column names back to frontend field names
+    res.json({ ...step, parent_step_id: step.parent_id || null, branch });
   } catch (error) {
     console.error('Error adding campaign step:', error);
     res.status(500).json({ error: error.message });
@@ -533,30 +534,20 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
-    const {
-      subject, body, wait_days, wait_hours, wait_minutes,
-      step_order, position_x, position_y,
-      condition_type, parent_step_id, branch
-    } = req.body;
+    const { subject, body, wait_days, step_order } = req.body;
 
+    // Only update columns that exist in the actual database schema
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
     if (body !== undefined) updates.body = body;
     if (wait_days !== undefined) updates.wait_days = wait_days;
-    if (wait_hours !== undefined) updates.wait_hours = wait_hours;
-    if (wait_minutes !== undefined) updates.wait_minutes = wait_minutes;
     if (step_order !== undefined) updates.step_order = step_order;
-    if (position_x !== undefined) updates.position_x = Math.round(Number(position_x));
-    if (position_y !== undefined) updates.position_y = Math.round(Number(position_y));
-    if (condition_type !== undefined) updates.condition_type = condition_type;
-    if (parent_step_id !== undefined) updates.parent_step_id = parent_step_id;
-    if (branch !== undefined) updates.branch = branch;
 
     if (Object.keys(updates).length === 0) {
       return res.json({ message: 'No updates provided' });
     }
 
-    // 2. Perform Update without .single() to avoid coercion errors (FIXED HERE)
+    // 2. Perform Update without .single() to avoid coercion errors
     const { error: updateError } = await supabase
       .from('campaign_steps')
       .update(updates)
@@ -582,7 +573,8 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Step not found after update' });
     }
 
-    res.json(updatedStep);
+    // Map DB column names back to frontend field names
+    res.json({ ...updatedStep, parent_step_id: updatedStep.parent_id || null });
   } catch (error) {
     console.error('Error updating campaign step:', error);
     res.status(500).json({ error: error.message });
