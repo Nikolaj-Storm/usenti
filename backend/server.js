@@ -1604,23 +1604,17 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
       subject,
       body,
       wait_days,
-      wait_hours,
-      wait_minutes,
-      condition_type,
       step_order,
-      parent_step_id,
-      branch
+      parent_step_id
     } = req.body;
-
-    // Accept both x/y and position_x/position_y from frontend
-    const position_x = req.body.position_x || req.body.x || null;
-    const position_y = req.body.position_y || req.body.y || null;
 
     if (!['email', 'wait', 'condition'].includes(step_type)) {
       return res.status(400).json({ error: 'Invalid step type. Only email, wait, and condition are supported.' });
     }
 
-    // Note: DB column is parent_id (not parent_step_id)
+    // Only use columns confirmed to exist in the DB
+    // DB uses parent_id (not parent_step_id), and does NOT have:
+    // branch, condition_type, position_x, position_y, wait_hours, wait_minutes
     const { data, error } = await supabase
       .from('campaign_steps')
       .insert({
@@ -1630,21 +1624,21 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
         subject: step_type === 'email' ? subject : null,
         body: step_type === 'email' ? body : null,
         wait_days: wait_days || 0,
-        wait_hours: wait_hours || 0,
-        wait_minutes: wait_minutes || 0,
-        condition_type: step_type === 'condition' ? (condition_type || null) : null,
-        parent_id: parent_step_id || null,
-        branch: branch || null,
-        position_x: position_x,
-        position_y: position_y
+        parent_id: parent_step_id || null
       })
       .select()
       .single();
 
     if (error) throw error;
 
-    // Map DB column names back to frontend field names
-    res.json({ ...data, parent_step_id: data.parent_id || null });
+    // Map DB fields back to what frontend expects + echo position/branch from request
+    res.json({
+      ...data,
+      parent_step_id: data.parent_id || null,
+      branch: req.body.branch || null,
+      position_x: req.body.position_x || req.body.x || null,
+      position_y: req.body.position_y || req.body.y || null
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1661,24 +1655,14 @@ app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req
 
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-    const {
-      subject, body, wait_days, wait_hours, wait_minutes,
-      condition_type, step_order
-    } = req.body;
+    const { subject, body, wait_days, step_order } = req.body;
 
+    // Only update columns confirmed to exist in the DB
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
     if (body !== undefined) updates.body = body;
     if (wait_days !== undefined) updates.wait_days = wait_days;
-    if (wait_hours !== undefined) updates.wait_hours = wait_hours;
-    if (wait_minutes !== undefined) updates.wait_minutes = wait_minutes;
-    if (condition_type !== undefined) updates.condition_type = condition_type;
     if (step_order !== undefined) updates.step_order = step_order;
-    // Accept both x/y and position_x/position_y from frontend
-    const px = req.body.position_x !== undefined ? req.body.position_x : req.body.x;
-    const py = req.body.position_y !== undefined ? req.body.position_y : req.body.y;
-    if (px !== undefined) updates.position_x = px;
-    if (py !== undefined) updates.position_y = py;
 
     const { data, error } = await supabase
       .from('campaign_steps')
