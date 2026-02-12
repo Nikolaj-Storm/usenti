@@ -1718,8 +1718,25 @@ app.post('/api/campaigns/:id/start', authenticateUser, async (req, res) => {
 
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
+    // DEBUG: First, get ALL steps for this campaign (no filters) to see what exists
+    const { data: allSteps, error: allStepsError } = await supabase
+      .from('campaign_steps')
+      .select('*')
+      .eq('campaign_id', req.params.id);
+
+    console.log(`[CAMPAIGN-START] Campaign ${req.params.id} - ALL steps query:`);
+    console.log(`[CAMPAIGN-START]   Error: ${allStepsError ? JSON.stringify(allStepsError) : 'none'}`);
+    console.log(`[CAMPAIGN-START]   Step count: ${allSteps ? allSteps.length : 0}`);
+    if (allSteps && allSteps.length > 0) {
+      allSteps.forEach((s, i) => {
+        console.log(`[CAMPAIGN-START]   Step[${i}]: id=${s.id}, type=${s.step_type}, order=${s.step_order}, parent_id=${s.parent_id}, subject=${s.subject}`);
+      });
+      // Log ALL column names from first step to see actual DB schema
+      console.log(`[CAMPAIGN-START]   DB columns: ${Object.keys(allSteps[0]).join(', ')}`);
+    }
+
     // Find the first main-flow step (lowest step_order, no parent)
-    const { data: firstSteps } = await supabase
+    const { data: firstSteps, error: firstStepError } = await supabase
       .from('campaign_steps')
       .select('id')
       .eq('campaign_id', req.params.id)
@@ -1727,10 +1744,31 @@ app.post('/api/campaigns/:id/start', authenticateUser, async (req, res) => {
       .order('step_order')
       .limit(1);
 
-    const firstStep = firstSteps && firstSteps.length > 0 ? firstSteps[0] : null;
+    console.log(`[CAMPAIGN-START]   First step query (parent_id IS NULL):`);
+    console.log(`[CAMPAIGN-START]     Error: ${firstStepError ? JSON.stringify(firstStepError) : 'none'}`);
+    console.log(`[CAMPAIGN-START]     Result: ${JSON.stringify(firstSteps)}`);
+
+    let firstStep = firstSteps && firstSteps.length > 0 ? firstSteps[0] : null;
 
     if (!firstStep) {
-      return res.status(400).json({ error: 'Campaign has no steps' });
+      // Fallback: try without parent_id filter in case parent_id column doesn't behave as expected
+      const { data: anySteps, error: anyError } = await supabase
+        .from('campaign_steps')
+        .select('id, step_order, step_type')
+        .eq('campaign_id', req.params.id)
+        .order('step_order')
+        .limit(1);
+
+      console.log(`[CAMPAIGN-START]   Fallback query (no parent filter):`);
+      console.log(`[CAMPAIGN-START]     Error: ${anyError ? JSON.stringify(anyError) : 'none'}`);
+      console.log(`[CAMPAIGN-START]     Result: ${JSON.stringify(anySteps)}`);
+
+      if (anySteps && anySteps.length > 0) {
+        console.log(`[CAMPAIGN-START]   ⚠️ Steps found without parent filter - using first step as fallback`);
+        firstStep = anySteps[0];
+      } else {
+        return res.status(400).json({ error: 'Campaign has no steps' });
+      }
     }
 
     const { data: contacts } = await supabase
