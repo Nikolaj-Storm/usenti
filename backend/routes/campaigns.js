@@ -203,7 +203,7 @@ router.put('/:id', authenticateUser, async (req, res) => {
 
       if (deleteError) throw deleteError;
 
-      // Re-insert steps (only include columns that exist in the DB)
+      // Re-insert steps
       for (const step of steps) {
         const stepPayload = {
             campaign_id: req.params.id,
@@ -212,7 +212,13 @@ router.put('/:id', authenticateUser, async (req, res) => {
             subject: step.subject || null,
             body: step.body || null,
             wait_days: step.wait_days || 0,
-            parent_id: step.parent_step_id || step.parent_id || null
+            wait_hours: step.wait_hours || 0,
+            wait_minutes: step.wait_minutes || 0,
+            condition_type: step.condition_type || null,
+            parent_id: step.parent_step_id || step.parent_id || null,
+            branch: step.branch || null,
+            position_x: step.position_x || step.x || 0,
+            position_y: step.position_y || step.y || 0
         };
 
         const { error: insertError } = await supabase
@@ -476,13 +482,12 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
-    const { step_type, subject, body, wait_days, step_order, parent_step_id } = req.body;
+    const { step_type, subject, body, wait_days, wait_hours, wait_minutes, step_order, parent_step_id, condition_type, branch, x, y } = req.body;
 
     if (!['email', 'wait', 'condition'].includes(step_type)) {
       return res.status(400).json({ error: 'Invalid step type. Only email, wait, and condition are supported.' });
     }
 
-    // Only use columns confirmed to exist in the DB
     const insertPayload = {
       campaign_id: req.params.id,
       step_type,
@@ -490,7 +495,13 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       subject: step_type === 'email' ? subject : null,
       body: step_type === 'email' ? body : null,
       wait_days: wait_days || 0,
-      parent_id: parent_step_id || null
+      wait_hours: wait_hours || 0,
+      wait_minutes: wait_minutes || 0,
+      condition_type: step_type === 'condition' ? (condition_type || 'email_opened') : null,
+      parent_id: parent_step_id || null,
+      branch: branch || null,
+      position_x: x || 0,
+      position_y: y || 0
     };
 
     const { data, error } = await supabase
@@ -523,14 +534,18 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
-    const { subject, body, wait_days, step_order } = req.body;
+    const { subject, body, wait_days, wait_hours, wait_minutes, step_order, condition_type, position_x, position_y } = req.body;
 
-    // Only update columns confirmed to exist in the DB
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
     if (body !== undefined) updates.body = body;
     if (wait_days !== undefined) updates.wait_days = wait_days;
+    if (wait_hours !== undefined) updates.wait_hours = wait_hours;
+    if (wait_minutes !== undefined) updates.wait_minutes = wait_minutes;
     if (step_order !== undefined) updates.step_order = step_order;
+    if (condition_type !== undefined) updates.condition_type = condition_type;
+    if (position_x !== undefined) updates.position_x = position_x;
+    if (position_y !== undefined) updates.position_y = position_y;
 
     if (Object.keys(updates).length === 0) {
       return res.json({ message: 'No updates provided' });
