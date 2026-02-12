@@ -481,18 +481,19 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       subject,
       body,
       wait_days,
+      wait_hours,
+      wait_minutes,
       step_order,
-      parent_step_id
+      condition_type,
+      parent_step_id,
+      branch
     } = req.body;
-
-    // Preserve frontend-only fields to echo back in response
-    const branch = req.body.branch || null;
 
     if (!['email', 'wait', 'condition'].includes(step_type)) {
       return res.status(400).json({ error: 'Invalid step type. Only email, wait, and condition are supported.' });
     }
 
-    // Only include columns that exist in the actual database schema
+    // Note: DB column is parent_id (not parent_step_id)
     const insertPayload = {
       campaign_id: req.params.id,
       step_type,
@@ -500,7 +501,11 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
       subject: step_type === 'email' ? subject : null,
       body: step_type === 'email' ? body : null,
       wait_days: wait_days || 0,
-      parent_id: parent_step_id || null
+      wait_hours: wait_hours || 0,
+      wait_minutes: wait_minutes || 0,
+      condition_type: step_type === 'condition' ? (condition_type || 'email_opened') : null,
+      parent_id: parent_step_id || null,
+      branch: branch || null
     };
 
     const { data, error } = await supabase
@@ -511,7 +516,7 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
     if (error) throw error;
     const step = Array.isArray(data) ? data[0] : data;
     // Map DB column names back to frontend field names
-    res.json({ ...step, parent_step_id: step.parent_id || null, branch });
+    res.json({ ...step, parent_step_id: step.parent_id || null });
   } catch (error) {
     console.error('Error adding campaign step:', error);
     res.status(500).json({ error: error.message });
@@ -534,14 +539,24 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
-    const { subject, body, wait_days, step_order } = req.body;
+    const {
+      subject, body, wait_days, wait_hours, wait_minutes,
+      step_order, condition_type
+    } = req.body;
 
-    // Only update columns that exist in the actual database schema
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
     if (body !== undefined) updates.body = body;
     if (wait_days !== undefined) updates.wait_days = wait_days;
+    if (wait_hours !== undefined) updates.wait_hours = wait_hours;
+    if (wait_minutes !== undefined) updates.wait_minutes = wait_minutes;
     if (step_order !== undefined) updates.step_order = step_order;
+    if (condition_type !== undefined) updates.condition_type = condition_type;
+    // Accept both x/y and position_x/position_y from frontend
+    const px = req.body.position_x !== undefined ? req.body.position_x : req.body.x;
+    const py = req.body.position_y !== undefined ? req.body.position_y : req.body.y;
+    if (px !== undefined) updates.position_x = Math.round(Number(px));
+    if (py !== undefined) updates.position_y = Math.round(Number(py));
 
     if (Object.keys(updates).length === 0) {
       return res.json({ message: 'No updates provided' });
