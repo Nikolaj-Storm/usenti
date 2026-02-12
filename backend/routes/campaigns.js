@@ -611,12 +611,16 @@ router.post('/:id/start', authenticateUser, async (req, res) => {
       return res.status(404).json({ error: 'Campaign not found' });
     }
 
-    const { data: firstStep } = await supabase
+    // Find the first main-flow step (lowest step_order, no parent)
+    const { data: firstSteps } = await supabase
       .from('campaign_steps')
       .select('id')
       .eq('campaign_id', req.params.id)
-      .eq('step_order', 1)
-      .single();
+      .is('parent_id', null)
+      .order('step_order')
+      .limit(1);
+
+    const firstStep = firstSteps && firstSteps.length > 0 ? firstSteps[0] : null;
 
     if (!firstStep) {
       return res.status(400).json({ error: 'Campaign has no steps' });
