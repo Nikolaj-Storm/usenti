@@ -505,16 +505,18 @@ class CampaignExecutor {
   // Handle condition step - evaluate condition and route to yes/no branch
   async handleConditionStep(campaignContact, campaign, contact, step) {
     const conditionType = step.condition_type || 'email_opened';
-    console.log(`[EXECUTOR]      🔀 Condition type: ${conditionType}`);
+    console.log(`[EXECUTOR]      Step ID: ${step.id}`);
+    console.log(`[EXECUTOR]      🔀 Evaluating condition: ${conditionType}`);
 
     let conditionMet = false;
 
     try {
       if (conditionType === 'email_opened') {
         // Check if contact has any 'open' events for this campaign
+        // We use limit(1) because existence of ANY open event is sufficient
         const { data: openEvents, error } = await supabase
           .from('email_events')
-          .select('id')
+          .select('id, created_at')
           .eq('campaign_id', campaign.id)
           .eq('contact_id', contact.id)
           .eq('event_type', 'opened')
@@ -525,7 +527,11 @@ class CampaignExecutor {
         }
 
         conditionMet = openEvents && openEvents.length > 0;
-        console.log(`[EXECUTOR]      📊 Email opened? ${conditionMet ? 'YES' : 'NO'} (${openEvents?.length || 0} open events)`);
+        if (conditionMet) {
+          console.log(`[EXECUTOR]      ✅ Email OPENED (Found event id: ${openEvents[0].id} at ${openEvents[0].created_at})`);
+        } else {
+          console.log(`[EXECUTOR]      ❌ Email NOT OPENED (0 open events found for contact ${contact.id})`);
+        }
 
       } else if (conditionType === 'email_clicked') {
         const { data: clickEvents, error } = await supabase

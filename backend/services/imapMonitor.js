@@ -889,11 +889,9 @@ class ImapMonitor {
       await this.saveToInbox(message, account);
 
       // 2. Check if this is a reply to a campaign email
-      const isReply = inReplyTo || (references && references.length > 0);
-
-      if (isReply) {
-        await this.handleCampaignReply(message, from, account);
-      }
+      // We check ALL incoming messages from known contacts to catch replies even if headers are missing
+      // The handleCampaignReply function will verify if the sender is in an active campaign
+      await this.handleCampaignReply(message, from, account);
 
 
     } catch (error) {
@@ -971,7 +969,7 @@ class ImapMonitor {
         .eq('campaign_id', targetCampaignId)
         .eq('contact_id', contact.id);
 
-      console.log(`[IMAP] ✓ Logged reply from ${fromEmail} for campaign ${targetCampaignId} (most recent sender)`);
+      console.log(`[IMAP] ✓ Logged reply from ${fromEmail} for campaign ${targetCampaignId} (subject: "${message.subject}")`);
     } catch (error) {
       console.error('[IMAP] Error handling campaign reply:', error);
     }
