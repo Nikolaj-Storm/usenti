@@ -1664,14 +1664,30 @@ app.put('/api/campaigns/:campaignId/steps/:stepId', authenticateUser, async (req
 
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
 
-    const { subject, body, wait_days, step_order } = req.body;
+    const { subject, body, wait_days, wait_hours, wait_minutes, step_order, condition_type, position_x, position_y } = req.body;
 
-    // Only update columns confirmed to exist in the DB
     const updates = {};
     if (subject !== undefined) updates.subject = subject;
     if (body !== undefined) updates.body = body;
     if (wait_days !== undefined) updates.wait_days = wait_days;
+    if (wait_hours !== undefined) updates.wait_hours = wait_hours;
+    if (wait_minutes !== undefined) updates.wait_minutes = wait_minutes;
     if (step_order !== undefined) updates.step_order = step_order;
+    if (condition_type !== undefined) updates.condition_type = condition_type;
+    if (position_x !== undefined) updates.position_x = position_x;
+    if (position_y !== undefined) updates.position_y = position_y;
+
+    if (Object.keys(updates).length === 0) {
+      // No actual updates - just fetch and return the existing step
+      const { data: existingSteps } = await supabase
+        .from('campaign_steps')
+        .select('*')
+        .eq('id', req.params.stepId)
+        .eq('campaign_id', req.params.campaignId);
+      const existing = existingSteps && existingSteps.length > 0 ? existingSteps[0] : null;
+      if (!existing) return res.status(404).json({ error: 'Step not found' });
+      return res.json({ ...existing, parent_step_id: existing.parent_id || null });
+    }
 
     const { data, error } = await supabase
       .from('campaign_steps')

@@ -652,25 +652,34 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
   const [panStart, setPanStart] = React.useState({ x: 0, y: 0 });
 
   const svgRef = React.useRef(null);
+  const canvasRef = React.useRef(null);
 
-  // Handle wheel zoom
-  const handleWheel = (e) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.min(Math.max(zoom * delta, 0.25), 3);
+  // Use ref-based wheel listener with { passive: false } to allow preventDefault
+  React.useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
 
-    const rect = e.currentTarget.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const handleWheel = (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.min(Math.max(zoom * delta, 0.25), 3);
 
-    const newPan = {
-      x: mouseX - (mouseX - pan.x) * (newZoom / zoom),
-      y: mouseY - (mouseY - pan.y) * (newZoom / zoom)
+      const rect = el.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const newPan = {
+        x: mouseX - (mouseX - pan.x) * (newZoom / zoom),
+        y: mouseY - (mouseY - pan.y) * (newZoom / zoom)
+      };
+
+      setZoom(newZoom);
+      setPan(newPan);
     };
 
-    setZoom(newZoom);
-    setPan(newPan);
-  };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [zoom, pan]);
 
   // Handle canvas pan - ALWAYS pan when clicking background
   const handleCanvasMouseDown = (e) => {
@@ -699,14 +708,20 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
     if (draggingNode) {
       const draggedStep = steps.find(s => s.id === draggingNode);
       if (draggedStep) {
-        // Check if we should reorder based on Y position
-        const sortedByY = [...steps].sort((a, b) => a.y - b.y);
-        const newOrder = sortedByY.findIndex(s => s.id === draggingNode) + 1;
-
-        if (newOrder !== draggedStep.step_order) {
-          onReorderSteps(draggingNode, newOrder);
-        } else {
+        // Branch steps: just save position, never reorder
+        if (draggedStep.parent_step_id) {
           onNodeDragEnd(draggingNode, draggedStep.x, draggedStep.y);
+        } else {
+          // Main flow: check if Y-order changed among main flow steps only
+          const mainSteps = steps.filter(s => !s.parent_step_id);
+          const sortedByY = [...mainSteps].sort((a, b) => a.y - b.y);
+          const newOrder = sortedByY.findIndex(s => s.id === draggingNode) + 1;
+
+          if (newOrder !== draggedStep.step_order) {
+            onReorderSteps(draggingNode, newOrder);
+          } else {
+            onNodeDragEnd(draggingNode, draggedStep.x, draggedStep.y);
+          }
         }
       }
       setDraggingNode(null);
@@ -884,8 +899,8 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
   };
 
   return h('div', {
+    ref: canvasRef,
     className: `canvas-container ${isPanning ? 'grabbing' : ''}`,
-    onWheel: handleWheel,
     onMouseDown: handleCanvasMouseDown,
     onMouseMove: handleCanvasMouseMove,
     onMouseUp: handleCanvasMouseUp,
