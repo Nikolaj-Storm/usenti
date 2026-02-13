@@ -161,7 +161,7 @@ async function sendEmail({
     const trackingUrl = `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/track/open/${campaignId}/${contactId}/${trackingToken}`;
     const trackingPixel = `<img src="${trackingUrl}" width="1" height="1" style="display:none;" alt="" />`;
     finalBody += trackingPixel;
-    console.log(`[EMAIL-SERVICE]    Added open tracking pixel`);
+    console.log(`[EMAIL-SERVICE]    Added open tracking pixel: ${trackingUrl}`);
   }
 
   // Rewrite links for click tracking if requested

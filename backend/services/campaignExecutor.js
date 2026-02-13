@@ -198,7 +198,8 @@ class CampaignExecutor {
             send_schedule,
             send_immediately,
             status,
-            daily_limit
+            daily_limit,
+            track_opens
           ),
           contacts!inner(
             id,
@@ -412,7 +413,7 @@ class CampaignExecutor {
         body: personalizedBody,
         campaignId: campaign.id,
         contactId: contact.id,
-        trackOpens: campaign.track_opens === true,
+        trackOpens: true,  // Always add tracking pixel for campaign emails (required for open conditions)
         trackClicks: true
       });
 

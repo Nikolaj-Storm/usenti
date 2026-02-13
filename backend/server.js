@@ -52,6 +52,15 @@ app.use(express.json());
 // Supabase Client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
+// Dedicated admin client for tracking endpoints (no auth state pollution from authenticateUser)
+// This ensures the service_role key always bypasses RLS without session interference
+const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false
+  }
+});
+
 // Encryption utilities
 const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
 const IV_LENGTH = 16;
@@ -1960,10 +1969,12 @@ app.get('/api/campaigns/:id/stats', authenticateUser, async (req, res) => {
 
 app.get('/api/track/open/:campaign_id/:contact_id/:token', async (req, res) => {
   try {
-    console.log(`[TRACKING] API open tracking: campaign=${req.params.campaign_id}, contact=${req.params.contact_id}`);
+    console.log(`[TRACKING] API open tracking hit: campaign=${req.params.campaign_id}, contact=${req.params.contact_id}`);
+    console.log(`[TRACKING] User-Agent: ${req.headers['user-agent']?.substring(0, 80)}`);
 
     // Check if this contact already has an 'opened' event for this campaign
-    const { data: existingOpen } = await supabase
+    // Use supabaseAdmin to guarantee service_role RLS bypass
+    const { data: existingOpen, error: selectError } = await supabaseAdmin
       .from('email_events')
       .select('id, event_data, created_at')
       .eq('campaign_id', req.params.campaign_id)
@@ -1972,11 +1983,15 @@ app.get('/api/track/open/:campaign_id/:contact_id/:token', async (req, res) => {
       .limit(1)
       .single();
 
+    if (selectError && selectError.code !== 'PGRST116') {
+      console.error(`[TRACKING] Error checking existing open:`, selectError);
+    }
+
     if (existingOpen) {
       // Update the existing open event with the latest timestamp.
       // This ensures that if the first "open" was an automated preload by the email client
       // (e.g. Gmail image proxy), the timestamp gets updated when the user actually opens.
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseAdmin
         .from('email_events')
         .update({
           created_at: new Date().toISOString(),
@@ -1995,7 +2010,7 @@ app.get('/api/track/open/:campaign_id/:contact_id/:token', async (req, res) => {
         console.log(`[TRACKING] 🔄 Updated open event timestamp for contact ${req.params.contact_id} (previous open at ${existingOpen.created_at})`);
       }
     } else {
-      const { error: insertError } = await supabase.from('email_events').insert({
+      const { error: insertError } = await supabaseAdmin.from('email_events').insert({
         campaign_id: req.params.campaign_id,
         contact_id: req.params.contact_id,
         event_type: 'opened',
@@ -2008,7 +2023,8 @@ app.get('/api/track/open/:campaign_id/:contact_id/:token', async (req, res) => {
       });
 
       if (insertError) {
-        console.error(`[TRACKING] Failed to insert open event:`, insertError);
+        console.error(`[TRACKING] ❌ Failed to insert open event:`, insertError);
+        console.error(`[TRACKING] Insert error details - code: ${insertError.code}, message: ${insertError.message}`);
       } else {
         console.log(`[TRACKING] ✅ Open event recorded for contact ${req.params.contact_id}`);
       }
@@ -2027,7 +2043,7 @@ app.get('/api/track/click/:campaign_id/:contact_id/:token', async (req, res) => 
   try {
     const { url } = req.query;
 
-    await supabase.from('email_events').insert({
+    await supabaseAdmin.from('email_events').insert({
       campaign_id: req.params.campaign_id,
       contact_id: req.params.contact_id,
       event_type: 'clicked',
@@ -2062,7 +2078,7 @@ app.get('/img/e/:campaign_id/:contact_id/:token', async (req, res) => {
     if (isShortened) {
       // Legacy: Find the full IDs by partial match using text cast
       console.log(`[TRACKING] Using legacy shortened ID lookup`);
-      const { data: campaignContact, error: lookupError } = await supabase
+      const { data: campaignContact, error: lookupError } = await supabaseAdmin
         .from('campaign_contacts')
         .select('campaign_id, contact_id')
         .filter('campaign_id::text', 'ilike', `${campaign_id}%`)
@@ -2084,7 +2100,7 @@ app.get('/img/e/:campaign_id/:contact_id/:token', async (req, res) => {
     }
 
     // Check if this contact already has an 'opened' event for this campaign
-    const { data: existingOpen } = await supabase
+    const { data: existingOpen } = await supabaseAdmin
       .from('email_events')
       .select('id, event_data, created_at')
       .eq('campaign_id', campaignIdToUse)
@@ -2097,7 +2113,7 @@ app.get('/img/e/:campaign_id/:contact_id/:token', async (req, res) => {
       // Update the existing open event with the latest timestamp.
       // This ensures that if the first "open" was an automated preload by the email client
       // (e.g. Gmail image proxy), the timestamp gets updated when the user actually opens.
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseAdmin
         .from('email_events')
         .update({
           created_at: new Date().toISOString(),
@@ -2118,7 +2134,7 @@ app.get('/img/e/:campaign_id/:contact_id/:token', async (req, res) => {
       }
     } else {
       // Insert new open event
-      const { error: insertError } = await supabase.from('email_events').insert({
+      const { error: insertError } = await supabaseAdmin.from('email_events').insert({
         campaign_id: campaignIdToUse,
         contact_id: contactIdToUse,
         event_type: 'opened',
