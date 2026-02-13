@@ -1604,17 +1604,20 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
       subject,
       body,
       wait_days,
+      wait_hours,
+      wait_minutes,
       step_order,
-      parent_step_id
+      parent_step_id,
+      condition_type,
+      branch,
+      x,
+      y
     } = req.body;
 
     if (!['email', 'wait', 'condition'].includes(step_type)) {
       return res.status(400).json({ error: 'Invalid step type. Only email, wait, and condition are supported.' });
     }
 
-    // Only use columns confirmed to exist in the DB
-    // DB uses parent_id (not parent_step_id), and does NOT have:
-    // branch, condition_type, position_x, position_y, wait_hours, wait_minutes
     const { data, error } = await supabase
       .from('campaign_steps')
       .insert({
@@ -1624,7 +1627,13 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
         subject: step_type === 'email' ? subject : null,
         body: step_type === 'email' ? body : null,
         wait_days: wait_days || 0,
-        parent_id: parent_step_id || null
+        wait_hours: wait_hours || 0,
+        wait_minutes: wait_minutes || 0,
+        condition_type: step_type === 'condition' ? (condition_type || 'email_opened') : null,
+        parent_id: parent_step_id || null,
+        branch: branch || null,
+        position_x: x || 0,
+        position_y: y || 0
       })
       .select()
       .single();

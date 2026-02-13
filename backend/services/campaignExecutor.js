@@ -214,7 +214,12 @@ class CampaignExecutor {
             step_order,
             subject,
             body,
-            wait_days
+            wait_days,
+            wait_hours,
+            wait_minutes,
+            condition_type,
+            parent_id,
+            branch
           )
         `);
 
@@ -339,8 +344,16 @@ class CampaignExecutor {
       case 'wait':
         await this.handleWaitStep(campaignContact, campaign, step);
         break;
+      case 'condition':
+        await this.handleConditionStep(campaignContact, campaign, contact, step);
+        break;
       default:
         console.error(`[EXECUTOR] ❌ Unknown step type: ${step.step_type}`);
+        // Reset status so contact doesn't stay stuck in 'processing'
+        await supabase
+          .from('campaign_contacts')
+          .update({ status: 'in_progress' })
+          .eq('id', campaignContact.id);
     }
   }
 
@@ -484,85 +497,259 @@ class CampaignExecutor {
     console.log(`[EXECUTOR]         - Calculated wait: ${durationStr} (${actualDelayMs}ms)`);
     console.log(`[EXECUTOR]         - Next send time will be: ${nextSendTime.toISOString()}`);
 
-    // Get next step (using array instead of .single() for better error handling)
-    console.log(`[EXECUTOR]      📍 Looking for step after wait (step_order ${step.step_order + 1})...`);
+    // Use moveToNextStep with a custom send time override
+    await this.moveToNextStep(campaignContact, campaign.id, step, nextSendTime);
+  }
 
-    const { data: nextSteps, error } = await supabase
-      .from('campaign_steps')
-      .select('id, step_type, step_order')
-      .eq('campaign_id', campaign.id)
-      .eq('step_order', step.step_order + 1);
+  // Handle condition step - evaluate condition and route to yes/no branch
+  async handleConditionStep(campaignContact, campaign, contact, step) {
+    const conditionType = step.condition_type || 'email_opened';
+    console.log(`[EXECUTOR]      🔀 Condition type: ${conditionType}`);
 
-    if (error) {
-      console.error(`[EXECUTOR]      ❌ Error finding next step:`, error);
-      return;
+    let conditionMet = false;
+
+    try {
+      if (conditionType === 'email_opened') {
+        // Check if contact has any 'open' events for this campaign
+        const { data: openEvents, error } = await supabase
+          .from('email_events')
+          .select('id')
+          .eq('campaign_id', campaign.id)
+          .eq('contact_id', contact.id)
+          .eq('event_type', 'open')
+          .limit(1);
+
+        if (error) {
+          console.error(`[EXECUTOR]      ❌ Error checking open events:`, error);
+        }
+
+        conditionMet = openEvents && openEvents.length > 0;
+        console.log(`[EXECUTOR]      📊 Email opened? ${conditionMet ? 'YES' : 'NO'} (${openEvents?.length || 0} open events)`);
+
+      } else if (conditionType === 'email_clicked') {
+        const { data: clickEvents, error } = await supabase
+          .from('email_events')
+          .select('id')
+          .eq('campaign_id', campaign.id)
+          .eq('contact_id', contact.id)
+          .eq('event_type', 'click')
+          .limit(1);
+
+        if (error) {
+          console.error(`[EXECUTOR]      ❌ Error checking click events:`, error);
+        }
+
+        conditionMet = clickEvents && clickEvents.length > 0;
+        console.log(`[EXECUTOR]      📊 Email clicked? ${conditionMet ? 'YES' : 'NO'}`);
+
+      } else if (conditionType === 'email_replied') {
+        const { data: replyEvents, error } = await supabase
+          .from('email_events')
+          .select('id')
+          .eq('campaign_id', campaign.id)
+          .eq('contact_id', contact.id)
+          .eq('event_type', 'reply')
+          .limit(1);
+
+        if (error) {
+          console.error(`[EXECUTOR]      ❌ Error checking reply events:`, error);
+        }
+
+        conditionMet = replyEvents && replyEvents.length > 0;
+        console.log(`[EXECUTOR]      📊 Email replied? ${conditionMet ? 'YES' : 'NO'}`);
+
+      } else {
+        console.log(`[EXECUTOR]      ⚠️  Unknown condition type: ${conditionType}, defaulting to NO`);
+      }
+    } catch (err) {
+      console.error(`[EXECUTOR]      ❌ Error evaluating condition:`, err.message);
     }
 
-    const nextStep = nextSteps && nextSteps.length > 0 ? nextSteps[0] : null;
+    const branchName = conditionMet ? 'yes' : 'no';
+    console.log(`[EXECUTOR]      ➡️  Routing to '${branchName}' branch`);
 
-    if (nextStep) {
-      console.log(`[EXECUTOR]      ✅ Found next step: ${nextStep.step_type} (order ${nextStep.step_order})`);
+    // Find the first step in the matching branch (child steps with parent_id = this condition's id)
+    const { data: branchSteps, error: branchError } = await supabase
+      .from('campaign_steps')
+      .select('id, step_type, step_order, branch')
+      .eq('campaign_id', campaign.id)
+      .eq('parent_id', step.id)
+      .order('step_order');
 
-      // IMPORTANT: Set status back to 'in_progress' to release the lock and allow future processing
+    if (branchError) {
+      console.error(`[EXECUTOR]      ❌ Error finding branch steps:`, branchError);
+    }
+
+    console.log(`[EXECUTOR]      📋 Found ${branchSteps?.length || 0} child steps for condition ${step.id}`);
+    if (branchSteps && branchSteps.length > 0) {
+      branchSteps.forEach((bs, i) => {
+        console.log(`[EXECUTOR]         Child[${i}]: id=${bs.id}, type=${bs.step_type}, order=${bs.step_order}, branch=${bs.branch}`);
+      });
+    }
+
+    // Filter for the matching branch
+    let targetSteps = branchSteps?.filter(s => s.branch === branchName) || [];
+
+    // If no steps with branch labels (legacy data without branch column), try all child steps
+    if (targetSteps.length === 0 && branchSteps && branchSteps.length > 0) {
+      console.log(`[EXECUTOR]      ⚠️  No steps with branch='${branchName}', checking if branch column is empty...`);
+      const unbranchedSteps = branchSteps.filter(s => !s.branch);
+      if (unbranchedSteps.length > 0) {
+        console.log(`[EXECUTOR]      ⚠️  Found ${unbranchedSteps.length} child steps without branch labels, cannot route - skipping condition`);
+      }
+    }
+
+    if (targetSteps.length > 0) {
+      // Sort by step_order and take the first
+      targetSteps.sort((a, b) => a.step_order - b.step_order);
+      const firstBranchStep = targetSteps[0];
+      console.log(`[EXECUTOR]      ✅ Advancing to branch step: ${firstBranchStep.step_type} (id: ${firstBranchStep.id})`);
+
       const { error: updateError } = await supabase
         .from('campaign_contacts')
         .update({
-          current_step_id: nextStep.id,
-          next_send_time: nextSendTime.toISOString(),
+          current_step_id: firstBranchStep.id,
+          next_send_time: new Date().toISOString(),
           status: 'in_progress'
         })
         .eq('id', campaignContact.id);
 
       if (updateError) {
-        console.error(`[EXECUTOR]      ❌ Error updating contact for wait:`, updateError);
+        console.error(`[EXECUTOR]      ❌ Error updating to branch step:`, updateError);
       } else {
-        console.log(`[EXECUTOR]      ✅ Contact scheduled for ${durationStr} wait`);
-        console.log(`[EXECUTOR]         Next step ID: ${nextStep.id}`);
-        console.log(`[EXECUTOR]         Will resume at: ${nextSendTime.toISOString()}`);
+        console.log(`[EXECUTOR]      ✅ Contact routed to '${branchName}' branch`);
       }
     } else {
-      // No more steps, mark as completed
-      console.log(`[EXECUTOR]      🏁 No more steps after wait, marking as completed`);
-
-      const { error: completeError } = await supabase
-        .from('campaign_contacts')
-        .update({ status: 'completed' })
-        .eq('id', campaignContact.id);
-
-      if (completeError) {
-        console.error(`[EXECUTOR]      ❌ Error marking as completed:`, completeError);
-      } else {
-        console.log(`[EXECUTOR]      ✅ Contact marked as completed`);
-      }
+      // No branch steps found - skip the condition and go to next main-flow step
+      console.log(`[EXECUTOR]      ⚠️  No '${branchName}' branch steps found, skipping to next main-flow step`);
+      await this.moveToNextStep(campaignContact, campaign.id, step);
     }
   }
 
-  // Move to next step in sequence
-  async moveToNextStep(campaignContact, campaignId, currentStep) {
-    console.log(`[EXECUTOR]      📍 Looking for next step after step_order ${currentStep.step_order}...`);
+  // Move to next step in sequence (handles both main-flow and branch steps)
+  // overrideNextSendTime: optional Date to use instead of "now" (used by wait steps)
+  async moveToNextStep(campaignContact, campaignId, currentStep, overrideNextSendTime) {
+    const isInBranch = !!(currentStep.parent_id || currentStep.branch);
+    console.log(`[EXECUTOR]      📍 Looking for next step after step_order ${currentStep.step_order} (in branch: ${isInBranch ? `yes, parent=${currentStep.parent_id}, branch=${currentStep.branch}` : 'no'})...`);
 
-    const { data: nextSteps, error } = await supabase
-      .from('campaign_steps')
-      .select('id, step_type, step_order')
-      .eq('campaign_id', campaignId)
-      .eq('step_order', currentStep.step_order + 1);
+    let nextStep = null;
 
-    if (error) {
-      console.error(`[EXECUTOR]      ❌ Error finding next step:`, error);
-      return;
+    if (isInBranch && currentStep.parent_id) {
+      // We're inside a branch - look for the next step in the SAME branch
+      const { data: nextBranchSteps, error: branchError } = await supabase
+        .from('campaign_steps')
+        .select('id, step_type, step_order, parent_id, branch')
+        .eq('campaign_id', campaignId)
+        .eq('parent_id', currentStep.parent_id)
+        .eq('branch', currentStep.branch)
+        .gt('step_order', currentStep.step_order)
+        .order('step_order')
+        .limit(1);
+
+      if (branchError) {
+        console.error(`[EXECUTOR]      ❌ Error finding next branch step:`, branchError);
+      }
+
+      nextStep = nextBranchSteps && nextBranchSteps.length > 0 ? nextBranchSteps[0] : null;
+
+      if (!nextStep) {
+        // End of branch - go back to main flow after the condition step
+        console.log(`[EXECUTOR]      🔄 End of branch, returning to main flow...`);
+
+        // Get the parent condition step to find its step_order
+        const { data: parentSteps, error: parentError } = await supabase
+          .from('campaign_steps')
+          .select('id, step_order')
+          .eq('id', currentStep.parent_id);
+
+        if (parentError) {
+          console.error(`[EXECUTOR]      ❌ Error finding parent condition step:`, parentError);
+        }
+
+        const parentStep = parentSteps && parentSteps.length > 0 ? parentSteps[0] : null;
+
+        if (parentStep) {
+          console.log(`[EXECUTOR]      📍 Parent condition step_order: ${parentStep.step_order}, looking for main-flow step_order > ${parentStep.step_order}...`);
+
+          // Find next main-flow step (no parent_id) after the condition
+          const { data: mainFlowSteps, error: mainError } = await supabase
+            .from('campaign_steps')
+            .select('id, step_type, step_order, parent_id, branch')
+            .eq('campaign_id', campaignId)
+            .is('parent_id', null)
+            .gt('step_order', parentStep.step_order)
+            .order('step_order')
+            .limit(1);
+
+          if (mainError) {
+            console.error(`[EXECUTOR]      ❌ Error finding next main-flow step:`, mainError);
+          }
+
+          nextStep = mainFlowSteps && mainFlowSteps.length > 0 ? mainFlowSteps[0] : null;
+
+          // Fallback: if parent_id IS NULL doesn't work, try without that filter
+          if (!nextStep) {
+            const { data: fallbackSteps, error: fbError } = await supabase
+              .from('campaign_steps')
+              .select('id, step_type, step_order, parent_id, branch')
+              .eq('campaign_id', campaignId)
+              .gt('step_order', parentStep.step_order)
+              .order('step_order')
+              .limit(5);
+
+            if (!fbError && fallbackSteps && fallbackSteps.length > 0) {
+              // Find the first step that's NOT a child of any condition (no branch)
+              const mainStep = fallbackSteps.find(s => !s.parent_id && !s.branch);
+              if (mainStep) {
+                console.log(`[EXECUTOR]      📍 Fallback: found main-flow step via non-branch filter`);
+                nextStep = mainStep;
+              }
+            }
+          }
+        }
+      }
+    } else {
+      // Main flow - find next step with parent_id IS NULL
+      const { data: nextSteps, error } = await supabase
+        .from('campaign_steps')
+        .select('id, step_type, step_order, parent_id, branch')
+        .eq('campaign_id', campaignId)
+        .is('parent_id', null)
+        .gt('step_order', currentStep.step_order)
+        .order('step_order')
+        .limit(1);
+
+      if (error) {
+        console.error(`[EXECUTOR]      ❌ Error finding next step:`, error);
+      }
+
+      nextStep = nextSteps && nextSteps.length > 0 ? nextSteps[0] : null;
+
+      // Fallback: if parent_id IS NULL filter didn't work, try simple step_order + 1
+      if (!nextStep) {
+        const { data: fallbackSteps, error: fbError } = await supabase
+          .from('campaign_steps')
+          .select('id, step_type, step_order, parent_id, branch')
+          .eq('campaign_id', campaignId)
+          .eq('step_order', currentStep.step_order + 1);
+
+        if (!fbError && fallbackSteps && fallbackSteps.length > 0) {
+          // Prefer a step without parent (main flow)
+          nextStep = fallbackSteps.find(s => !s.parent_id && !s.branch) || fallbackSteps[0];
+        }
+      }
     }
-
-    const nextStep = nextSteps && nextSteps.length > 0 ? nextSteps[0] : null;
 
     if (nextStep) {
       console.log(`[EXECUTOR]      ✅ Found next step: ${nextStep.step_type} (order ${nextStep.step_order}, id: ${nextStep.id})`);
 
       // IMPORTANT: Set status back to 'in_progress' to release the lock
+      const nextSendTime = overrideNextSendTime ? overrideNextSendTime.toISOString() : new Date().toISOString();
       const { error: updateError } = await supabase
         .from('campaign_contacts')
         .update({
           current_step_id: nextStep.id,
-          next_send_time: new Date().toISOString(),
+          next_send_time: nextSendTime,
           status: 'in_progress'
         })
         .eq('id', campaignContact.id);
@@ -570,7 +757,7 @@ class CampaignExecutor {
       if (updateError) {
         console.error(`[EXECUTOR]      ❌ Error updating campaign_contact:`, updateError);
       } else {
-        console.log(`[EXECUTOR]      ✅ Updated contact to next step, next_send_time: ${new Date().toISOString()}`);
+        console.log(`[EXECUTOR]      ✅ Updated contact to next step, next_send_time: ${nextSendTime}`);
       }
     } else {
       // No more steps, mark as completed
