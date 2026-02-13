@@ -156,21 +156,60 @@ const useCanvasState = (initialZoom = 1, initialPan = { x: 0, y: 0 }) => {
       }
     }
 
-    if (changed) {
-      setZoom(newZoom);
-      // Adjust pan to keep top aligned? or center?
-      // If we zoom out, the view expands around 0,0 usually unless we offset.
-      // The pan logic in wheel handler: mouse relative.
-      // Here we might just want to pan to show the bottom if it's still cut off?
-      // Let's re-calculate viewH with new zoom
+    if (changed || (right > -pan.x / newZoom + containerWidth / newZoom - padding) || (bottom > -pan.y / newZoom + containerHeight / newZoom - padding)) {
+      if (!changed) newZoom = zoom; // If we didn't change zoom above
+
+      // Re-calculate view bounds with new zoom
+      const newViewW = containerWidth / newZoom;
       const newViewH = containerHeight / newZoom;
-      // If still cut off, pan up
-      if (nodeBottom > -pan.y / newZoom + newViewH - padding) {
-        newPanY = -(nodeBottom - newViewH + padding) * newZoom;
-        setPan({ x: newPanX, y: newPanY });
+
+      // Center the new content area? Or just ensure it's in view?
+      // Let's try to center the bottom-center of the new block logic
+      const targetCenterX = (left + right) / 2;
+
+      // Pan X: Center horizontally
+      newPanX = containerWidth / 2 - targetCenterX * newZoom;
+
+      // Pan Y: 
+      // Ensure bottom is visible with significant padding (approx 15% of viewport height buffer)
+      // This ensures the user sees "what's next" or empty space below
+      const bottomBuffer = newViewH * 0.15;
+
+      if (bottom > -pan.y / newZoom + newViewH - bottomBuffer) {
+        // Pan up so that 'bottom' is at (viewportHeight - bottomBuffer)
+        newPanY = -(bottom - newViewH + bottomBuffer) * newZoom;
       } else {
-        setPan({ x: newPanX, y: newPanY }); // Just zoom update
+        // If we zoomed out but didn't need to pan Y (e.g. it fits), maybe we still want to center X?
+        // Yes, newPanX is already set. newPanY defaults to current pan.y
+        // But if we zoomed out, the current pan.y might be weird relative to the new zoom center
+        // dragging/wheel logic uses mouse-relative. Here we set absolute pan.
+        // So we should probably try to keep the top stable or center the content?
+        // Let's just keep the current Y if it fits, but maybe ensure top doesn't fly off?
+        // For now, just ensuring bottom visibility is the priority.
+        newPanY = pan.y;
+
+        // Actually, if we just set zoom, the pan needs to be adjusted because the coordinate system scaled.
+        // If we don't change pan, the view scales around 0,0 (top left of canvas content space).
+        // If we want to "zoom out" effectively, we usually want to keep the center of view stable or similar.
+        // But `setZoom` and `setPan` are independent in our state (unlike distinct transform matrix).
+        // When rendering: translate(pan.x, pan.y) scale(zoom).
+
+        // If we change zoom but not pan, the point at (0,0) in screen space remains (0,0) in canvas space.
+        // The content shrinks towards top-left.
+
+        // So we MUST calculate a new Pan Y if we change zoom, even if "it fits", to avoid disorientation?
+        // The simple logic above only calculates newPanY if it overflows bottom.
+        // If we change zoom, we should probably center the target node if we can?
+        // Let's just default to centering the node vertically if we change zoom and it fits easily.
+
+        if (changed) {
+          const targetCenterY = (top + bottom) / 2;
+          newPanY = containerHeight / 2 - targetCenterY * newZoom;
+        }
       }
+
+      setZoom(newZoom);
+      setPan({ x: newPanX, y: newPanY });
     }
   };
 
@@ -426,7 +465,23 @@ const CampaignBuilder = () => {
       // Short timeout to allow state update? Or just calculate directly?
       // We have the new step position in `addedStep`
       const rect = containerRef.current.getBoundingClientRect();
-      canvasState.ensureNodeVisible(addedStep, rect.width, rect.height);
+
+      let customBounds = null;
+      if (addedStep.step_type === 'condition') {
+        // Yes branch is -260, No branch is +260
+        // Standard width 220
+        // So left-most is node.x - 260
+        // Right-most is node.x + 260 + 220
+        // Bottom is node.y + 160 + 120 (approx space for branches)
+        customBounds = {
+          minX: addedStep.x - 260,
+          maxX: addedStep.x + 480, // 260 + 220
+          minY: addedStep.y,
+          maxY: addedStep.y + 600 // More generous bottom padding to see branches
+        };
+      }
+
+      canvasState.ensureNodeVisible(addedStep, rect.width, rect.height, customBounds);
     }
   };
 
