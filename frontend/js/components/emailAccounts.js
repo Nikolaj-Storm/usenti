@@ -81,8 +81,8 @@ const EmailAccounts = () => {
     h('div', { className: "border-b border-white/10" }),
     loading
       ? h('div', { className: "flex justify-center py-12" },
-          h(Icons.Loader2, { size: 48, className: "text-cream-100 animate-spin" })
-        )
+        h(Icons.Loader2, { size: 48, className: "text-cream-100 animate-spin" })
+      )
       : h(AccountsTab, { accounts: accounts, onEdit: handleEditAccount, onDelete: handleDeleteAccount }),
     showModal && h(AccountModal, {
       account: editingAccount,
@@ -115,8 +115,6 @@ const AccountCard = ({ account, onEdit, onDelete }) => {
     switch (status) {
       case 'active':
         return 'badge-active';
-      case 'warming':
-        return 'badge-warning';
       case 'paused':
         return 'badge-neutral';
       default:
@@ -150,14 +148,14 @@ const AccountCard = ({ account, onEdit, onDelete }) => {
         h('div', { className: "flex-1 min-w-0" },
           account.sender_name
             ? h('div', null,
-                h('h3', { className: "font-medium text-white truncate", title: account.sender_name },
-                  account.sender_name
-                ),
-                h('p', { className: "text-xs text-white/50 truncate", title: account.email_address }, account.email_address)
-              )
+              h('h3', { className: "font-medium text-white truncate", title: account.sender_name },
+                account.sender_name
+              ),
+              h('p', { className: "text-xs text-white/50 truncate", title: account.email_address }, account.email_address)
+            )
             : h('h3', { className: "font-medium text-white truncate", title: account.email_address },
-                account.email_address
-              )
+              account.email_address
+            )
         )
       )
     ),
@@ -589,11 +587,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
           })
         ),
         testResult && h('div', {
-          className: `p-4 rounded-xl ${
-            testResult.success
+          className: `p-4 rounded-xl ${testResult.success
               ? 'bg-green-500/20 border border-green-500/30 text-green-300'
               : 'bg-red-500/20 border border-red-500/30 text-red-300'
-          }`
+            }`
         },
           h('div', { className: "flex items-center gap-2" },
             testResult.success ? h(Icons.Check, { size: 20 }) : h(Icons.AlertCircle, { size: 20 }),

@@ -42,7 +42,7 @@ const LandingPage = ({ onNavigate }) => {
           'refined for closers.'
         ),
         h('p', { className: "text-xl text-white/60 max-w-2xl mx-auto font-light leading-relaxed" },
-          'Mr. Snowman combines minimalist design with brutal efficiency. Automate your campaigns, warm up your infrastructure, and scale your revenue without the noise.'
+          'Mr. Snowman combines minimalist design with brutal efficiency. Automate your campaigns, manage your infrastructure, and scale your revenue without the noise.'
         ),
         h('div', { className: "flex flex-col sm:flex-row items-center justify-center gap-4 pt-6" },
           h('button', {
@@ -80,9 +80,9 @@ const LandingPage = ({ onNavigate }) => {
             h('div', { className: "w-12 h-12 bg-white/10 rounded-xl border border-white/10 flex items-center justify-center text-cream-100 group-hover:scale-110 transition-transform duration-300" },
               h(Icons.Zap, { size: 24 })
             ),
-            h('h3', { className: "font-serif text-2xl text-white" }, 'Intelligent Warm-up'),
+            h('h3', { className: "font-serif text-2xl text-white" }, 'Multi-Step Sequences'),
             h('p', { className: "text-white/60 leading-relaxed" },
-              'Our AI-driven warm-up engine generates natural conversations to gradually ramp up your sending limits.'
+              'Build sophisticated multi-step email sequences with delays and conditions to maximize engagement and conversions.'
             )
           ),
           h('div', { className: "space-y-4 p-6 rounded-2xl glass-card hover:bg-white/10 transition-colors group" },

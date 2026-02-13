@@ -895,8 +895,6 @@ class ImapMonitor {
         await this.handleCampaignReply(message, from, account);
       }
 
-      // 3. Check if this is a warm-up seed reply
-      await this.handleWarmupReply(message, from, account);
 
     } catch (error) {
       console.error('[IMAP] Error processing message:', error);
@@ -979,60 +977,6 @@ class ImapMonitor {
     }
   }
 
-  // Handle reply to warm-up email
-  async handleWarmupReply(message, fromEmail, account) {
-    try {
-      // Find warmup thread with this seed address
-      const { data: thread } = await supabase
-        .from('warmup_threads')
-        .select(`
-          id,
-          reply_count,
-          target_replies,
-          warmup_seeds!inner(email_address)
-        `)
-        .eq('email_account_id', account.id)
-        .eq('warmup_seeds.email_address', fromEmail)
-        .eq('status', 'active')
-        .single();
-
-      if (!thread) {
-        return;
-      }
-
-      // Update thread reply count
-      const newReplyCount = thread.reply_count + 1;
-      const isComplete = newReplyCount >= thread.target_replies;
-
-      await supabase
-        .from('warmup_threads')
-        .update({
-          reply_count: newReplyCount,
-          status: isComplete ? 'completed' : 'active',
-          last_reply_at: new Date().toISOString()
-        })
-        .eq('id', thread.id);
-
-      // Log warmup message
-      await supabase.from('warmup_messages').insert({
-        warmup_thread_id: thread.id,
-        email_account_id: account.id,
-        direction: 'received',
-        subject: message.subject,
-        from_address: fromEmail,
-        to_address: account.email_address
-      });
-
-      console.log(`[IMAP] ✓ Logged warmup reply ${newReplyCount}/${thread.target_replies} from ${fromEmail}`);
-
-      // If thread is complete, we're done
-      if (isComplete) {
-        console.log(`[IMAP] ✓ Warmup thread completed for ${fromEmail}`);
-      }
-    } catch (error) {
-      console.error('[IMAP] Error handling warmup reply:', error);
-    }
-  }
 
   // Stop monitoring a specific account
   stopMonitoring(accountId) {

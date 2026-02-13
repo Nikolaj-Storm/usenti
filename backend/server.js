@@ -19,7 +19,6 @@ const upload = multer({
 });
 
 // Import services
-const warmupEngine = require('./services/warmupEngine');
 const imapMonitor = require('./services/imapMonitor');
 const campaignExecutor = require('./services/campaignExecutor');
 
@@ -179,7 +178,7 @@ app.get('/api/email-accounts', authenticateUser, async (req, res) => {
     // Get base email account data
     const { data: accounts, error } = await supabase
       .from('email_accounts')
-      .select('id, email_address, account_type, sender_name, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at, smtp_host, smtp_port, smtp_username, imap_host, imap_port, imap_username')
+      .select('id, email_address, account_type, sender_name, daily_send_limit, is_active, health_score, created_at, smtp_host, smtp_port, smtp_username, imap_host, imap_port, imap_username')
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false });
 
@@ -337,7 +336,7 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
     const { data, error } = await supabase
       .from('email_accounts')
       .insert(insertData)
-      .select('id, email_address, account_type, sender_name, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at, smtp_host, smtp_port, smtp_username, imap_host, imap_port, imap_username')
+      .select('id, email_address, account_type, sender_name, daily_send_limit, is_active, health_score, created_at, smtp_host, smtp_port, smtp_username, imap_host, imap_port, imap_username')
       .single();
 
     if (error) {
@@ -669,7 +668,7 @@ app.put('/api/email-accounts/:id', authenticateUser, async (req, res) => {
       .update(updates)
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
-      .select('id, email_address, account_type, daily_send_limit, is_warming_up, warmup_stage, is_active, health_score, created_at')
+      .select('id, email_address, account_type, daily_send_limit, is_active, health_score, created_at')
       .single();
 
     if (error) throw error;
@@ -1954,117 +1953,6 @@ app.get('/api/campaigns/:id/stats', authenticateUser, async (req, res) => {
   }
 });
 
-// ============================================================================
-// WARM-UP ROUTES
-// ============================================================================
-
-app.get('/api/warmup/:email_account_id', authenticateUser, async (req, res) => {
-  try {
-    const { data: account } = await supabase
-      .from('email_accounts')
-      .select('id')
-      .eq('id', req.params.email_account_id)
-      .eq('user_id', req.user.id)
-      .single();
-
-    if (!account) return res.status(404).json({ error: 'Email account not found' });
-
-    const { data, error } = await supabase
-      .from('warmup_configs')
-      .select('*')
-      .eq('email_account_id', req.params.email_account_id)
-      .single();
-
-    if (error && error.code !== 'PGRST116') throw error;
-
-    res.json(data || {
-      is_active: false,
-      daily_warmup_volume: 1000,
-      current_daily_volume: 50,
-      replies_per_thread: 20
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/warmup/:email_account_id', authenticateUser, async (req, res) => {
-  try {
-    const { data: account } = await supabase
-      .from('email_accounts')
-      .select('id')
-      .eq('id', req.params.email_account_id)
-      .eq('user_id', req.user.id)
-      .single();
-
-    if (!account) return res.status(404).json({ error: 'Email account not found' });
-
-    const { is_active, daily_warmup_volume, replies_per_thread } = req.body;
-
-    const { data, error } = await supabase
-      .from('warmup_configs')
-      .upsert({
-        email_account_id: req.params.email_account_id,
-        is_active: is_active !== undefined ? is_active : true,
-        daily_warmup_volume: daily_warmup_volume || 1000,
-        current_daily_volume: 50,
-        rampup_increment: 50,
-        replies_per_thread: replies_per_thread || 20
-      }, {
-        onConflict: 'email_account_id'
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    await supabase
-      .from('email_accounts')
-      .update({ is_warming_up: is_active })
-      .eq('id', req.params.email_account_id);
-
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/api/warmup/:email_account_id/stats', authenticateUser, async (req, res) => {
-  try {
-    const { data: account } = await supabase
-      .from('email_accounts')
-      .select('id')
-      .eq('id', req.params.email_account_id)
-      .eq('user_id', req.user.id)
-      .single();
-
-    if (!account) return res.status(404).json({ error: 'Email account not found' });
-
-    const { count: activeThreads } = await supabase
-      .from('warmup_threads')
-      .select('*', { count: 'exact', head: true })
-      .eq('email_account_id', req.params.email_account_id)
-      .eq('status', 'active');
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const { count: messagesToday } = await supabase
-      .from('warmup_messages')
-      .select('*', { count: 'exact', head: true })
-      .eq('email_account_id', req.params.email_account_id)
-      .gte('created_at', today.toISOString());
-
-    res.json({
-      active_threads: activeThreads || 0,
-      messages_today: messagesToday || 0,
-      inbox_placement_rate: 95,
-      status: activeThreads > 0 ? 'warming' : 'idle'
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // ============================================================================
 // TRACKING ROUTES
@@ -2727,17 +2615,7 @@ cron.schedule('*/5 * * * *', async () => {
 
 console.log('✓ Campaign executor scheduled (every 5 minutes)');
 
-// Warm-up engine runs hourly
-cron.schedule('0 * * * *', async () => {
-  console.log('[CRON] Running warm-up engine...');
-  try {
-    await warmupEngine.execute();
-  } catch (error) {
-    console.error('[CRON] Warm-up engine error:', error);
-  }
-});
 
-console.log('✓ Warm-up engine scheduled (every hour)');
 
 // ============================================================================
 // ERROR HANDLING
@@ -2767,7 +2645,6 @@ app.listen(PORT, async () => {
 ║  Frontend URL:      ${(process.env.FRONTEND_URL || 'http://localhost:3000').substring(0, 38).padEnd(38)} ║
 ║                                                           ║
 ║  📧 Campaign Executor:  Every 5 minutes                   ║
-║  🔥 Warm-up Engine:     Every hour                        ║
 ║  📬 IMAP Monitor:       Active                            ║
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝

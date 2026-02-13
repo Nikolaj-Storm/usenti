@@ -79,14 +79,6 @@ CREATE TABLE IF NOT EXISTS email_accounts (
   is_active BOOLEAN DEFAULT true,
   health_score INTEGER DEFAULT 100 CHECK (health_score >= 0 AND health_score <= 100),
 
-  -- Warmup Configuration
-  warmup_enabled BOOLEAN DEFAULT false,
-  is_warming_up BOOLEAN DEFAULT false,
-  warmup_stage INTEGER DEFAULT 0,
-  warmup_daily_limit INTEGER DEFAULT 20,
-  warmup_current_day INTEGER DEFAULT 0,
-  warmup_started_at TIMESTAMP WITH TIME ZONE,
-
   -- Timestamps
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -303,106 +295,7 @@ CREATE INDEX idx_email_events_campaign_id ON email_events(campaign_id);
 CREATE INDEX idx_email_events_created_at ON email_events(created_at DESC);
 
 -- ============================================================================
--- SECTION 9: WARMUP CONFIGURATION
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS warmup_configs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email_account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
-  is_active BOOLEAN DEFAULT false,
-  daily_warmup_volume INTEGER DEFAULT 1000,
-  current_daily_volume INTEGER DEFAULT 50,
-  rampup_increment INTEGER DEFAULT 50,
-  replies_per_thread INTEGER DEFAULT 20,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-
-  UNIQUE(email_account_id)
-);
-
-ALTER TABLE warmup_configs ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage warmup for own email accounts" ON warmup_configs
-  FOR ALL USING (
-    email_account_id IN (
-      SELECT id FROM email_accounts WHERE user_id = auth.uid()
-    )
-  );
-
--- ============================================================================
--- SECTION 10: WARMUP SEEDS
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS warmup_seeds (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email_address TEXT NOT NULL UNIQUE,
-  smtp_host TEXT NOT NULL,
-  smtp_port INTEGER NOT NULL DEFAULT 587,
-  smtp_username TEXT NOT NULL,
-  smtp_password TEXT NOT NULL,
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
-CREATE INDEX idx_warmup_seeds_active ON warmup_seeds(is_active);
-
--- ============================================================================
--- SECTION 11: WARMUP THREADS
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS warmup_threads (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email_account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
-  seed_address_id UUID NOT NULL REFERENCES warmup_seeds(id) ON DELETE CASCADE,
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'failed')),
-  reply_count INTEGER DEFAULT 0,
-  target_replies INTEGER DEFAULT 20,
-  last_reply_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
-ALTER TABLE warmup_threads ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view warmup threads for own accounts" ON warmup_threads
-  FOR ALL USING (
-    email_account_id IN (
-      SELECT id FROM email_accounts WHERE user_id = auth.uid()
-    )
-  );
-
--- ============================================================================
--- SECTION 12: WARMUP MESSAGES
--- ============================================================================
--- Verified against CSV: includes to_address
-
-CREATE TABLE IF NOT EXISTS warmup_messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  warmup_thread_id UUID NOT NULL REFERENCES warmup_threads(id) ON DELETE CASCADE,
-  email_account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
-  direction TEXT NOT NULL CHECK (direction IN ('sent', 'received')),
-  subject TEXT,
-  from_address TEXT NOT NULL,
-  to_address TEXT NOT NULL, -- Verified: Exists in CSV
-  message_id TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
-ALTER TABLE warmup_messages ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view warmup messages for own accounts" ON warmup_messages
-  FOR ALL USING (
-    email_account_id IN (
-      SELECT id FROM email_accounts WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE INDEX idx_warmup_messages_thread ON warmup_messages(warmup_thread_id);
-CREATE INDEX idx_warmup_messages_created_at ON warmup_messages(created_at DESC);
-
--- ============================================================================
--- SECTION 13: INBOX MESSAGES
+-- SECTION 9: INBOX MESSAGES
 -- ============================================================================
 -- Verified against CSV: includes snippet, from_name
 
@@ -437,7 +330,7 @@ CREATE INDEX idx_inbox_account_created ON inbox_messages(email_account_id, recei
 CREATE INDEX idx_inbox_is_read ON inbox_messages(is_read);
 
 -- ============================================================================
--- SECTION 14: FUNCTIONS & TRIGGERS
+-- SECTION 10: FUNCTIONS & TRIGGERS
 -- ============================================================================
 
 -- Function 1: Auto-create user profile
@@ -476,9 +369,7 @@ CREATE TRIGGER update_contacts_updated_at BEFORE UPDATE ON contacts FOR EACH ROW
 CREATE TRIGGER update_campaigns_updated_at BEFORE UPDATE ON campaigns FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_campaign_steps_updated_at BEFORE UPDATE ON campaign_steps FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_campaign_contacts_updated_at BEFORE UPDATE ON campaign_contacts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_warmup_configs_updated_at BEFORE UPDATE ON warmup_configs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_warmup_seeds_updated_at BEFORE UPDATE ON warmup_seeds FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_warmup_threads_updated_at BEFORE UPDATE ON warmup_threads FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER update_inbox_messages_updated_at BEFORE UPDATE ON inbox_messages FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================================

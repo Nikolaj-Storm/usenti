@@ -22,18 +22,6 @@ ADD COLUMN IF NOT EXISTS oauth_token_expires_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE public.email_accounts
 ADD COLUMN IF NOT EXISTS oauth_scope TEXT;
 
--- Add warmup tracking columns
-ALTER TABLE public.email_accounts
-ADD COLUMN IF NOT EXISTS warmup_enabled BOOLEAN DEFAULT false;
-
-ALTER TABLE public.email_accounts
-ADD COLUMN IF NOT EXISTS warmup_daily_limit INTEGER DEFAULT 20;
-
-ALTER TABLE public.email_accounts
-ADD COLUMN IF NOT EXISTS warmup_current_day INTEGER DEFAULT 0;
-
-ALTER TABLE public.email_accounts
-ADD COLUMN IF NOT EXISTS warmup_started_at TIMESTAMP WITH TIME ZONE;
 
 -- Update existing accounts to smtp_direct
 UPDATE public.email_accounts
@@ -44,18 +32,11 @@ WHERE provider_type IS NULL;
 COMMENT ON COLUMN public.email_accounts.provider_type IS
   'gmail_oauth: Gmail via OAuth API, microsoft_oauth: Outlook via Graph API, smtp_relay: Via relay server, smtp_direct: Direct SMTP (legacy)';
 
-COMMENT ON COLUMN public.email_accounts.warmup_enabled IS
-  'Whether email warmup is active for this account';
-
-COMMENT ON COLUMN public.email_accounts.warmup_daily_limit IS
-  'Current daily sending limit during warmup (increases gradually)';
 
 -- Verify migration
 SELECT
   email_address,
   provider_type,
-  warmup_enabled,
-  warmup_daily_limit,
   CASE
     WHEN oauth_refresh_token IS NOT NULL THEN '✅ Has OAuth token'
     ELSE '⚪ No OAuth token'
@@ -71,5 +52,4 @@ LIMIT 10;
 -- - Microsoft OAuth (microsoft_oauth)
 -- - SMTP via relay server (smtp_relay)
 -- - Direct SMTP (smtp_direct)
--- - Email warmup tracking
 -- ============================================================================

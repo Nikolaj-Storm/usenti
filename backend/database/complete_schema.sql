@@ -15,14 +15,13 @@
 -- 5. Done!
 --
 -- INCLUDES:
--- - 13 Tables with all columns
+-- - 9 Tables with all columns
 -- - All foreign key relationships
 -- - All indexes for optimal performance
 -- - All Row Level Security (RLS) policies
 -- - Auto-create user_profiles on signup (critical!)
 -- - Auto-update timestamps via triggers
 -- - OAuth support (Gmail, Microsoft)
--- - Email warmup tracking
 -- - Unified inbox
 -- ============================================================================
 
@@ -92,14 +91,6 @@ CREATE TABLE IF NOT EXISTS email_accounts (
   is_active BOOLEAN DEFAULT true,
   health_score INTEGER DEFAULT 100 CHECK (health_score >= 0 AND health_score <= 100),
 
-  -- Warmup Configuration
-  warmup_enabled BOOLEAN DEFAULT false,
-  is_warming_up BOOLEAN DEFAULT false,
-  warmup_stage INTEGER DEFAULT 0,
-  warmup_daily_limit INTEGER DEFAULT 20,
-  warmup_current_day INTEGER DEFAULT 0,
-  warmup_started_at TIMESTAMP WITH TIME ZONE,
-
   -- Timestamps
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -117,15 +108,10 @@ CREATE POLICY "Users can manage own email accounts" ON email_accounts
 -- Indexes
 CREATE INDEX idx_email_accounts_user_id ON email_accounts(user_id);
 CREATE INDEX idx_email_accounts_is_active ON email_accounts(is_active);
-CREATE INDEX idx_email_accounts_warmup_enabled ON email_accounts(warmup_enabled);
 
 -- Comments
 COMMENT ON COLUMN email_accounts.provider_type IS
   'gmail_oauth: Gmail via OAuth API, microsoft_oauth: Outlook via Graph API, smtp_relay: Via relay server, smtp_direct: Direct SMTP';
-COMMENT ON COLUMN email_accounts.warmup_enabled IS
-  'Whether email warmup is active for this account';
-COMMENT ON COLUMN email_accounts.warmup_daily_limit IS
-  'Current daily sending limit during warmup (increases gradually)';
 
 -- ============================================================================
 -- SECTION 3: CONTACT LISTS
@@ -357,118 +343,7 @@ CREATE INDEX idx_email_events_type ON email_events(event_type);
 CREATE INDEX idx_email_events_created_at ON email_events(created_at DESC);
 
 -- ============================================================================
--- SECTION 9: WARMUP CONFIGURATION
--- ============================================================================
--- Configuration for email warmup automation
-
-CREATE TABLE IF NOT EXISTS warmup_configs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email_account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
-  is_active BOOLEAN DEFAULT false,
-  daily_warmup_volume INTEGER DEFAULT 1000, -- Target daily volume
-  current_daily_volume INTEGER DEFAULT 50, -- Current volume (ramps up)
-  rampup_increment INTEGER DEFAULT 50, -- How much to increase daily
-  replies_per_thread INTEGER DEFAULT 20, -- How many replies per conversation
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-
-  UNIQUE(email_account_id)
-);
-
-ALTER TABLE warmup_configs ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage warmup for own email accounts" ON warmup_configs
-  FOR ALL USING (
-    email_account_id IN (
-      SELECT id FROM email_accounts WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE INDEX idx_warmup_configs_email_account ON warmup_configs(email_account_id);
-
--- ============================================================================
--- SECTION 10: WARMUP SEEDS
--- ============================================================================
--- Seed email addresses for the warmup network (admin-managed)
-
-CREATE TABLE IF NOT EXISTS warmup_seeds (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email_address TEXT NOT NULL UNIQUE,
-  smtp_host TEXT NOT NULL,
-  smtp_port INTEGER NOT NULL DEFAULT 587,
-  smtp_username TEXT NOT NULL,
-  smtp_password TEXT NOT NULL, -- Encrypted
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- Note: This table is admin-managed, RLS not enabled by default
--- Add policies based on your requirements
-
-CREATE INDEX idx_warmup_seeds_active ON warmup_seeds(is_active);
-
--- ============================================================================
--- SECTION 11: WARMUP THREADS
--- ============================================================================
--- Conversations between accounts in the warmup network
-
-CREATE TABLE IF NOT EXISTS warmup_threads (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email_account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
-  seed_address_id UUID NOT NULL REFERENCES warmup_seeds(id) ON DELETE CASCADE,
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'failed')),
-  reply_count INTEGER DEFAULT 0,
-  target_replies INTEGER DEFAULT 20,
-  last_reply_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
-ALTER TABLE warmup_threads ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view warmup threads for own accounts" ON warmup_threads
-  FOR ALL USING (
-    email_account_id IN (
-      SELECT id FROM email_accounts WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE INDEX idx_warmup_threads_email_account ON warmup_threads(email_account_id);
-CREATE INDEX idx_warmup_threads_status ON warmup_threads(status);
-
--- ============================================================================
--- SECTION 12: WARMUP MESSAGES
--- ============================================================================
--- Individual messages in warmup threads
-
-CREATE TABLE IF NOT EXISTS warmup_messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  warmup_thread_id UUID NOT NULL REFERENCES warmup_threads(id) ON DELETE CASCADE,
-  email_account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
-  direction TEXT NOT NULL CHECK (direction IN ('sent', 'received')),
-  subject TEXT,
-  from_address TEXT NOT NULL,
-  to_address TEXT NOT NULL,
-  message_id TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
-ALTER TABLE warmup_messages ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view warmup messages for own accounts" ON warmup_messages
-  FOR ALL USING (
-    email_account_id IN (
-      SELECT id FROM email_accounts WHERE user_id = auth.uid()
-    )
-  );
-
-CREATE INDEX idx_warmup_messages_thread ON warmup_messages(warmup_thread_id);
-CREATE INDEX idx_warmup_messages_email_account ON warmup_messages(email_account_id);
-CREATE INDEX idx_warmup_messages_created_at ON warmup_messages(created_at DESC);
-
--- ============================================================================
--- SECTION 13: INBOX MESSAGES
+-- SECTION 9: INBOX MESSAGES
 -- ============================================================================
 -- Unified inbox for all incoming emails
 
@@ -504,7 +379,7 @@ CREATE INDEX idx_inbox_is_read ON inbox_messages(is_read);
 CREATE INDEX idx_inbox_from_address ON inbox_messages(from_address);
 
 -- ============================================================================
--- SECTION 14: FUNCTIONS
+-- SECTION 10: FUNCTIONS
 -- ============================================================================
 
 -- Function to automatically create user_profiles when a new user signs up
@@ -531,7 +406,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================================
--- SECTION 15: TRIGGERS
+-- SECTION 11: TRIGGERS
 -- ============================================================================
 
 -- Trigger to auto-create user_profiles on signup
@@ -569,17 +444,6 @@ CREATE TRIGGER update_campaign_contacts_updated_at
   BEFORE UPDATE ON campaign_contacts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_warmup_configs_updated_at
-  BEFORE UPDATE ON warmup_configs
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_warmup_seeds_updated_at
-  BEFORE UPDATE ON warmup_seeds
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_warmup_threads_updated_at
-  BEFORE UPDATE ON warmup_threads
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_inbox_messages_updated_at
   BEFORE UPDATE ON inbox_messages
@@ -589,7 +453,7 @@ CREATE TRIGGER update_inbox_messages_updated_at
 -- SCHEMA SUMMARY
 -- ============================================================================
 --
--- Tables: 14
+-- Tables: 10
 --   1. user_profiles            - User account profiles
 --   2. email_accounts           - Connected email accounts (IMAP/SMTP/OAuth)
 --   3. contact_lists            - Contact list organization
@@ -599,24 +463,20 @@ CREATE TRIGGER update_inbox_messages_updated_at
 --   6. campaign_steps           - Steps within campaigns
 --   7. campaign_contacts        - Contact progress tracking
 --   8. email_events             - Engagement tracking
---   9. warmup_configs           - Warmup configuration
---  10. warmup_seeds             - Warmup network seeds
---  11. warmup_threads           - Warmup conversations
---  12. warmup_messages          - Warmup messages
---  13. inbox_messages           - Unified inbox
+--   9. inbox_messages           - Unified inbox
 --
 -- Functions: 2
 --   - handle_new_user()         - Auto-creates user profile on signup
 --   - update_updated_at_column() - Auto-updates timestamps
 --
--- Triggers: 12
+-- Triggers: 9
 --   - 1 for auto-creating user profiles
---   - 11 for auto-updating timestamps
+--   - 8 for auto-updating timestamps
 --
--- Indexes: 25
+-- Indexes: 18
 --   - Optimized for common query patterns
 --
--- RLS Policies: 15
+-- RLS Policies: 11
 --   - User isolation on all user-facing tables
 --
 -- ============================================================================

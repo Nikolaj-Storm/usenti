@@ -40,13 +40,6 @@ supabase db execute --file migrations/002_update_account_type_constraint.sql
 
 **Safe to run:** Yes - Drops and recreates the constraint with all supported types
 
-### 001_add_warmup_enabled.sql (DEPRECATED - DO NOT RUN)
-
-**Date:** 2026-01-18
-**Purpose:** Adds the `warmup_enabled` column to the `email_accounts` table
-
-**Status:** DEPRECATED - This migration is no longer needed as `warmup_enabled` has been removed from the application in favor of the `warmup_configs` table and `is_warming_up` flag.
-
 ## Best Practices
 
 1. **Always backup your database** before running migrations

@@ -2,12 +2,11 @@
 
 **Email Outreach Automation Platform**
 
-A full-stack SaaS application for automating email campaigns with multi-step sequences, domain warm-up, and real-time analytics.
+A full-stack SaaS application for automating email campaigns with multi-step sequences and real-time analytics.
 
 ## Features
 
 - 📧 **Multi-Step Campaigns** - Create sophisticated email sequences with delays and conditionals
-- 🔥 **Domain Warm-Up** - Gradually build sender reputation with automated warm-up
 - 📊 **Real-Time Analytics** - Track opens, clicks, and replies
 - 👥 **Contact Management** - Import contacts via CSV with field mapping
 - ⚙️ **Multi-Inbox Support** - Gmail, Outlook, and custom SMTP/IMAP
@@ -56,11 +55,9 @@ Snowman.2.0/
 │   │   ├── campaigns.js         # Campaign management
 │   │   ├── contacts.js          # Contact lists
 │   │   ├── emailAccounts.js     # Email account config
-│   │   └── warmup.js            # Warm-up management
 │   ├── services/
 │   │   ├── emailService.js      # Email sending with tracking
 │   │   ├── campaignExecutor.js  # Campaign automation (cron)
-│   │   ├── warmupEngine.js      # Domain warm-up (cron)
 │   │   └── imapMonitor.js       # Reply detection (real-time)
 │   ├── utils/
 │   │   ├── encryption.js        # AES-256 password encryption
@@ -220,7 +217,7 @@ npm run dev        # Start development server with auto-reload (nodemon)
 - RESTful API server with authentication
 - CORS configuration for GitHub Pages
 - Health check endpoint at `/health`
-- Scheduled cron jobs for campaign execution (every 5 min) and warmup (hourly)
+- Scheduled cron jobs for campaign execution (every 5 min)
 - IMAP monitoring for reply detection
 - Entry point: `node backend/server.js`
 
@@ -238,17 +235,9 @@ npm run dev        # Start development server with auto-reload (nodemon)
 - Email personalization and tracking
 - Manual trigger available at `POST /api/campaigns/executor/trigger`
 
-**services/warmupEngine.js** - Domain Warm-up Automation
-- Gradual email volume ramping for new domains
-- Simulates natural email conversations with seed addresses
-- Automated reply generation
-- Thread management with target reply counts
-- Runs hourly via cron job
-
 **services/imapMonitor.js** - IMAP Reply Detection
 - Real-time monitoring of all active email accounts
 - Detects campaign replies and updates contact status
-- Processes warm-up seed replies
 - Auto-starts on server launch
 - Graceful shutdown on SIGTERM/SIGINT
 
@@ -307,13 +296,12 @@ npm run preview    # Preview production build
 **backend/database/schema.sql** - Complete Database Schema
 - All table definitions with RLS policies
 - User profiles, email accounts, campaigns
-- Contact lists, warm-up configurations
+- Contact lists
 - Email events tracking
 
 **backend/database/migrations/** - Schema Migrations
 - Version-controlled database changes
 - Run in order by number prefix
-- `001_add_warmup_enabled.sql` - Add warmup features
 - `002_update_account_type_constraint.sql` - Update email account types
 - `003_add_email_to_user_profiles.sql` - User profile email field
 - `004_add_name_and_email_to_user_profiles.sql` - User name field
@@ -335,16 +323,9 @@ The server automatically runs several background processes:
 - Respects send schedules and daily limits
 - Manually trigger: `POST /api/campaigns/executor/trigger`
 
-**Warm-up Engine** (Every hour)
-- Sends warm-up emails to seed addresses
-- Replies to received warm-up messages
-- Gradually ramps up sending volume
-- Maintains domain reputation
-
 **IMAP Monitor** (Continuous)
 - Monitors all active email accounts in real-time
 - Detects campaign replies automatically
-- Processes warm-up seed responses
 - Updates contact status on reply
 - Auto-starts when server launches
 
@@ -374,9 +355,6 @@ npm run dev        # Starts Vite dev server
 node backend/server.js
 # Then trigger via API: POST /api/campaigns/executor/trigger
 
-# Run database migrations
-psql -f backend/database/migrations/001_add_warmup_enabled.sql
-
 # Generate encryption key
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
@@ -388,7 +366,6 @@ The backend services provide comprehensive logging for debugging and monitoring:
 ### Log Prefixes
 
 - `[EXECUTOR]` - Campaign execution engine
-- `[WARMUP]` - Domain warm-up engine
 - `[IMAP]` - IMAP reply monitoring
 - `[EMAIL]` - Email sending service
 - `[CRON]` - Scheduled cron jobs
@@ -412,7 +389,6 @@ curl -X POST http://localhost:3001/api/campaigns/executor/trigger \
 ### Common Log Messages
 
 - **Campaign Executor**: Runs every 5 minutes, logs pending contacts and send status
-- **Warm-up Engine**: Runs hourly, logs warm-up email sends and replies
 - **IMAP Monitor**: Logs connection status and new message detection
 - **Email Service**: Detailed SMTP connection and send logs
 
