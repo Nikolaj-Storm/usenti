@@ -571,49 +571,61 @@ class ImapMonitor {
             const range = `${start}:${totalMessages}`;
             console.log(`[${requestId}] Fetching messages ${range}...`);
 
+            // Fetch full message bodies for proper parsing with simpleParser
             const fetch = imap.seq.fetch(range, {
-              bodies: ['HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)', 'TEXT'],
+              bodies: '',
               struct: true
             });
 
-            fetch.on('message', (msg, seqno) => {
-              const msgData = { seqno };
+            let pendingParses = 0;
+            let fetchEnded = false;
 
-              msg.on('body', (stream, info) => {
-                let buffer = '';
-                stream.on('data', (chunk) => {
-                  buffer += chunk.toString('utf8');
-                });
-                stream.on('end', () => {
-                  if (info.which.includes('HEADER')) {
-                    // Parse headers
-                    const lines = buffer.split('\r\n');
-                    lines.forEach(line => {
-                      const [key, ...valueParts] = line.split(':');
-                      if (key && valueParts.length) {
-                        const value = valueParts.join(':').trim();
-                        const keyLower = key.toLowerCase();
-                        if (keyLower === 'from') msgData.from = value;
-                        if (keyLower === 'to') msgData.to = value;
-                        if (keyLower === 'subject') msgData.subject = value;
-                        if (keyLower === 'date') msgData.date = value;
-                        if (keyLower === 'message-id') msgData.messageId = value;
-                      }
-                    });
-                  } else {
-                    // Body text
-                    msgData.snippet = buffer.substring(0, 200).replace(/\s+/g, ' ').trim();
+            fetch.on('message', (msg, seqno) => {
+              pendingParses++;
+
+              msg.on('body', (stream) => {
+                simpleParser(stream, async (err, parsed) => {
+                  if (err) {
+                    console.error(`[${requestId}] Parse error for seq ${seqno}:`, err);
+                    pendingParses--;
+                    return;
+                  }
+
+                  const from = parsed.from?.value?.[0] || {};
+                  const body = parsed.text || parsed.html || '';
+                  const snippet = body.substring(0, 200).replace(/\s+/g, ' ').trim();
+
+                  messages.push({
+                    seqno,
+                    from: parsed.from?.text || '',
+                    fromName: from.name || '',
+                    fromAddress: from.address || 'unknown',
+                    subject: parsed.subject || '(No Subject)',
+                    date: parsed.date?.toISOString() || new Date().toISOString(),
+                    messageId: parsed.messageId,
+                    snippet: snippet + (body.length > 200 ? '...' : ''),
+                    flags: null // will be set by attributes
+                  });
+
+                  pendingParses--;
+                  if (fetchEnded && pendingParses === 0) {
+                    await finalizeSave();
                   }
                 });
               });
 
               msg.on('attributes', (attrs) => {
-                msgData.flags = attrs.flags;
-                msgData.uid = attrs.uid;
-              });
-
-              msg.once('end', () => {
-                messages.push(msgData);
+                // Store flags temporarily — will be merged after parse
+                const lastMsg = messages.find(m => m.seqno === seqno);
+                if (lastMsg) {
+                  lastMsg.flags = attrs.flags;
+                } else {
+                  // Attrs arrived before parse finished, store for later merge
+                  setTimeout(() => {
+                    const m = messages.find(m => m.seqno === seqno);
+                    if (m) m.flags = attrs.flags;
+                  }, 100);
+                }
               });
             });
 
@@ -623,25 +635,20 @@ class ImapMonitor {
               reject(err);
             });
 
-            fetch.once('end', async () => {
+            const finalizeSave = async () => {
               console.log(`[${requestId}] Fetched ${messages.length} messages, saving to database...`);
 
               // Save messages to inbox_messages table
               for (const msg of messages) {
                 try {
-                  // Parse from address
-                  const fromMatch = msg.from?.match(/<([^>]+)>/) || [null, msg.from];
-                  const fromAddress = fromMatch[1] || msg.from || 'unknown';
-                  const fromName = msg.from?.replace(/<[^>]+>/, '').trim() || '';
-
                   await supabase.from('inbox_messages').upsert({
                     email_account_id: account.id,
-                    message_id: msg.messageId || `sync-${msg.uid}-${Date.now()}`,
-                    from_name: fromName,
-                    from_address: fromAddress.toLowerCase(),
-                    subject: msg.subject || '(No Subject)',
+                    message_id: msg.messageId || `sync-${msg.seqno}-${Date.now()}`,
+                    from_name: msg.fromName,
+                    from_address: (msg.fromAddress || 'unknown').toLowerCase(),
+                    subject: msg.subject,
                     snippet: msg.snippet || '',
-                    received_at: msg.date ? new Date(msg.date).toISOString() : new Date().toISOString(),
+                    received_at: msg.date || new Date().toISOString(),
                     is_read: msg.flags?.includes('\\Seen') || false
                   }, {
                     onConflict: 'email_account_id, message_id',
@@ -658,6 +665,14 @@ class ImapMonitor {
               console.log(`[${requestId}] ✅ Inbox sync complete. Saved ${messages.length} messages.`);
               imap.end();
               resolve(messages);
+            };
+
+            fetch.once('end', async () => {
+              fetchEnded = true;
+              if (pendingParses === 0) {
+                await finalizeSave();
+              }
+              // Otherwise, finalizeSave will be called when last parse completes
             });
           });
         });

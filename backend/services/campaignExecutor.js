@@ -516,7 +516,7 @@ class CampaignExecutor {
           .select('id')
           .eq('campaign_id', campaign.id)
           .eq('contact_id', contact.id)
-          .eq('event_type', 'open')
+          .eq('event_type', 'opened')
           .limit(1);
 
         if (error) {
@@ -532,7 +532,7 @@ class CampaignExecutor {
           .select('id')
           .eq('campaign_id', campaign.id)
           .eq('contact_id', contact.id)
-          .eq('event_type', 'click')
+          .eq('event_type', 'clicked')
           .limit(1);
 
         if (error) {
@@ -548,7 +548,7 @@ class CampaignExecutor {
           .select('id')
           .eq('campaign_id', campaign.id)
           .eq('contact_id', contact.id)
-          .eq('event_type', 'reply')
+          .eq('event_type', 'replied')
           .limit(1);
 
         if (error) {
@@ -618,6 +618,41 @@ class CampaignExecutor {
         console.error(`[EXECUTOR]      ❌ Error updating to branch step:`, updateError);
       } else {
         console.log(`[EXECUTOR]      ✅ Contact routed to '${branchName}' branch`);
+
+        // Immediately process the next step in the same cycle to avoid waiting
+        // for the next cron tick (saves up to 5 minutes per non-wait step)
+        if (firstBranchStep.step_type === 'email' || firstBranchStep.step_type === 'condition') {
+          console.log(`[EXECUTOR]      ⚡ Immediately processing branch step (${firstBranchStep.step_type}) in same cycle...`);
+
+          // Re-fetch the updated campaign contact with full join data
+          const { data: updatedContact, error: refetchError } = await supabase
+            .from('campaign_contacts')
+            .select(`
+              *,
+              campaigns!inner(
+                id, name, email_account_id, send_schedule, send_immediately, status, daily_limit, track_opens
+              ),
+              contacts!inner(
+                id, email, first_name, last_name, company, custom_fields
+              ),
+              campaign_steps!inner(
+                id, step_type, step_order, subject, body, wait_days, wait_hours, wait_minutes,
+                condition_type, parent_id, branch
+              )
+            `)
+            .eq('id', campaignContact.id)
+            .single();
+
+          if (!refetchError && updatedContact) {
+            try {
+              await this.processCampaignContact(updatedContact);
+            } catch (immediateErr) {
+              console.error(`[EXECUTOR]      ❌ Error in immediate branch processing:`, immediateErr.message);
+            }
+          } else if (refetchError) {
+            console.error(`[EXECUTOR]      ❌ Error re-fetching contact for immediate processing:`, refetchError);
+          }
+        }
       }
     } else {
       // No branch steps found - skip the condition and go to next main-flow step
