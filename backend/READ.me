@@ -1,0 +1,16 @@
+# Backend Architecture & Deployment Notes
+
+**⚠️ CRITICAL WARNING FOR AI AGENTS & DEVELOPERS ⚠️**
+
+## The "Monolith" Structure (Current State)
+As of February 2026, this backend runs primarily as a **monolith inside `server.js`**.
+
+While there is a `routes/` folder containing files like `campaigns.js`, `contacts.js`, etc., **MOST OF THESE FILES ARE NOT USED IN PRODUCTION.**
+
+### How it works currently:
+* **Entry Point:** `server.js`
+* **Logic:** The `server.js` file contains hardcoded route definitions for Campaigns, Contacts, Auth, etc., directly inside the main file.
+* **Shadowing:** If you edit `routes/campaigns.js`, **IT WILL HAVE NO EFFECT** because `server.js` defines those same routes inline and ignores the external file.
+
+
+---
