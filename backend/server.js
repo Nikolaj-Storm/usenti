@@ -51,7 +51,7 @@ app.use(express.json());
 
 // Supabase Client
 // Supabase Client
-const { supabase, supabaseAdmin } = require('./config/supabase');
+const supabase = require('./config/supabase');
 
 // Dedicated admin client for tracking endpoints (no auth state pollution from authenticateUser)
 // This ensures the service_role key always bypasses RLS without session interference
