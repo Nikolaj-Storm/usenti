@@ -1,5 +1,3 @@
-# Mr. Snowman 🎯
-
 # Mr. Snowman 2.0 - Technical Specifications
 
 ## 1. System Architecture

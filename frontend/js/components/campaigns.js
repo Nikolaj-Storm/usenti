@@ -109,7 +109,72 @@ const useCanvasState = (initialZoom = 1, initialPan = { x: 0, y: 0 }) => {
     setZoom(newZoom);
   };
 
-  return { zoom, setZoom, pan, setPan, isPanning, setIsPanning, tool, setTool, zoomIn, zoomOut, resetView, fitView };
+  const ensureNodeVisible = (node, containerWidth, containerHeight) => {
+    // Check if node is out of view
+    // Viewport bounds in canvas coordinates
+    const viewX = -pan.x / zoom;
+    const viewY = -pan.y / zoom;
+    const viewW = containerWidth / zoom;
+    const viewH = containerHeight / zoom;
+
+    const nodeRight = node.x + 220; // Node width
+    const nodeBottom = node.y + 120; // Node height
+
+    const padding = 50;
+
+    let newZoom = zoom;
+    let newPanX = pan.x;
+    let newPanY = pan.y;
+    let changed = false;
+
+    // Check bounds (with padding)
+    if (nodeRight > viewX + viewW - padding || nodeBottom > viewY + viewH - padding ||
+      node.x < viewX + padding || node.y < viewY + padding) {
+
+      // Calculate required scale to fit
+      // Simple approach: Zoom out until it fits, if it's just off screen
+      // Or just pan if zoom is already low?
+      // User asked to "zoom out a little"
+
+      // Let's try zooming out by 10% steps until it fits or we hit min zoom
+      // But we also need to center/pan effectively. 
+      // Actually, fitting the view to include the new node and the start node 
+      // might be the most robust "zoom out to see context" approach.
+      // But let's try a softer approach first:
+
+      const targetZoom = Math.max(zoom * 0.9, 0.25);
+
+      // If we zoom out, we want to keep the center or top-left relatively stable or center the new content?
+      // Let's use fitView logic but scoped to the new extent?
+      // No, let's just use the `fitView` logic but make sure we include the new node. 
+      // But we can't easily access *all* nodes here inside the hook without passing them.
+      // So checking bounds and stepping down zoom is valid.
+
+      if (nodeBottom > viewY + viewH - padding) {
+        newZoom = Math.max(zoom * 0.85, 0.25);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      setZoom(newZoom);
+      // Adjust pan to keep top aligned? or center?
+      // If we zoom out, the view expands around 0,0 usually unless we offset.
+      // The pan logic in wheel handler: mouse relative.
+      // Here we might just want to pan to show the bottom if it's still cut off?
+      // Let's re-calculate viewH with new zoom
+      const newViewH = containerHeight / newZoom;
+      // If still cut off, pan up
+      if (nodeBottom > -pan.y / newZoom + newViewH - padding) {
+        newPanY = -(nodeBottom - newViewH + padding) * newZoom;
+        setPan({ x: newPanX, y: newPanY });
+      } else {
+        setPan({ x: newPanX, y: newPanY }); // Just zoom update
+      }
+    }
+  };
+
+  return { zoom, setZoom, pan, setPan, isPanning, setIsPanning, tool, setTool, zoomIn, zoomOut, resetView, fitView, ensureNodeVisible };
 };
 
 // --- 4. Main Component ---
@@ -293,11 +358,15 @@ const CampaignBuilder = () => {
           y: lastBranchStep ? lastBranchStep.y + 160 : (parentStep ? parentStep.y + 180 : 280)
         };
       } else {
-        // Main flow positioning
+        // Main flow positioning logic - align with START_NODE (x=300)
         const mainSteps = steps.filter(s => !s.parent_step_id);
+        const lastMainStep = mainSteps.length > 0
+          ? mainSteps.sort((a, b) => a.step_order - b.step_order)[mainSteps.length - 1]
+          : null;
+
         newPos = {
-          x: Math.round(400 + (Math.random() - 0.5) * 100),
-          y: Math.round(100 + mainSteps.length * 180)
+          x: 300, // Always align with Start node
+          y: lastMainStep ? lastMainStep.y + 180 : 180 // Below start node (y=30) or last step
         };
       }
     }
@@ -327,6 +396,8 @@ const CampaignBuilder = () => {
       y: newPos.y
     };
 
+    let addedStep = null;
+
     if (!isDemo && selectedCampaign) {
       // Create on server FIRST, then add to canvas with real UUID
       try {
@@ -337,6 +408,7 @@ const CampaignBuilder = () => {
         setSteps(prev => [...prev, realStep]);
         setSelectedNodes([realStep.id]);
         setActiveStep(realStep.id);
+        addedStep = realStep;
       } catch (e) {
         console.error('Failed to create step:', e);
       }
@@ -346,6 +418,15 @@ const CampaignBuilder = () => {
       setSteps([...steps, cleanStep]);
       setSelectedNodes([cleanStep.id]);
       setActiveStep(cleanStep.id);
+      addedStep = cleanStep;
+    }
+
+    // Auto-zoom if needed
+    if (addedStep && containerRef.current) {
+      // Short timeout to allow state update? Or just calculate directly?
+      // We have the new step position in `addedStep`
+      const rect = containerRef.current.getBoundingClientRect();
+      canvasState.ensureNodeVisible(addedStep, rect.width, rect.height);
     }
   };
 

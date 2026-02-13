@@ -1962,6 +1962,45 @@ app.get('/api/campaigns/:id/stats', authenticateUser, async (req, res) => {
   }
 });
 
+// DEBUG ENDPOINT - Inspect email events to check for false positive opens (scanners)
+app.get('/api/debug/events', authenticateUser, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('email_events')
+      .select('id, event_type, contact_id, created_at, event_data')
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DEBUG ENDPOINT - Inspect campaign step structure to check for swapped branches
+app.get('/api/debug/campaigns/:id/steps', authenticateUser, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('campaign_steps')
+      .select('id, step_type, step_order, branch, parent_id, subject')
+      .eq('campaign_id', req.params.id)
+      .order('step_order');
+
+    if (error) throw error;
+
+    // Sort hierarchy for readability
+    const mainSteps = data.filter(s => !s.parent_id);
+    const result = {
+      campaign_id: req.params.id,
+      steps: data
+    };
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ============================================================================
 // TRACKING ROUTES
