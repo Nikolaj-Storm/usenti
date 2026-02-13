@@ -1,5 +1,0 @@
--- Migration 010: DEPRECATED
--- The branch_context column and condition branching feature have been removed.
--- This migration is kept for historical reference only.
--- If this column exists, it can be safely dropped:
---   ALTER TABLE public.campaign_contacts DROP COLUMN IF EXISTS branch_context;
