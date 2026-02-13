@@ -127,6 +127,7 @@ const CampaignBuilder = () => {
   const [stats, setStats] = React.useState(null);
   const [loadingStats, setLoadingStats] = React.useState(false);
   const [showEditor, setShowEditor] = React.useState(true);
+  const [showStartModal, setShowStartModal] = React.useState(false);
 
   const canvasState = useCanvasState();
   const containerRef = React.useRef(null);
@@ -247,7 +248,11 @@ const CampaignBuilder = () => {
 
   const handleStartCampaign = async () => {
     if (isDemo || !selectedCampaign) return;
-    if (!confirm('Start this campaign? Emails will be sent to all contacts in the selected list.')) return;
+    setShowStartModal(true);
+  };
+
+  const confirmStartCampaign = async () => {
+    setShowStartModal(false);
     try {
       await api.startCampaign(selectedCampaign.id);
       const updatedCampaign = { ...selectedCampaign, status: 'running' };
@@ -564,7 +569,12 @@ const CampaignBuilder = () => {
       )
     ),
 
-    showNewCampaignModal && h(NewCampaignModal, { onClose: () => setShowNewCampaignModal(false), onCreate: handleCreateCampaign })
+    showNewCampaignModal && h(NewCampaignModal, { onClose: () => setShowNewCampaignModal(false), onCreate: handleCreateCampaign }),
+    showStartModal && h(CampaignStartModal, {
+      campaignName: selectedCampaign?.name || 'Campaign',
+      onClose: () => setShowStartModal(false),
+      onConfirm: confirmStartCampaign
+    })
   );
 };
 
@@ -1118,9 +1128,9 @@ const CanvasNode = ({ step, steps, isSelected, isActive, isDragging, onMouseDown
     // For condition blocks: two output ports (left and right)
     isCondition
       ? h(React.Fragment, null,
-          h('div', { className: "node-port output", style: { left: '25%', transform: 'translateX(-50%)' } }),
-          h('div', { className: "node-port output", style: { left: '75%', transform: 'translateX(-50%)' } })
-        )
+        h('div', { className: "node-port output", style: { left: '25%', transform: 'translateX(-50%)' } }),
+        h('div', { className: "node-port output", style: { left: '75%', transform: 'translateX(-50%)' } })
+      )
       : h('div', { className: "node-port output" })
   );
 };
@@ -1159,46 +1169,46 @@ const BranchAddButtons = ({ x, y, label, conditionStepId, branchType, onAddStep 
       }, label),
       !showMenu
         ? h('button', {
-            onClick: (e) => { e.stopPropagation(); setShowMenu(true); },
+          onClick: (e) => { e.stopPropagation(); setShowMenu(true); },
+          style: {
+            display: 'flex', alignItems: 'center', gap: '4px',
+            padding: '4px 12px', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)',
+            background: 'rgba(0,0,0,0.03)', cursor: 'pointer', fontSize: '11px', fontWeight: '500', color: '#374151'
+          }
+        },
+          h(Icons.Plus, { size: 12 }),
+          'Add Step'
+        )
+        : h('div', { style: { display: 'flex', gap: '4px' } },
+          addOpts.map(opt =>
+            h('button', {
+              key: opt.type,
+              onClick: (e) => {
+                e.stopPropagation();
+                onAddStep(opt.type, null, conditionStepId, branchType);
+                setShowMenu(false);
+              },
+              style: {
+                width: '32px', height: '32px', borderRadius: '8px', border: 'none',
+                background: opt.color, cursor: 'pointer', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', transition: 'transform 0.1s'
+              },
+              title: opt.label
+            },
+              h(opt.icon, { size: 14, color: 'white' })
+            )
+          ),
+          h('button', {
+            onClick: (e) => { e.stopPropagation(); setShowMenu(false); },
             style: {
-              display: 'flex', alignItems: 'center', gap: '4px',
-              padding: '4px 12px', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)',
-              background: 'rgba(0,0,0,0.03)', cursor: 'pointer', fontSize: '11px', fontWeight: '500', color: '#374151'
+              width: '32px', height: '32px', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)',
+              background: 'white', cursor: 'pointer', display: 'flex',
+              alignItems: 'center', justifyContent: 'center'
             }
           },
-            h(Icons.Plus, { size: 12 }),
-            'Add Step'
+            h(Icons.X, { size: 12, color: '#9ca3af' })
           )
-        : h('div', { style: { display: 'flex', gap: '4px' } },
-            addOpts.map(opt =>
-              h('button', {
-                key: opt.type,
-                onClick: (e) => {
-                  e.stopPropagation();
-                  onAddStep(opt.type, null, conditionStepId, branchType);
-                  setShowMenu(false);
-                },
-                style: {
-                  width: '32px', height: '32px', borderRadius: '8px', border: 'none',
-                  background: opt.color, cursor: 'pointer', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', transition: 'transform 0.1s'
-                },
-                title: opt.label
-              },
-                h(opt.icon, { size: 14, color: 'white' })
-              )
-            ),
-            h('button', {
-              onClick: (e) => { e.stopPropagation(); setShowMenu(false); },
-              style: {
-                width: '32px', height: '32px', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)',
-                background: 'white', cursor: 'pointer', display: 'flex',
-                alignItems: 'center', justifyContent: 'center'
-              }
-            },
-              h(Icons.X, { size: 12, color: '#9ca3af' })
-            )
-          )
+        )
     )
   );
 };
@@ -1443,13 +1453,63 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
 
 // --- 9. New Campaign Modal ---
 
+// --- Campaign Start Confirmation Modal ---
+
+const CampaignStartModal = ({ campaignName, onClose, onConfirm }) => {
+  const [addressConfirmed, setAddressConfirmed] = React.useState(false);
+
+  return h('div', {
+    className: "fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in",
+    onClick: onClose
+  },
+    h('div', {
+      className: "glass-modal rounded-2xl p-6 max-w-md w-full mx-4",
+      onClick: e => e.stopPropagation()
+    },
+      h('div', { className: "flex items-center justify-between mb-4" },
+        h('h3', { className: "font-serif text-2xl text-white" }, "Start Campaign"),
+        h('button', { onClick: onClose, className: "p-2 hover:bg-white/10 rounded-xl text-white/60 hover:text-white transition-colors" }, h(Icons.X, { size: 20 }))
+      ),
+      h('p', { className: "text-sm text-white/70 mb-4" },
+        `You are about to start "${campaignName}". Emails will be sent to all contacts in the selected list.`
+      ),
+      h('label', { className: "flex items-start gap-3 p-4 glass-card rounded-xl border border-amber-500/30 bg-amber-500/5 cursor-pointer mb-4" },
+        h('input', {
+          type: "checkbox",
+          checked: addressConfirmed,
+          onChange: e => setAddressConfirmed(e.target.checked),
+          className: "w-4 h-4 mt-0.5 rounded bg-transparent border-white/30 flex-shrink-0"
+        }),
+        h('div', null,
+          h('span', { className: "block text-sm font-medium text-white" }, "Physical Address Certification"),
+          h('span', { className: "text-xs text-white/60 leading-relaxed" },
+            "I certify that all emails sent through this campaign will include a valid physical postal address as required by the CAN-SPAM Act (15 U.S.C. § 7704)."
+          )
+        )
+      ),
+      h('div', { className: "flex gap-3" },
+        h('button', {
+          onClick: onClose,
+          className: "flex-1 px-4 py-3 glass-card text-white hover:bg-white/15 rounded-full transition-colors"
+        }, "Cancel"),
+        h('button', {
+          onClick: onConfirm,
+          disabled: !addressConfirmed,
+          className: "flex-1 px-4 py-3 bg-green-500/20 text-green-300 border border-green-500/30 rounded-full hover:bg-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
+        }, h(Icons.Play, { size: 16 }), "Start Campaign")
+      )
+    )
+  );
+};
+
 const NewCampaignModal = ({ onClose, onCreate }) => {
   const [formData, setFormData] = React.useState({
     name: '',
     email_account_ids: [],
     contact_list_id: '',
     send_schedule: { days: ['mon', 'tue', 'wed', 'thu', 'fri'], start_hour: 9, end_hour: 17 },
-    send_immediately: false
+    send_immediately: false,
+    track_opens: false
   });
   const [emailAccounts, setEmailAccounts] = React.useState([]);
   const [contactLists, setContactLists] = React.useState([]);
@@ -1553,6 +1613,26 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
               h('span', { className: "text-xs text-white/50" }, "Emails will send 24/7")
             )
           ),
+          h('label', { className: `flex items-center gap-3 p-3 rounded-xl border cursor-pointer ${formData.track_opens ? 'bg-amber-500/10 border-amber-500/30' : 'bg-white/5 border-white/10'}` },
+            h('input', {
+              type: "checkbox",
+              checked: formData.track_opens,
+              onChange: e => setFormData({ ...formData, track_opens: e.target.checked }),
+              className: "w-4 h-4 rounded bg-transparent border-white/30"
+            }),
+            h('div', null,
+              h('span', { className: "block text-sm font-medium text-white" }, "Track Email Opens"),
+              h('span', { className: "text-xs text-white/50" }, "Adds a tracking pixel to detect opens")
+            )
+          ),
+          formData.track_opens && h('div', { className: "p-3 rounded-xl border border-amber-500/30 bg-amber-500/5" },
+            h('div', { className: "flex items-start gap-2" },
+              h(Icons.AlertCircle, { size: 14, className: "text-amber-400 mt-0.5 flex-shrink-0" }),
+              h('span', { className: "text-xs text-amber-200/80 leading-relaxed" },
+                "Open tracking uses a hidden pixel that may conflict with the EU ePrivacy Directive (2002/58/EC) and GDPR. Only enable if your recipients have consented to tracking."
+              )
+            )
+          ),
           h('button', {
             type: "button",
             onClick: () => setShowAdvanced(!showAdvanced),
@@ -1571,8 +1651,8 @@ const NewCampaignModal = ({ onClose, onCreate }) => {
                     type: "button",
                     onClick: () => toggleDay(day.key),
                     className: `px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${formData.send_schedule.days.includes(day.key)
-                        ? 'bg-cream-100 text-rust-900'
-                        : 'bg-white/10 border border-white/20 text-white/60 hover:border-white/40'
+                      ? 'bg-cream-100 text-rust-900'
+                      : 'bg-white/10 border border-white/20 text-white/60 hover:border-white/40'
                       }`
                   }, day.label)
                 )

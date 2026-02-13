@@ -31,14 +31,14 @@ class ImapMonitor {
     if (!host) return false;
     const lowerHost = host.toLowerCase();
     return lowerHost.includes('zoho') ||
-           ZOHO_IMAP_HOSTS.some(zh => lowerHost.includes(zh.replace('imap.', '').replace('imappro.', '')));
+      ZOHO_IMAP_HOSTS.some(zh => lowerHost.includes(zh.replace('imap.', '').replace('imappro.', '')));
   }
 
   // Check if an account is a Zoho account
   isZohoAccount(account) {
     return this.isZohoHost(account.imap_host) ||
-           account.email_address?.toLowerCase().includes('@zoho') ||
-           account.account_type === 'zoho';
+      account.email_address?.toLowerCase().includes('@zoho') ||
+      account.account_type === 'zoho';
   }
 
   // Resolve the correct IMAP host for a Zoho account (with regional fallback)
@@ -843,8 +843,8 @@ class ImapMonitor {
         from_address: from.address?.toLowerCase(),
         subject: message.subject || '(No Subject)',
         snippet: snippetWithEllipsis,
-        body_html: message.html,
-        body_text: message.text,
+        // body_html and body_text intentionally omitted for GDPR data minimization.
+        // Full email content is fetched on-demand via IMAP (fetchEmailContent).
         received_at: message.date || new Date().toISOString()
       }, {
         onConflict: 'email_account_id, message_id'

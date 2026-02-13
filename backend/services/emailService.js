@@ -175,6 +175,27 @@ async function sendEmail({
     console.log(`[EMAIL-SERVICE]    Added click tracking to links`);
   }
 
+  // Generate unsubscribe link for campaign emails
+  let unsubscribeHeaders = null;
+  if (campaignId && contactId) {
+    const unsubToken = crypto.randomBytes(16).toString('hex');
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+    const unsubscribeUrl = `${backendUrl}/api/unsubscribe/${campaignId}/${contactId}/${unsubToken}`;
+
+    // RFC 8058 List-Unsubscribe headers
+    unsubscribeHeaders = {
+      'List-Unsubscribe': `<${unsubscribeUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+    };
+
+    // Append visible unsubscribe footer if not already present
+    if (!finalBody.toLowerCase().includes('unsubscribe')) {
+      finalBody += `<div style="margin-top:20px; padding-top:10px; border-top:1px solid #eee; text-align:center; font-size:11px; color:#999;"><a href="${unsubscribeUrl}" style="color:#999;">Unsubscribe</a> from future emails</div>`;
+      console.log(`[EMAIL-SERVICE]    Added unsubscribe footer`);
+    }
+    console.log(`[EMAIL-SERVICE]    Added List-Unsubscribe headers`);
+  }
+
   let result;
 
   // Route to appropriate service based on account type
@@ -206,7 +227,8 @@ async function sendEmail({
       to,
       subject,
       body: finalBody,
-      attachments
+      attachments,
+      unsubscribeHeaders
     });
   }
 
@@ -235,7 +257,7 @@ async function sendEmail({
  * @param {Object} params - SMTP send parameters
  * @returns {Object} Result with messageId
  */
-async function sendViaSMTP({ account, to, subject, body, attachments = [] }) {
+async function sendViaSMTP({ account, to, subject, body, attachments = [], unsubscribeHeaders = null }) {
   // Parse port as integer (stored as string in database)
   const smtpPort = parseInt(account.smtp_port, 10) || 587;
   const isSecure = smtpPort === 465;
@@ -311,6 +333,14 @@ async function sendViaSMTP({ account, to, subject, body, attachments = [] }) {
       filename: att.filename || att.originalname,
       content: att.buffer || att.content
     }));
+  }
+
+  // Add unsubscribe headers if provided
+  if (unsubscribeHeaders) {
+    mailOptions.headers = {
+      ...mailOptions.headers,
+      ...unsubscribeHeaders
+    };
   }
 
   // Send the email

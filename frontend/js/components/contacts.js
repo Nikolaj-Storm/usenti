@@ -532,6 +532,7 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
   });
   const [dragActive, setDragActive] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
+  const [consentConfirmed, setConsentConfirmed] = React.useState(false);
   
   const fileInputRef = React.useRef(null);
 
@@ -774,6 +775,20 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
             )
           )
         ),
+        h('label', { className: "flex items-start gap-3 p-4 glass-card rounded-xl border border-amber-500/30 bg-amber-500/5 cursor-pointer" },
+          h('input', {
+            type: "checkbox",
+            checked: consentConfirmed,
+            onChange: e => setConsentConfirmed(e.target.checked),
+            className: "w-4 h-4 mt-0.5 rounded bg-transparent border-white/30 flex-shrink-0"
+          }),
+          h('div', null,
+            h('span', { className: "block text-sm font-medium text-white" }, 'Consent Confirmation'),
+            h('span', { className: "text-xs text-white/60 leading-relaxed" },
+              'I confirm that all contacts in this import have given explicit, verifiable consent to receive emails (GDPR Art. 6, CASL s.6). I can provide proof of consent upon request.'
+            )
+          )
+        ),
         h('div', { className: "flex gap-3" },
           h('button', {
             onClick: () => setStep('upload'),
@@ -781,7 +796,7 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
           }, 'Back'),
           h('button', {
             onClick: handleImport,
-            disabled: !mapping.email,
+            disabled: !mapping.email || !consentConfirmed,
             className: "flex-1 px-4 py-3 bg-cream-100 text-rust-900 rounded-full hover:bg-cream-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
           }, `Import ${parsedData.length} Contacts`)
         )

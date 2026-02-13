@@ -183,9 +183,9 @@ class CampaignExecutor {
       // =======================================================================
       const { data: pending, error: claimError } = await supabase
         .from('campaign_contacts')
-        .update({ 
+        .update({
           status: 'processing',
-          updated_at: now 
+          updated_at: now
         })
         .in('id', candidateIds)
         .eq('status', 'in_progress') // Optimistic locking
@@ -254,7 +254,7 @@ class CampaignExecutor {
         } catch (err) {
           console.error(`[EXECUTOR] ❌ Error processing contact ${item.id}:`, err.message);
           console.error('[EXECUTOR] Error stack:', err.stack);
-          
+
           // Emergency cleanup: if processing threw an unexpected error, mark as failed
           // so it doesn't get stuck in 'processing' forever
           try {
@@ -412,7 +412,7 @@ class CampaignExecutor {
         body: personalizedBody,
         campaignId: campaign.id,
         contactId: contact.id,
-        trackOpens: true,
+        trackOpens: campaign.track_opens === true,
         trackClicks: true
       });
 
@@ -474,8 +474,8 @@ class CampaignExecutor {
 
     // Calculate total milliseconds
     const totalMs = (waitDays * 24 * 60 * 60 * 1000) +
-                   (waitHours * 60 * 60 * 1000) +
-                   (waitMinutes * 60 * 1000);
+      (waitHours * 60 * 60 * 1000) +
+      (waitMinutes * 60 * 1000);
 
     // If all values are 0, use a minimal delay (1 minute) instead of 1 hour
     // This prevents unexpected long delays when values fail to save
@@ -781,7 +781,7 @@ class CampaignExecutor {
     // IMPORTANT: Set status back to 'in_progress' to release the lock
     await supabase
       .from('campaign_contacts')
-      .update({ 
+      .update({
         next_send_time: nextTime.toISOString(),
         status: 'in_progress'
       })

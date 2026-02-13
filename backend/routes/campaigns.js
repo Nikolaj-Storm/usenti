@@ -74,7 +74,8 @@ router.post('/', authenticateUser, async (req, res) => {
       email_account_ids,
       contact_list_id,
       send_schedule,
-      daily_limit
+      daily_limit,
+      track_opens
     } = req.body;
 
     // Determine which accounts to use
@@ -128,7 +129,8 @@ router.post('/', authenticateUser, async (req, res) => {
           start_hour: 9,
           end_hour: 17
         },
-        daily_limit: daily_limit || 500
+        daily_limit: daily_limit || 500,
+        track_opens: track_opens === true ? true : false
       })
       .select()
       .single();
@@ -206,19 +208,19 @@ router.put('/:id', authenticateUser, async (req, res) => {
       // Re-insert steps
       for (const step of steps) {
         const stepPayload = {
-            campaign_id: req.params.id,
-            step_type: step.step_type || step.type,
-            step_order: step.step_order || step.position,
-            subject: step.subject || null,
-            body: step.body || null,
-            wait_days: step.wait_days || 0,
-            wait_hours: step.wait_hours || 0,
-            wait_minutes: step.wait_minutes || 0,
-            condition_type: step.condition_type || null,
-            parent_id: step.parent_step_id || step.parent_id || null,
-            branch: step.branch || null,
-            position_x: step.position_x || step.x || 0,
-            position_y: step.position_y || step.y || 0
+          campaign_id: req.params.id,
+          step_type: step.step_type || step.type,
+          step_order: step.step_order || step.position,
+          subject: step.subject || null,
+          body: step.body || null,
+          wait_days: step.wait_days || 0,
+          wait_hours: step.wait_hours || 0,
+          wait_minutes: step.wait_minutes || 0,
+          condition_type: step.condition_type || null,
+          parent_id: step.parent_step_id || step.parent_id || null,
+          branch: step.branch || null,
+          position_x: step.position_x || step.x || 0,
+          position_y: step.position_y || step.y || 0
         };
 
         const { error: insertError } = await supabase
@@ -226,8 +228,8 @@ router.put('/:id', authenticateUser, async (req, res) => {
           .insert(stepPayload);
 
         if (insertError) {
-            console.error('[DB INSERT ERROR] Failed to insert step:', stepPayload.id, insertError);
-            throw insertError;
+          console.error('[DB INSERT ERROR] Failed to insert step:', stepPayload.id, insertError);
+          throw insertError;
         }
       }
       console.log(`[CAMPAIGN UPDATE] Successfully saved ${steps.length} steps.`);
@@ -244,9 +246,9 @@ router.put('/:id', authenticateUser, async (req, res) => {
         contact_lists(id, name, total_contacts)
       `)
       .single();
-    
+
     if (error) throw error;
-    
+
     if (!data) {
       return res.status(404).json({ error: 'Campaign not found' });
     }
@@ -522,7 +524,7 @@ router.post('/:id/steps', authenticateUser, async (req, res) => {
 router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
   try {
     console.log(`[UPDATE STEP] Updating step ${req.params.stepId}`);
-    
+
     // 1. Verify campaign ownership
     const { data: campaigns } = await supabase
       .from('campaigns')
@@ -559,8 +561,8 @@ router.put('/:campaignId/steps/:stepId', authenticateUser, async (req, res) => {
       .eq('campaign_id', req.params.campaignId);
 
     if (updateError) {
-        console.error('[UPDATE STEP] DB Error:', updateError);
-        throw updateError;
+      console.error('[UPDATE STEP] DB Error:', updateError);
+      throw updateError;
     }
 
     // 3. Fetch the updated record explicitly for the response
@@ -603,7 +605,7 @@ router.delete('/:campaignId/steps/:stepId', authenticateUser, async (req, res) =
       .delete()
       .eq('id', req.params.stepId)
       .eq('campaign_id', req.params.campaignId);
-    
+
     if (error) throw error;
     res.json({ success: true });
   } catch (error) {
@@ -674,17 +676,17 @@ router.post('/:id/start', authenticateUser, async (req, res) => {
 
     const { error: updateError } = await supabase
       .from('campaigns')
-      .update({ 
-        status: 'running', 
-        started_at: new Date().toISOString() 
+      .update({
+        status: 'running',
+        started_at: new Date().toISOString()
       })
       .eq('id', req.params.id);
 
     if (updateError) throw updateError;
 
-    res.json({ 
-      success: true, 
-      message: `Campaign started with ${contacts.length} contacts` 
+    res.json({
+      success: true,
+      message: `Campaign started with ${contacts.length} contacts`
     });
   } catch (error) {
     console.error('Error starting campaign:', error);
@@ -700,7 +702,7 @@ router.post('/:id/pause', authenticateUser, async (req, res) => {
       .update({ status: 'paused' })
       .eq('id', req.params.id)
       .eq('user_id', req.user.id);
-    
+
     if (error) throw error;
     res.json({ success: true });
   } catch (error) {
