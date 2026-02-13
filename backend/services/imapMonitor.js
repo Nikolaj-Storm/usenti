@@ -34,6 +34,16 @@ class ImapMonitor {
       ZOHO_IMAP_HOSTS.some(zh => lowerHost.includes(zh.replace('imap.', '').replace('imappro.', '')));
   }
 
+  // Helper to normalize subject lines for comparison (strip Re:, Fwd:, etc.)
+  normalizeSubject(subject) {
+    if (!subject) return '';
+    return subject
+      .replace(/^(re|fwd|fw|aw|wg|undeliverable|auto):\s*/i, '') // Remove prefixes
+      .replace(/\s+/g, ' ') // Collapse whitespace
+      .trim()
+      .toLowerCase();
+  }
+
   // Check if an account is a Zoho account
   isZohoAccount(account) {
     return this.isZohoHost(account.imap_host) ||
@@ -879,11 +889,11 @@ class ImapMonitor {
       const references = message.references;
 
       if (!from) {
-        console.log('[IMAP] No sender address, skipping');
+        console.log('[IMAP] ⚠️  No sender address found in message, skipping');
         return;
       }
 
-      console.log(`[IMAP] Processing message from ${from}`);
+      console.log(`[IMAP] 📨 Processing message from: ${from} | Subject: "${message.subject}"`);
 
       // 1. SAVE TO INBOX (New - save all incoming emails)
       await this.saveToInbox(message, account);
@@ -909,10 +919,14 @@ class ImapMonitor {
         .eq('email', fromEmail)
         .single();
 
+
+
       if (!contact) {
-        console.log(`[IMAP] No contact found for ${fromEmail}`);
+        console.log(`[IMAP]    ❌ Contact not found for email: ${fromEmail}`);
         return;
       }
+
+      console.log(`[IMAP]    🔍 Found contact ID: ${contact.id} (List ID: ${contact.list_id})`);
 
       // Find the campaign that most recently sent an email to this contact.
       // This prevents cross-campaign contamination: a reply to Campaign A's email
@@ -926,12 +940,15 @@ class ImapMonitor {
         .limit(1)
         .single();
 
+
+
       if (!lastSentEvent) {
-        console.log(`[IMAP] No sent email found for ${fromEmail}, cannot attribute reply`);
+        console.log(`[IMAP]    ❌ No recent 'sent' event found for contact ${contact.id}. Cannot attribute reply.`);
         return;
       }
 
       const targetCampaignId = lastSentEvent.campaign_id;
+      console.log(`[IMAP]    🔍 Most recent campaign sent to this contact: ${targetCampaignId}`);
 
       // Verify this contact is still active in the campaign
       const { data: campaignContact } = await supabase
@@ -942,10 +959,18 @@ class ImapMonitor {
         .in('status', ['in_progress', 'completed'])
         .single();
 
+
+
       if (!campaignContact) {
-        console.log(`[IMAP] Contact ${fromEmail} not active in campaign ${targetCampaignId}`);
+        console.log(`[IMAP]    ❌ Contact ${contact.id} is NOT active in campaign ${targetCampaignId}. Ignoring reply.`);
         return;
       }
+
+      // Check subject match (optional but helpful for logging)
+      const incomingSubject = this.normalizeSubject(message.subject);
+      // We don't strictly reject on subject mismatch anymore, but we log it
+      console.log(`[IMAP]    ✅ QUERY MATCH: Found active campaign ${targetCampaignId}. Registering reply.`);
+      console.log(`[IMAP]       (Normalized Subject: "${incomingSubject}")`);
 
       // Log reply event only for the specific campaign the contact is replying to
       await supabase.from('email_events').insert({

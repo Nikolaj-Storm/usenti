@@ -508,12 +508,39 @@ class CampaignExecutor {
     console.log(`[EXECUTOR]      Step ID: ${step.id}`);
     console.log(`[EXECUTOR]      🔀 Evaluating condition: ${conditionType}`);
 
+    // Safety Warning: Check if we are evaluating too soon after the last email sent
+    if (conditionType === 'email_opened' || conditionType === 'email_clicked') {
+      const { data: lastSent } = await supabase
+        .from('email_events')
+        .select('created_at')
+        .eq('campaign_id', campaign.id)
+        .eq('contact_id', contact.id)
+        .eq('event_type', 'sent')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (lastSent) {
+        const sentTime = new Date(lastSent.created_at).getTime();
+        const timeSinceSend = Date.now() - sentTime;
+        const minutesSinceSend = timeSinceSend / 1000 / 60;
+
+        console.log(`[EXECUTOR]      🕒 Time since last email: ${minutesSinceSend.toFixed(1)} mins`);
+
+        if (minutesSinceSend < 5) {
+          console.log(`[EXECUTOR] ⚠️  WARNING: Checking condition < 5 mins after sending. False negatives likely! (Add a Wait step)`);
+        }
+      }
+    }
+
     let conditionMet = false;
 
     try {
       if (conditionType === 'email_opened') {
         // Check if contact has any 'open' events for this campaign
         // We use limit(1) because existence of ANY open event is sufficient
+        console.log(`[EXECUTOR]      🔍 Querying email_events for 'opened'... (Campaign: ${campaign.id}, Contact: ${contact.id})`);
+
         const { data: openEvents, error } = await supabase
           .from('email_events')
           .select('id, created_at')
@@ -530,7 +557,7 @@ class CampaignExecutor {
         if (conditionMet) {
           console.log(`[EXECUTOR]      ✅ Email OPENED (Found event id: ${openEvents[0].id} at ${openEvents[0].created_at})`);
         } else {
-          console.log(`[EXECUTOR]      ❌ Email NOT OPENED (0 open events found for contact ${contact.id})`);
+          console.log(`[EXECUTOR]      ❌ Email NOT OPENED (0 'opened' events found for contact ${contact.id})`);
         }
 
       } else if (conditionType === 'email_clicked') {
