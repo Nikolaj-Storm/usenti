@@ -50,7 +50,8 @@ app.use(cors({
 app.use(express.json());
 
 // Supabase Client
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+// Supabase Client
+const { supabase, supabaseAdmin } = require('./config/supabase');
 
 // Dedicated admin client for tracking endpoints (no auth state pollution from authenticateUser)
 // This ensures the service_role key always bypasses RLS without session interference
@@ -909,9 +910,10 @@ app.get('/api/inbox/:id/content', authenticateUser, async (req, res) => {
     const imapMonitor = require('./services/imapMonitor');
 
     try {
+      // Pass the full message object to allow fallback search if ID fails
       const content = await imapMonitor.fetchEmailContent(
         message.email_account_id,
-        message.message_id
+        message
       );
 
       // Optionally store the fetched content for future use
@@ -2008,8 +2010,17 @@ app.get('/api/debug/campaigns/:id/steps', authenticateUser, async (req, res) => 
 
 app.get('/api/track/open/:campaign_id/:contact_id/:token', async (req, res) => {
   try {
+    const userAgent = req.headers['user-agent'] || '';
     console.log(`[TRACKING] API open tracking hit: campaign=${req.params.campaign_id}, contact=${req.params.contact_id}`);
-    console.log(`[TRACKING] User-Agent: ${req.headers['user-agent']?.substring(0, 80)}`);
+    console.log(`[TRACKING] User-Agent: ${userAgent.substring(0, 80)}`);
+
+    // Bot detection - ignore known crawlers and image proxies
+    const botPattern = /bot|crawler|spider|crawling|proxy|preview|brevo|googleimageproxy|yahoo|slack|facebook|twitter|applebot|whatsapp|telegram|discord/i;
+    if (botPattern.test(userAgent)) {
+      console.log(`[TRACKING] 🤖 Ignored bot open: ${userAgent.substring(0, 50)}...`);
+      const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+      return res.type('image/gif').send(pixel);
+    }
 
     // Check if this contact already has an 'opened' event for this campaign
     // Use supabaseAdmin to guarantee service_role RLS bypass
@@ -2105,6 +2116,15 @@ app.get('/api/track/click/:campaign_id/:contact_id/:token', async (req, res) => 
 app.get('/img/e/:campaign_id/:contact_id/:token', async (req, res) => {
   try {
     const { campaign_id, contact_id } = req.params;
+    const userAgent = req.headers['user-agent'] || '';
+
+    // Bot detection - ignore known crawlers and image proxies
+    const botPattern = /bot|crawler|spider|crawling|proxy|preview|brevo|googleimageproxy|yahoo|slack|facebook|twitter|applebot|whatsapp|telegram|discord/i;
+    if (botPattern.test(userAgent)) {
+      console.log(`[TRACKING] 🤖 Ignored bot open (img/e): ${userAgent.substring(0, 50)}...`);
+      const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+      return res.type('image/gif').send(pixel);
+    }
 
     console.log(`[TRACKING] Open tracking pixel requested: campaign=${campaign_id}, contact=${contact_id}`);
 
