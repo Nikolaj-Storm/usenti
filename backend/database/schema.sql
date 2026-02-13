@@ -1,0 +1,377 @@
+-- ============================================================================
+-- Mr. Snowman 2.0 - Database Schema (Verified)
+-- ============================================================================
+-- Version: 2.1 (Synced with Current DB Dump + v2.0 Features)
+-- Updated: 2026-02-01
+--
+-- This is the COMPLETE schema for Mr. Snowman 2.0.
+-- It matches your current database CSV structure while preserving v2.0 upgrades.
+--
+-- EXECUTION INSTRUCTIONS:
+-- 1. Create a new Supabase project (or reset existing one)
+-- 2. Paste this ENTIRE file into the Supabase SQL Editor
+-- 3. Click RUN
+-- ============================================================================
+
+-- ============================================================================
+-- SECTION 1: USER PROFILES
+-- ============================================================================
+-- Extends Supabase auth.users with additional profile data
+
+CREATE TABLE IF NOT EXISTS user_profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT,
+  name TEXT,
+  company_name TEXT,
+  timezone TEXT DEFAULT 'UTC',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable Row Level Security
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+CREATE POLICY "Users can view own profile" ON user_profiles
+  FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can update own profile" ON user_profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "Users can insert own profile" ON user_profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- ============================================================================
+-- SECTION 2: EMAIL ACCOUNTS
+-- ============================================================================
+-- Connected email accounts (Verified against CSV: includes sender_name)
+
+CREATE TABLE IF NOT EXISTS email_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  email_address TEXT NOT NULL,
+  
+  -- Account configuration
+  account_type TEXT NOT NULL CHECK (account_type IN ('gmail', 'outlook', 'zoho', 'aws_workmail', 'stalwart', 'custom')),
+  provider_type TEXT DEFAULT 'smtp_direct' CHECK (provider_type IN ('gmail_oauth', 'microsoft_oauth', 'smtp_relay', 'smtp_direct')),
+
+  -- IMAP Configuration
+  imap_host TEXT NOT NULL,
+  imap_port INTEGER NOT NULL DEFAULT 993,
+  imap_username TEXT NOT NULL,
+  imap_password TEXT NOT NULL, -- Encrypted
+
+  -- SMTP Configuration
+  smtp_host TEXT NOT NULL,
+  smtp_port INTEGER NOT NULL DEFAULT 587,
+  smtp_username TEXT NOT NULL,
+  smtp_password TEXT NOT NULL, -- Encrypted
+
+  -- OAuth Tokens
+  oauth_refresh_token TEXT,
+  oauth_access_token TEXT,
+  oauth_token_expires_at TIMESTAMP WITH TIME ZONE,
+  oauth_scope TEXT,
+
+  -- Settings & Health
+  sender_name TEXT, -- Verified: Exists in CSV
+  daily_send_limit INTEGER DEFAULT 500,
+  is_active BOOLEAN DEFAULT true,
+  health_score INTEGER DEFAULT 100 CHECK (health_score >= 0 AND health_score <= 100),
+
+  -- Timestamps
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+
+  UNIQUE(user_id, email_address)
+);
+
+ALTER TABLE email_accounts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own email accounts" ON email_accounts
+  FOR ALL USING (auth.uid() = user_id);
+
+CREATE INDEX idx_email_accounts_user_id ON email_accounts(user_id);
+CREATE INDEX idx_email_accounts_is_active ON email_accounts(is_active);
+
+-- ============================================================================
+-- SECTION 3: CONTACT LISTS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS contact_lists (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  total_contacts INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE contact_lists ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own contact lists" ON contact_lists
+  FOR ALL USING (auth.uid() = user_id);
+
+CREATE INDEX idx_contact_lists_user_id ON contact_lists(user_id);
+
+-- ============================================================================
+-- SECTION 4: CONTACTS
+-- ============================================================================
+-- Verified against CSV: includes unsubscribed_at
+
+CREATE TABLE IF NOT EXISTS contacts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  list_id UUID NOT NULL REFERENCES contact_lists(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  first_name TEXT DEFAULT '',
+  last_name TEXT DEFAULT '',
+  company TEXT DEFAULT '',
+  custom_fields JSONB DEFAULT '{}',
+  
+  -- Status tracking
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'unsubscribed', 'bounced', 'invalid')),
+  unsubscribed_at TIMESTAMP WITH TIME ZONE, 
+  
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+
+  UNIQUE(list_id, email)
+);
+
+ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage contacts in own lists" ON contacts
+  FOR ALL USING (
+    list_id IN (
+      SELECT id FROM contact_lists WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE INDEX idx_contacts_list_id ON contacts(list_id);
+CREATE INDEX idx_contacts_email ON contacts(email);
+CREATE INDEX idx_contacts_status ON contacts(status);
+
+-- ============================================================================
+-- SECTION 5: CAMPAIGNS
+-- ============================================================================
+-- Verified against CSV: includes send_immediately
+
+CREATE TABLE IF NOT EXISTS campaigns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  email_account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+  contact_list_id UUID NOT NULL REFERENCES contact_lists(id) ON DELETE CASCADE,
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'running', 'paused', 'completed', 'failed')),
+
+  -- Scheduling
+  send_schedule JSONB DEFAULT '{"days": ["mon", "tue", "wed", "thu", "fri"], "start_hour": 9, "end_hour": 17}',
+  daily_limit INTEGER DEFAULT 500,
+  send_immediately BOOLEAN DEFAULT false, -- Verified: Exists in CSV
+
+  -- Timestamps
+  started_at TIMESTAMP WITH TIME ZONE,
+  completed_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own campaigns" ON campaigns
+  FOR ALL USING (auth.uid() = user_id);
+
+CREATE INDEX idx_campaigns_user_id ON campaigns(user_id);
+CREATE INDEX idx_campaigns_status ON campaigns(status);
+
+-- ============================================================================
+-- SECTION 6: CAMPAIGN STEPS
+-- ============================================================================
+-- UPGRADE NOTE: This table includes v2.0 features (hours/minutes/branches)
+-- which are NOT in your CSV, but are required for the new logic.
+
+CREATE TABLE IF NOT EXISTS campaign_steps (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  step_order INTEGER NOT NULL,
+  step_type TEXT NOT NULL CHECK (step_type IN ('email', 'wait', 'condition')),
+
+  -- Email content
+  subject TEXT,
+  body TEXT,
+
+  -- Wait step fields (supports days, hours, and minutes)
+  wait_days INTEGER DEFAULT 0,
+  wait_hours INTEGER DEFAULT 0,
+  wait_minutes INTEGER DEFAULT 0,
+
+  -- Condition fields
+  condition_type TEXT,  -- e.g., 'email_opened'
+  parent_step_id UUID REFERENCES campaign_steps(id) ON DELETE CASCADE,
+  branch TEXT,  -- 'yes' or 'no' (which branch this step belongs to)
+
+  -- Visual editor position
+  position_x INTEGER DEFAULT 0,
+  position_y INTEGER DEFAULT 0,
+
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE campaign_steps ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage steps in own campaigns" ON campaign_steps
+  FOR ALL USING (
+    campaign_id IN (
+      SELECT id FROM campaigns WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE INDEX idx_campaign_steps_campaign_id ON campaign_steps(campaign_id);
+CREATE INDEX idx_campaign_steps_order ON campaign_steps(campaign_id, step_order);
+
+-- ============================================================================
+-- SECTION 7: CAMPAIGN CONTACTS
+-- ============================================================================
+-- Verified against CSV: includes emails_sent, replied_at
+
+CREATE TABLE IF NOT EXISTS campaign_contacts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  current_step_id UUID REFERENCES campaign_steps(id) ON DELETE SET NULL,
+  
+  status TEXT DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed', 'failed', 'replied', 'unsubscribed')),
+  next_send_time TIMESTAMP WITH TIME ZONE,
+  
+  -- Stats
+  emails_sent INTEGER DEFAULT 0, -- Verified: Exists in CSV
+  replied_at TIMESTAMP WITH TIME ZONE, -- Verified: Exists in CSV
+
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+
+  UNIQUE(campaign_id, contact_id)
+);
+
+ALTER TABLE campaign_contacts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view campaign contacts for own campaigns" ON campaign_contacts
+  FOR ALL USING (
+    campaign_id IN (
+      SELECT id FROM campaigns WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE INDEX idx_campaign_contacts_campaign_id ON campaign_contacts(campaign_id);
+CREATE INDEX idx_campaign_contacts_status ON campaign_contacts(status);
+CREATE INDEX idx_campaign_contacts_next_send ON campaign_contacts(next_send_time);
+
+-- ============================================================================
+-- SECTION 8: EMAIL EVENTS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS email_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  campaign_step_id UUID REFERENCES campaign_steps(id) ON DELETE SET NULL,
+  event_type TEXT NOT NULL CHECK (event_type IN ('sent', 'opened', 'clicked', 'replied', 'bounced', 'failed', 'unsubscribed')),
+  event_data JSONB DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE email_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view events for own campaigns" ON email_events
+  FOR ALL USING (
+    campaign_id IN (
+      SELECT id FROM campaigns WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE INDEX idx_email_events_campaign_id ON email_events(campaign_id);
+CREATE INDEX idx_email_events_created_at ON email_events(created_at DESC);
+
+-- ============================================================================
+-- SECTION 9: INBOX MESSAGES
+-- ============================================================================
+-- Verified against CSV: includes snippet, from_name
+
+CREATE TABLE IF NOT EXISTS inbox_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email_account_id UUID NOT NULL REFERENCES email_accounts(id) ON DELETE CASCADE,
+  message_id TEXT,
+  from_name TEXT, -- Verified: Exists in CSV
+  from_address TEXT NOT NULL,
+  subject TEXT,
+  snippet TEXT, -- Verified: Exists in CSV
+  body_html TEXT,
+  body_text TEXT,
+  received_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+  is_read BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+
+  UNIQUE(email_account_id, message_id)
+);
+
+ALTER TABLE inbox_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own inbox messages" ON inbox_messages
+  FOR ALL USING (
+    email_account_id IN (
+      SELECT id FROM email_accounts WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE INDEX idx_inbox_account_created ON inbox_messages(email_account_id, received_at DESC);
+CREATE INDEX idx_inbox_is_read ON inbox_messages(is_read);
+
+-- ============================================================================
+-- SECTION 10: FUNCTIONS & TRIGGERS
+-- ============================================================================
+
+-- Function 1: Auto-create user profile
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.user_profiles (id, email, created_at, updated_at)
+  VALUES (NEW.id, NEW.email, NOW(), NOW())
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function 2: Auto-update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = timezone('utc'::text, now());
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger: Auth User Created
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Triggers: Updated At timestamps
+CREATE TRIGGER update_user_profiles_updated_at BEFORE UPDATE ON user_profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_email_accounts_updated_at BEFORE UPDATE ON email_accounts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_contact_lists_updated_at BEFORE UPDATE ON contact_lists FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_contacts_updated_at BEFORE UPDATE ON contacts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_campaigns_updated_at BEFORE UPDATE ON campaigns FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_campaign_steps_updated_at BEFORE UPDATE ON campaign_steps FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_campaign_contacts_updated_at BEFORE UPDATE ON campaign_contacts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_inbox_messages_updated_at BEFORE UPDATE ON inbox_messages FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
+-- DONE
+-- ============================================================================
