@@ -247,7 +247,12 @@ CREATE TABLE IF NOT EXISTS campaign_steps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   campaign_id UUID NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
   step_order INTEGER NOT NULL,
-  step_type TEXT NOT NULL CHECK (step_type IN ('email', 'wait')),
+  step_type TEXT NOT NULL CHECK (step_type IN ('email', 'wait', 'condition')),
+  
+  -- Hierarchy for branching (conditions)
+  parent_id UUID REFERENCES campaign_steps(id) ON DELETE CASCADE,
+  branch TEXT, -- 'yes' or 'no' (for steps following a condition)
+  condition_type TEXT, -- 'email_opened', 'email_clicked', 'email_replied'
 
   -- Email step fields
   subject TEXT,
@@ -263,9 +268,10 @@ CREATE TABLE IF NOT EXISTS campaign_steps (
   position_y INTEGER DEFAULT 0,
 
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-
-  UNIQUE(campaign_id, step_order)
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+  
+  -- Note: UNIQUE(campaign_id, step_order) removed to allow branching structures
+  -- where multiple steps might conceptually be at the "same depth" or processed in parallel branches.
 );
 
 ALTER TABLE campaign_steps ENABLE ROW LEVEL SECURITY;
@@ -279,6 +285,8 @@ CREATE POLICY "Users can manage steps in own campaigns" ON campaign_steps
 
 CREATE INDEX idx_campaign_steps_campaign_id ON campaign_steps(campaign_id);
 CREATE INDEX idx_campaign_steps_order ON campaign_steps(campaign_id, step_order);
+CREATE INDEX idx_campaign_steps_parent ON campaign_steps(parent_id);
+CREATE INDEX idx_campaign_steps_branch ON campaign_steps(parent_id, branch);
 
 -- ============================================================================
 -- SECTION 7: CAMPAIGN CONTACTS

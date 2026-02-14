@@ -83,7 +83,21 @@ const useCanvasState = (initialZoom = 1, initialPan = { x: 0, y: 0 }) => {
     // Always include the Start node in bounds calculation
     const allPoints = [{ x: START_NODE.x, y: START_NODE.y, w: START_NODE.width, h: START_NODE.height }];
     if (nodes && nodes.length > 0) {
-      nodes.forEach(n => allPoints.push({ x: n.x, y: n.y, w: 220, h: 120 }));
+      nodes.forEach(n => {
+        let w = 220;
+        let h = 120;
+        let x = n.x;
+        let y = n.y;
+
+        // For condition nodes, include the "potential" branch space
+        if (n.step_type === 'condition') {
+          // Expand left/right/down
+          x = n.x - 260; // Include left branch space
+          w = 220 + 520; // Original width + left offset + right offset
+          h = 120 + 400; // Height + branch depth
+        }
+        allPoints.push({ x, y, w, h });
+      });
     }
 
     const padding = 100;
@@ -460,28 +474,13 @@ const CampaignBuilder = () => {
       addedStep = cleanStep;
     }
 
-    // Auto-zoom if needed
+    // Auto-zoom to fit ALL nodes
     if (addedStep && containerRef.current) {
-      // Short timeout to allow state update? Or just calculate directly?
-      // We have the new step position in `addedStep`
       const rect = containerRef.current.getBoundingClientRect();
-
-      let customBounds = null;
-      if (addedStep.step_type === 'condition') {
-        // Yes branch is -260, No branch is +260
-        // Standard width 220
-        // So left-most is node.x - 260
-        // Right-most is node.x + 260 + 220
-        // Bottom is node.y + 160 + 120 (approx space for branches)
-        customBounds = {
-          minX: addedStep.x - 260,
-          maxX: addedStep.x + 480, // 260 + 220
-          minY: addedStep.y,
-          maxY: addedStep.y + 600 // More generous bottom padding to see branches
-        };
-      }
-
-      canvasState.ensureNodeVisible(addedStep, rect.width, rect.height, customBounds);
+      // Include the new step in the calculation
+      const allSteps = [...steps, addedStep];
+      // Small timeout to let state settle? Not strictly needed if we pass the list explicitly
+      canvasState.fitView(allSteps, rect.width, rect.height);
     }
   };
 

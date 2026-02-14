@@ -717,10 +717,16 @@ class ImapMonitor {
   }
 
   // Fetch a specific email's full content from IMAP (on-demand, not stored)
-  async fetchEmailContent(accountId, messageId) {
+  // Accepts accountId and either messageId (string) or message object (with metadata for fallback)
+  async fetchEmailContent(accountId, messageOrId) {
     return new Promise(async (resolve, reject) => {
       const requestId = `FETCH-${Date.now()}`;
-      console.log(`[${requestId}] Fetching full content for message ${messageId}...`);
+
+      // Determine if we have a simple ID or full message object
+      let messageId = typeof messageOrId === 'string' ? messageOrId : messageOrId.message_id;
+      const messageData = typeof messageOrId === 'object' ? messageOrId : null;
+
+      console.log(`[${requestId}] Fetching content for message ${messageId}...`);
 
       try {
         // Get account details
@@ -751,7 +757,6 @@ class ImapMonitor {
             console.error(`[${requestId}] ✗ Password decryption returned empty`);
             return reject(new Error('Password decryption failed'));
           }
-          console.log(`[${requestId}]   - Password: decrypted successfully`);
         } catch (decryptError) {
           console.error(`[${requestId}] ✗ Password decryption failed: ${decryptError.message}`);
           return reject(new Error(`Password decryption failed: ${decryptError.message}`));
@@ -780,14 +785,134 @@ class ImapMonitor {
               return reject(err);
             }
 
-            // Search for the message by Message-ID header
-            imap.search([['HEADER', 'MESSAGE-ID', messageId]], (err, results) => {
-              if (err || !results || results.length === 0) {
-                imap.end();
-                return reject(new Error('Message not found on server'));
+            // Strategy 1: Search by Message-ID (if valid)
+            const searchByMessageId = () => {
+              // Skip if messageId is a generated placeholder
+              if (!messageId || messageId.startsWith('sync-')) {
+                console.log(`[${requestId}] Message-ID is a placeholder, skipping ID search.`);
+                return searchFallback();
               }
 
-              const fetch = imap.fetch(results, { bodies: '' });
+              console.log(`[${requestId}] Attempting search by Message-ID: ${messageId}`);
+
+              // Try exact match first
+              imap.search([['HEADER', 'MESSAGE-ID', messageId]], (err, results) => {
+                if (results && results.length > 0) {
+                  console.log(`[${requestId}] ✓ Found message via ID`);
+                  return fetchMessage(results);
+                }
+
+                // If failed, try wrapping in brackets (some servers require it)
+                if (!messageId.startsWith('<') && !messageId.endsWith('>')) {
+                  const bracketId = `<${messageId}>`;
+                  console.log(`[${requestId}] Retrying with brackets: ${bracketId}`);
+                  imap.search([['HEADER', 'MESSAGE-ID', bracketId]], (err, results2) => {
+                    if (results2 && results2.length > 0) {
+                      console.log(`[${requestId}] ✓ Found message via ID (with brackets)`);
+                      return fetchMessage(results2);
+                    }
+                    console.log(`[${requestId}] Message-ID search failed.`);
+                    searchFallback();
+                  });
+                } else {
+                  console.log(`[${requestId}] Message-ID search failed.`);
+                  searchFallback();
+                }
+              });
+            };
+
+            // Strategy 2: Fallback Search by FROM + DATE WINDOW
+            const searchFallback = () => {
+              if (!messageData || !messageData.from_address || !messageData.received_at) {
+                console.error(`[${requestId}] Cannot use fallback search: missing message metadata.`);
+                imap.end();
+                return reject(new Error('Message not found (ID search failed, metadata missing for fallback)'));
+              }
+
+              console.log(`[${requestId}] Attempting fallback search by metadata...`);
+              console.log(`[${requestId}]   - From: ${messageData.from_address}`);
+
+              const date = new Date(messageData.received_at);
+              console.log(`[${requestId}]   - Received At: ${date.toISOString()}`);
+
+              // Construct a 3-day window to handle timezone differences
+              const since = new Date(date);
+              since.setDate(date.getDate() - 1);
+
+              const before = new Date(date);
+              before.setDate(date.getDate() + 2);
+
+              console.log(`[${requestId}]   - Search Window: ${since.toISOString().split('T')[0]} to ${before.toISOString().split('T')[0]}`);
+
+              // Search criteria: FROM address + DATE WINDOW
+              const criteria = [
+                ['FROM', messageData.from_address],
+                ['SINCE', since],
+                ['BEFORE', before]
+              ];
+
+              imap.search(criteria, (err, results) => {
+                if (err || !results || results.length === 0) {
+                  console.log(`[${requestId}] Fallback search yielded no results.`);
+                  imap.end();
+                  return reject(new Error('Message not found using fallback search (no matches in date window)'));
+                }
+
+                console.log(`[${requestId}] Fallback search found ${results.length} candidate(s). filtering...`);
+
+                // Fetch headers for candidates to find the best match (Subject)
+                const fetch = imap.fetch(results, { bodies: 'HEADER.FIELDS (SUBJECT DATE)' });
+
+                let bestMatch = null;
+                let candidatesChecked = 0;
+                // Store best candidate if no exact subject match found
+                let bestCandidate = results[results.length - 1]; // Default to latest
+
+                fetch.on('message', (msg, seqno) => {
+                  msg.on('body', (stream) => {
+                    let buffer = '';
+                    stream.on('data', (chunk) => { buffer += chunk.toString('utf8'); });
+                    stream.on('end', () => {
+                      const subjectMatch = buffer.match(/Subject: (.*)/i);
+                      const subject = subjectMatch ? subjectMatch[1].trim() : '';
+
+                      // Simple fuzzy match check
+                      const storedSubject = messageData.subject || '';
+
+                      // Normalize subjects for comparison (remove Re:, Fwd:, extra spaces)
+                      const cleanSubject = (s) => s.replace(/^(Re|Fwd):\s*/i, '').trim().toLowerCase();
+
+                      if (cleanSubject(subject).includes(cleanSubject(storedSubject)) ||
+                        cleanSubject(storedSubject).includes(cleanSubject(subject))) {
+                        bestMatch = seqno;
+                        console.log(`[${requestId}]   ✓ Subject matched: "${subject}"`);
+                      }
+
+                      candidatesChecked++;
+                      if (candidatesChecked === results.length) {
+                        if (bestMatch) {
+                          console.log(`[${requestId}] ✓ Matched message via subject filtering!`);
+                          fetchMessage([bestMatch]);
+                        } else {
+                          console.warn(`[${requestId}] ⚠️ No exact subject match found. Using latest candidate as best guess.`);
+                          fetchMessage([bestCandidate]);
+                        }
+                      }
+                    });
+                  });
+                });
+
+                fetch.once('error', (err) => {
+                  console.error(`[${requestId}] Error fetching headers for fallback:`, err);
+                  // Try blindly fetching the latest one
+                  fetchMessage([bestCandidate]);
+                });
+              });
+            };
+
+            // Helper to fetch content given UIDs/SeqNos
+            const fetchMessage = (results) => {
+              const fetch = imap.fetch(results[0], { bodies: '' });
               let emailContent = null;
 
               fetch.on('message', (msg) => {
@@ -808,7 +933,9 @@ class ImapMonitor {
                       attachments: (parsed.attachments || []).map(a => ({
                         filename: a.filename,
                         contentType: a.contentType,
-                        size: a.size
+                        size: a.size,
+                        // Don't send content buffer to frontend to keep payload light
+                        // Frontend can request attachment content separately if needed
                       }))
                     };
                   });
@@ -829,7 +956,10 @@ class ImapMonitor {
                 imap.end();
                 reject(err);
               });
-            });
+            };
+
+            // Start the process
+            searchByMessageId();
           });
         });
 
