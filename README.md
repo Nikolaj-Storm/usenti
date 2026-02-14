@@ -1,6 +1,6 @@
 # Mr. Snowman 2.0 - Technical Specifications
 
-## 1. System Architecture
+## 1. System Architecture ---
 
 The system follows a decoupled 3-tier architecture:
 
