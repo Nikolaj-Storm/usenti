@@ -34,30 +34,30 @@ const LandingPage = ({ onNavigate }) => {
           h('span', { className: "w-2 h-2 rounded-full bg-cream-100 animate-pulse" }),
           'v2.0 is now live'
         ),
-        h('div', { className: "flex flex-col sm:flex-row items-center justify-center gap-4 pt-6 pb-8" },
-          h('button', {
-            onClick: () => onNavigate('signup'),
-            className: "w-full sm:w-auto px-8 py-4 bg-cream-100 text-rust-900 text-lg rounded-full hover:bg-cream-200 transition-all hover:-translate-y-1 font-medium"
-          }, 'Get Started for Free')
-        ),
-        h('div', { className: "flex flex-col md:flex-row items-center gap-8 md:gap-12 py-8" },
+        h('div', { className: "max-w-3xl mx-auto flex flex-col md:flex-row items-center gap-8 md:gap-12 py-8" },
           // Text Container (Left on desktop/Left generally) - Wait, user said "to the left of this quote please place the image" -> So Image Left, Quote Right.
-          h('div', { className: "w-full md:w-1/2 order-1" },
+          h('div', { className: "w-full md:w-1/3 order-1" },
             h('img', {
               src: "visuals/steve.png",
               alt: "Steve Jobs",
               className: "w-full rounded-2xl shadow-2xl glass-card object-cover"
             })
           ),
-          h('div', { className: "w-full md:w-1/2 order-2 text-left space-y-6" },
-            h('p', { className: "font-serif text-2xl md:text-3xl leading-relaxed text-white italic" },
-              h('span', { className: "text-5xl md:text-7xl leading-none block mb-4" }, '"For years,'),
+          h('div', { className: "w-full md:w-2/3 order-2 text-left space-y-4" },
+            h('p', { className: "font-serif text-lg md:text-xl leading-relaxed text-white italic" },
+              h('span', { className: "text-3xl md:text-4xl leading-none block mb-2" }, '"For years,'),
               'Steve Jobs courted biographer Walter Isaacson to write the definitive story of his life… And he called me up. I hadn’t really felt that I was the right person at first… I turned Jobs down a number of times, but finally accepted when I found out Jobs might not have long to live."'
             ),
-            h('p', { className: "text-lg text-cream-100 font-medium" },
+            h('p', { className: "text-base text-cream-100 font-medium" },
               '- npr interview of Walter Isaacson'
             )
           )
+        ),
+        h('div', { className: "flex flex-col sm:flex-row items-center justify-center gap-4 pt-6 pb-8" },
+          h('button', {
+            onClick: () => onNavigate('signup'),
+            className: "w-full sm:w-auto px-8 py-4 bg-cream-100 text-rust-900 text-lg rounded-full hover:bg-cream-200 transition-all hover:-translate-y-1 font-medium"
+          }, 'Get Started for Free')
         ),
       )
     ),
@@ -68,7 +68,7 @@ const LandingPage = ({ onNavigate }) => {
             h('div', { className: "w-12 h-12 bg-white/10 rounded-xl border border-white/10 flex items-center justify-center text-cream-100 group-hover:scale-110 transition-transform duration-300" },
               h(Icons.Zap, { size: 24 })
             ),
-            h('h3', { className: "font-serif text-2xl text-white" }, 'Visual Flow Builder'),
+            h('h3', { className: "font-serif text-2xl text-white" }, 'Automate Campaigns'),
             h('p', { className: "text-white/60 leading-relaxed" },
               'Automate your perfect sales process. Nurture leads, handle objections, and book meetings on autopilot—24/7.'
             )
@@ -79,7 +79,7 @@ const LandingPage = ({ onNavigate }) => {
             ),
             h('h3', { className: "font-serif text-2xl text-white" }, 'Unified Neural Inbox'),
             h('p', { className: "text-white/60 leading-relaxed" },
-              'Clear your pipeline in minutes. Instantly spot interested leads among thousands of replies and never let a deal slip through the cracks.'
+              'look through all your email inboxes in one unified inbox - optimized for closers'
             )
           ),
           h('div', { className: "space-y-4 p-6 rounded-2xl glass-card hover:bg-white/10 transition-colors group" },
@@ -88,7 +88,7 @@ const LandingPage = ({ onNavigate }) => {
             ),
             h('h3', { className: "font-serif text-2xl text-white" }, 'Bulletproof Infrastructure'),
             h('p', { className: "text-white/60 leading-relaxed" },
-              'Scale revenue, not headaches. Send millions of emails with confidence, knowing your message lands in the primary inbox every single time.'
+              'Scale revenue, not headaches. Send tons of emails with confidence, knowing your message lands in the primary inbox every single time.'
             )
           ),
           h('div', { className: "space-y-4 p-6 rounded-2xl glass-card hover:bg-white/10 transition-colors group" },
