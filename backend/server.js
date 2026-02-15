@@ -1014,7 +1014,8 @@ app.get('/api/inbox/:id/attachment/:index', authenticateUser, async (req, res) =
       res.send(buffer);
     } catch (imapError) {
       console.error(`[${requestId}] IMAP fetch failed:`, imapError.message);
-      res.status(500).json({ error: 'Failed to fetch attachment from mail server' });
+      console.error(`[${requestId}] Stack:`, imapError.stack);
+      res.status(500).json({ error: `Failed to fetch attachment from mail server: ${imapError.message}` });
     }
   } catch (error) {
     console.error(`[${requestId}] Error:`, error);

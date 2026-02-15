@@ -774,16 +774,178 @@ class ImapMonitor {
     });
   }
 
+  // Fast-path: fetch email content using the existing monitoring connection (no new connection needed)
+  // Returns parsed email content or null if no pooled connection is available
+  fetchContentViaPool(accountId, messageId, messageData, includeAttachmentContent = false) {
+    return new Promise((resolve, reject) => {
+      const conn = this.connections.get(accountId);
+      if (!conn || !conn.imap || conn.imap.state !== 'authenticated') {
+        return resolve(null); // No pooled connection, caller should fall back
+      }
+
+      const imap = conn.imap;
+      const requestId = `POOL-FETCH-${Date.now()}`;
+      console.log(`[${requestId}] Fast-path: reusing monitoring connection for ${conn.account.email_address}`);
+
+      // The monitoring connection already has INBOX open, so we can search directly
+      const searchAndFetch = () => {
+        // Strategy 1: Search by Message-ID
+        if (messageId && !messageId.startsWith('sync-')) {
+          imap.search([['HEADER', 'MESSAGE-ID', messageId]], (err, results) => {
+            if (results && results.length > 0) {
+              console.log(`[${requestId}] ✓ Found via pooled connection (Message-ID)`);
+              return fetchMessage(results);
+            }
+            // Try with brackets
+            if (!messageId.startsWith('<') && !messageId.endsWith('>')) {
+              imap.search([['HEADER', 'MESSAGE-ID', `<${messageId}>`]], (err, results2) => {
+                if (results2 && results2.length > 0) {
+                  console.log(`[${requestId}] ✓ Found via pooled connection (Message-ID with brackets)`);
+                  return fetchMessage(results2);
+                }
+                searchFallback();
+              });
+            } else {
+              searchFallback();
+            }
+          });
+        } else {
+          searchFallback();
+        }
+      };
+
+      // Strategy 2: Fallback to FROM + DATE WINDOW
+      const searchFallback = () => {
+        if (!messageData || !messageData.from_address || !messageData.received_at) {
+          return resolve(null); // Can't search without metadata, fall back to new connection
+        }
+
+        const date = new Date(messageData.received_at);
+        const since = new Date(date);
+        since.setDate(date.getDate() - 1);
+        const before = new Date(date);
+        before.setDate(date.getDate() + 2);
+
+        const criteria = [
+          ['FROM', messageData.from_address],
+          ['SINCE', since],
+          ['BEFORE', before]
+        ];
+
+        imap.search(criteria, (err, results) => {
+          if (err || !results || results.length === 0) {
+            return resolve(null); // Fall back to new connection
+          }
+
+          // Quick path: if only 1 result, use it directly
+          if (results.length === 1) {
+            return fetchMessage(results);
+          }
+
+          // Multiple candidates: fetch headers to match by subject
+          const headerFetch = imap.fetch(results, { bodies: 'HEADER.FIELDS (SUBJECT DATE)' });
+          let bestMatch = null;
+          let candidatesChecked = 0;
+          const bestCandidate = results[results.length - 1];
+
+          headerFetch.on('message', (msg, seqno) => {
+            msg.on('body', (stream) => {
+              let buffer = '';
+              stream.on('data', (chunk) => { buffer += chunk.toString('utf8'); });
+              stream.on('end', () => {
+                const subjectMatch = buffer.match(/Subject: (.*)/i);
+                const subject = subjectMatch ? subjectMatch[1].trim() : '';
+                const storedSubject = messageData.subject || '';
+                const clean = (s) => s.replace(/^(Re|Fwd):\s*/i, '').trim().toLowerCase();
+
+                if (clean(subject).includes(clean(storedSubject)) ||
+                  clean(storedSubject).includes(clean(subject))) {
+                  bestMatch = seqno;
+                }
+
+                candidatesChecked++;
+                if (candidatesChecked === results.length) {
+                  fetchMessage([bestMatch || bestCandidate]);
+                }
+              });
+            });
+          });
+
+          headerFetch.once('error', () => fetchMessage([bestCandidate]));
+        });
+      };
+
+      // Fetch the full message content (DO NOT close the connection - it's shared)
+      const fetchMessage = (results) => {
+        const fetch = imap.fetch(results[0], { bodies: '' });
+        let emailContent = null;
+
+        fetch.on('message', (msg) => {
+          msg.on('body', (stream) => {
+            simpleParser(stream, (err, parsed) => {
+              if (err) {
+                console.error(`[${requestId}] Parse error:`, err);
+                return;
+              }
+              emailContent = {
+                from_name: parsed.from?.value?.[0]?.name || '',
+                from_address: parsed.from?.value?.[0]?.address || '',
+                to: parsed.to?.text || '',
+                subject: parsed.subject || '(No Subject)',
+                body_html: parsed.html || parsed.textAsHtml || '',
+                body_text: this.extractCleanerText(parsed),
+                received_at: parsed.date?.toISOString() || new Date().toISOString(),
+                attachments: (parsed.attachments || []).map(a => ({
+                  filename: a.filename,
+                  contentType: a.contentType,
+                  size: a.size,
+                  ...(includeAttachmentContent && a.content ? { content: a.content.toString('base64') } : {})
+                }))
+              };
+            });
+          });
+        });
+
+        fetch.once('end', () => {
+          // DO NOT call imap.end() — this is a shared monitoring connection
+          if (emailContent) {
+            console.log(`[${requestId}] ✅ Fast-path fetched content in <200ms`);
+            resolve(emailContent);
+          } else {
+            resolve(null); // Fall back to new connection
+          }
+        });
+
+        fetch.once('error', (err) => {
+          console.error(`[${requestId}] Pool fetch error:`, err.message);
+          resolve(null); // Fall back to new connection
+        });
+      };
+
+      searchAndFetch();
+    });
+  }
+
   // Fetch a specific email's full content from IMAP (on-demand, not stored)
   // Accepts accountId and either messageId (string) or message object (with metadata for fallback)
   // If includeAttachmentContent is true, attachment binary data is included (base64-encoded)
   async fetchEmailContent(accountId, messageOrId, includeAttachmentContent = false) {
+    // Determine if we have a simple ID or full message object
+    const messageId = typeof messageOrId === 'string' ? messageOrId : messageOrId.message_id;
+    const messageData = typeof messageOrId === 'object' ? messageOrId : null;
+
+    // Fast path: try reusing the existing monitoring connection first (~100-200ms)
+    try {
+      const poolResult = await this.fetchContentViaPool(accountId, messageId, messageData, includeAttachmentContent);
+      if (poolResult) return poolResult;
+      console.log(`[FETCH] Pool miss for account ${accountId}, falling back to new connection...`);
+    } catch (poolErr) {
+      console.log(`[FETCH] Pool error: ${poolErr.message}, falling back to new connection...`);
+    }
+
+    // Slow path: create a new IMAP connection (~1-3s)
     return new Promise(async (resolve, reject) => {
       const requestId = `FETCH-${Date.now()}`;
-
-      // Determine if we have a simple ID or full message object
-      let messageId = typeof messageOrId === 'string' ? messageOrId : messageOrId.message_id;
-      const messageData = typeof messageOrId === 'object' ? messageOrId : null;
 
       console.log(`[${requestId}] Fetching content for message ${messageId}...`);
 
