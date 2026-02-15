@@ -20,7 +20,7 @@ class ImapMonitor {
     this.connections = new Map();
     this.monitoring = false;
     // Storage limits
-    this.maxMessagesPerAccount = 500;
+    this.maxMessagesPerAccount = 200;
     this.maxAgeDays = 30;
     // Cache working Zoho hosts per account
     this.zohoHostCache = new Map();

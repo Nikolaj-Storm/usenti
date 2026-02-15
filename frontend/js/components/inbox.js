@@ -227,7 +227,7 @@ const Inbox = () => {
           h('p', { className: "text-white/60 mt-1" },
             messages.length === 0
               ? "No messages yet"
-              : `${messages.length} recent message${messages.length !== 1 ? 's' : ''} (max 500 per account, 30-day retention)`
+              : `${messages.length} recent message${messages.length !== 1 ? 's' : ''} (max 200 per account, 30-day retention)`
           )
         ),
         h('div', { className: "flex gap-3" },
