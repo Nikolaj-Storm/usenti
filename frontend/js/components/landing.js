@@ -88,7 +88,7 @@ const LandingPage = ({ onNavigate }) => {
             ),
             h('h3', { className: "font-serif text-2xl text-white" }, 'Bulletproof Infrastructure'),
             h('p', { className: "text-white/60 leading-relaxed" },
-              'Scale revenue, not headaches. Send tons of emails with confidence, knowing your message lands in the primary inbox every single time.'
+              'Scale revenue, not headaches. Send tons of emails with confidence, knowing you\'re using a system that will scale securely with your business.'
             )
           ),
           h('div', { className: "space-y-4 p-6 rounded-2xl glass-card hover:bg-white/10 transition-colors group" },
@@ -97,7 +97,7 @@ const LandingPage = ({ onNavigate }) => {
             ),
             h('h3', { className: "font-serif text-2xl text-white" }, 'Sovereign Infrastructure'),
             h('p', { className: "text-white/60 leading-relaxed" },
-              'Own your reputation. Hybrid sending architecture ensures your emails hit the primary inbox, not spam.'
+              'Own your reputation. Our hybrid sending architecture allows you to use your own accounts, protecting your domain reputation and avoiding spam.'
             )
           )
         )
