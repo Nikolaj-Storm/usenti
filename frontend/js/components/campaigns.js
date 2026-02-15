@@ -9,7 +9,8 @@ const sanitizeCampaign = (c) => {
     id: String(c.id || ''),
     name: String(c.name || 'Untitled Campaign'),
     status: String(c.status || 'draft'),
-    updated_at: c.updated_at ? String(c.updated_at) : null
+    updated_at: c.updated_at ? String(c.updated_at) : null,
+    track_opens: !!c.track_opens
   };
 };
 
