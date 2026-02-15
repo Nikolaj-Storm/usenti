@@ -336,6 +336,30 @@ class CampaignExecutor {
       return;
     }
 
+    // Defense-in-depth: Check if contact has already replied to this campaign
+    // This catches replies that arrived between the executor's initial query and now,
+    // or replies that were tracked but the status update was delayed
+    console.log(`[EXECUTOR]   🔍 Checking if contact has already replied to this campaign...`);
+    const { data: replyEvents } = await supabase
+      .from('email_events')
+      .select('id')
+      .eq('campaign_id', campaign.id)
+      .eq('contact_id', contact.id)
+      .eq('event_type', 'replied')
+      .limit(1);
+
+    if (replyEvents && replyEvents.length > 0) {
+      console.log(`[EXECUTOR]   ⏹️  Contact has already replied to this campaign - stopping all follow-ups`);
+      await supabase
+        .from('campaign_contacts')
+        .update({
+          status: 'replied',
+          replied_at: new Date().toISOString()
+        })
+        .eq('id', campaignContact.id);
+      return;
+    }
+
     // Process based on step type
     console.log(`[EXECUTOR]   ⚙️  Processing step type: ${step.step_type}`);
     switch (step.step_type) {

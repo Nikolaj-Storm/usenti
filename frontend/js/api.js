@@ -273,6 +273,40 @@ const api = {
     return this.get(`/api/inbox/${messageId}/content`);
   },
 
+  // Get attachment download URL (for building download links)
+  getAttachmentUrl(messageId, attachmentIndex) {
+    return `${APP_CONFIG.API_BASE_URL}/api/inbox/${messageId}/attachment/${attachmentIndex}`;
+  },
+
+  // Download an attachment from an inbox message (on-demand from IMAP)
+  async downloadAttachment(messageId, attachmentIndex, filename) {
+    console.log('📎 [API] Downloading attachment...');
+    const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+    const url = this.getAttachmentUrl(messageId, attachmentIndex);
+
+    const response = await fetch(url, {
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP ${response.status}`);
+    }
+
+    // Trigger browser download
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename || 'attachment';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(blobUrl);
+  },
+
   // Cleanup old inbox messages
   async cleanupInbox() {
     console.log('🧹 [API] Cleaning up old inbox messages...');

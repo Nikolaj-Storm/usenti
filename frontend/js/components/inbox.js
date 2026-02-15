@@ -227,7 +227,7 @@ const Inbox = () => {
           h('p', { className: "text-white/60 mt-1" },
             messages.length === 0
               ? "No messages yet"
-              : `${messages.length} recent message${messages.length !== 1 ? 's' : ''} (max 500 per account, 30-day retention)`
+              : `${messages.length} recent message${messages.length !== 1 ? 's' : ''} (max 200 per account, 30-day retention)`
           )
         ),
         h('div', { className: "flex gap-3" },
@@ -352,12 +352,54 @@ const Inbox = () => {
                     h('p', { className: "text-sm" }, "Loading email content...")
                   )
                   : emailContent
-                    ? h('div', {
-                      className: "prose prose-invert max-w-none text-white/90",
-                      dangerouslySetInnerHTML: {
-                        __html: emailContent.body_html || (emailContent.body_text?.replace(/\n/g, '<br/>') || '<p class="text-white/40 italic">No content available</p>')
-                      }
-                    })
+                    ? h(React.Fragment, null,
+                      // Email body content
+                      h('div', {
+                        className: "prose prose-invert max-w-none text-white/90",
+                        dangerouslySetInnerHTML: {
+                          __html: emailContent.body_html || (emailContent.body_text?.replace(/\n/g, '<br/>') || '<p class="text-white/40 italic">No content available</p>')
+                        }
+                      }),
+                      // Attachments section (if any)
+                      emailContent.attachments && emailContent.attachments.length > 0 && h('div', { className: "mt-6 pt-6 border-t border-white/10" },
+                        h('p', { className: "text-sm font-medium text-white/70 mb-3 flex items-center gap-2" },
+                          h(Icons.Paperclip, { size: 16 }),
+                          `${emailContent.attachments.length} attachment${emailContent.attachments.length !== 1 ? 's' : ''}`
+                        ),
+                        h('div', { className: "space-y-2" },
+                          emailContent.attachments.map((att, index) =>
+                            h('div', {
+                              key: index,
+                              className: "flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                            },
+                              h('div', { className: "flex items-center gap-3 min-w-0" },
+                                h(Icons.File, { size: 18, className: "text-cream-100 flex-shrink-0" }),
+                                h('div', { className: "min-w-0" },
+                                  h('p', { className: "text-sm font-medium text-white truncate" }, att.filename || 'Unnamed file'),
+                                  h('p', { className: "text-xs text-white/40" },
+                                    `${att.contentType || 'Unknown type'}${att.size ? ' · ' + formatFileSize(att.size) : ''}`
+                                  )
+                                )
+                              ),
+                              h('button', {
+                                className: "ml-3 px-3 py-1.5 text-sm bg-cream-100 text-rust-900 rounded-full hover:bg-cream-200 transition-colors flex items-center gap-1.5 flex-shrink-0 font-medium",
+                                onClick: async () => {
+                                  try {
+                                    await api.downloadAttachment(selectedMessage.id, index, att.filename);
+                                  } catch (err) {
+                                    console.error('Failed to download attachment:', err);
+                                    alert('Failed to download attachment: ' + err.message);
+                                  }
+                                }
+                              },
+                                h(Icons.Download, { size: 14 }),
+                                'Download'
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
                     : h('div', { className: "text-white/40 italic" }, "Loading...")
               ),
               // Message Actions (Footer)
