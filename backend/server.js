@@ -896,13 +896,22 @@ app.get('/api/inbox/:id/content', authenticateUser, async (req, res) => {
 
     // If we already have the body stored, return it
     if (message.body_html || message.body_text) {
+      // Parse stored attachment metadata
+      let attachments = [];
+      try {
+        attachments = typeof message.attachments_meta === 'string'
+          ? JSON.parse(message.attachments_meta)
+          : (message.attachments_meta || []);
+      } catch (e) { /* ignore parse errors */ }
+
       return res.json({
         body_html: message.body_html,
         body_text: message.body_text,
         from_name: message.from_name,
         from_address: message.from_address,
         subject: message.subject,
-        received_at: message.received_at
+        received_at: message.received_at,
+        attachments
       });
     }
 
@@ -928,7 +937,14 @@ app.get('/api/inbox/:id/content', authenticateUser, async (req, res) => {
       res.json(content);
     } catch (imapError) {
       console.error(`[${requestId}] IMAP fetch failed:`, imapError.message);
-      // Return snippet as fallback
+      // Return snippet as fallback (still include attachment metadata from DB)
+      let attachments = [];
+      try {
+        attachments = typeof message.attachments_meta === 'string'
+          ? JSON.parse(message.attachments_meta)
+          : (message.attachments_meta || []);
+      } catch (e) { /* ignore parse errors */ }
+
       res.json({
         body_html: null,
         body_text: message.snippet || 'Email content could not be loaded from server.',
@@ -936,6 +952,7 @@ app.get('/api/inbox/:id/content', authenticateUser, async (req, res) => {
         from_address: message.from_address,
         subject: message.subject,
         received_at: message.received_at,
+        attachments,
         fetch_error: imapError.message
       });
     }

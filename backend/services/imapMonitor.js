@@ -661,6 +661,12 @@ class ImapMonitor {
                     // Store full body for reliable display
                     bodyHtml: parsed.html || parsed.textAsHtml || null,
                     bodyText: cleanText || null,
+                    // Store attachment metadata (not binary content)
+                    attachmentsMeta: (parsed.attachments || []).map(a => ({
+                      filename: a.filename,
+                      contentType: a.contentType,
+                      size: a.size
+                    })),
                     flags: null // will be set by attributes
                   });
 
@@ -706,9 +712,10 @@ class ImapMonitor {
                     subject: msg.subject,
                     snippet: msg.snippet || '',
                     // Store body for reliable display - GDPR compliance maintained via
-                    // 30-day auto-cleanup and 500-message-per-account limit
+                    // 30-day auto-cleanup and 200-message-per-account limit
                     body_html: msg.bodyHtml || null,
                     body_text: msg.bodyText || null,
+                    attachments_meta: JSON.stringify(msg.attachmentsMeta || []),
                     received_at: msg.date || new Date().toISOString(),
                     is_read: msg.flags?.includes('\\Seen') || false
                   }, {
@@ -1067,9 +1074,10 @@ class ImapMonitor {
         subject: message.subject || '(No Subject)',
         snippet: snippetWithEllipsis,
         // Store body for reliable display - GDPR compliance maintained via
-        // 30-day auto-cleanup and 500-message-per-account limit
+        // 30-day auto-cleanup and 200-message-per-account limit
         body_html: message.html || message.textAsHtml || null,
         body_text: simpleBody || null,
+        attachments_meta: JSON.stringify(attachmentMeta),
         received_at: message.date || new Date().toISOString()
       }, {
         onConflict: 'email_account_id, message_id'
