@@ -75,7 +75,7 @@ const LandingPage = ({ onNavigate }) => {
           ),
           h('div', { className: "space-y-4 p-6 rounded-2xl glass-card hover:bg-white/10 transition-colors group" },
             h('div', { className: "w-12 h-12 bg-white/10 rounded-xl border border-white/10 flex items-center justify-center text-cream-100 group-hover:scale-110 transition-transform duration-300" },
-              h(Icons.Layout, { size: 24 })
+              h(Icons.Inbox, { size: 24 })
             ),
             h('h3', { className: "font-serif text-2xl text-white" }, 'Unified Neural Inbox'),
             h('p', { className: "text-white/60 leading-relaxed" },
@@ -93,7 +93,7 @@ const LandingPage = ({ onNavigate }) => {
           ),
           h('div', { className: "space-y-4 p-6 rounded-2xl glass-card hover:bg-white/10 transition-colors group" },
             h('div', { className: "w-12 h-12 bg-white/10 rounded-xl border border-white/10 flex items-center justify-center text-cream-100 group-hover:scale-110 transition-transform duration-300" },
-              h(Icons.Shield, { size: 24 })
+              h(Icons.Server, { size: 24 })
             ),
             h('h3', { className: "font-serif text-2xl text-white" }, 'Sovereign Infrastructure'),
             h('p', { className: "text-white/60 leading-relaxed" },
