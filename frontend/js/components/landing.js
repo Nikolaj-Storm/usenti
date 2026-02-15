@@ -34,6 +34,12 @@ const LandingPage = ({ onNavigate }) => {
           h('span', { className: "w-2 h-2 rounded-full bg-cream-100 animate-pulse" }),
           'v2.0 is now live'
         ),
+        h('div', { className: "flex flex-col sm:flex-row items-center justify-center gap-4 pt-6 pb-8" },
+          h('button', {
+            onClick: () => onNavigate('signup'),
+            className: "w-full sm:w-auto px-8 py-4 bg-cream-100 text-rust-900 text-lg rounded-full hover:bg-cream-200 transition-all hover:-translate-y-1 font-medium"
+          }, 'Get Started for Free')
+        ),
         h('div', { className: "flex flex-col md:flex-row items-center gap-8 md:gap-12 py-8" },
           // Text Container (Left on desktop/Left generally) - Wait, user said "to the left of this quote please place the image" -> So Image Left, Quote Right.
           h('div', { className: "w-full md:w-1/2 order-1" },
@@ -45,55 +51,53 @@ const LandingPage = ({ onNavigate }) => {
           ),
           h('div', { className: "w-full md:w-1/2 order-2 text-left space-y-6" },
             h('p', { className: "font-serif text-2xl md:text-3xl leading-relaxed text-white italic" },
-              '"For years, Steve Jobs courted biographer Walter Isaacson to write the definitive story of his life… And he called me up. I hadn’t really felt that I was the right person at first… I turned Jobs down a number of times, but finally accepted when I found out Jobs might not have long to live."'
+              h('span', { className: "text-5xl md:text-7xl leading-none block mb-4" }, '"For years,'),
+              'Steve Jobs courted biographer Walter Isaacson to write the definitive story of his life… And he called me up. I hadn’t really felt that I was the right person at first… I turned Jobs down a number of times, but finally accepted when I found out Jobs might not have long to live."'
             ),
             h('p', { className: "text-lg text-cream-100 font-medium" },
               '- npr interview of Walter Isaacson'
             )
           )
         ),
-        h('div', { className: "flex flex-col sm:flex-row items-center justify-center gap-4 pt-6" },
-          h('button', {
-            onClick: () => onNavigate('signup'),
-            className: "w-full sm:w-auto px-8 py-4 bg-cream-100 text-rust-900 text-lg rounded-full hover:bg-cream-200 transition-all hover:-translate-y-1 font-medium"
-          }, 'Get Started for Free')
-        ),
-        h('div', { className: "pt-12 flex items-center justify-center gap-8 text-white/30 grayscale" },
-          h('div', { className: "font-serif font-bold text-xl" }, 'ACME Corp'),
-          h('div', { className: "font-sans font-bold text-xl tracking-tighter" }, 'StarkIndustries'),
-          h('div', { className: "font-serif italic text-xl" }, 'Globex'),
-          h('div', { className: "font-mono text-xl" }, 'Massive Dynamic')
-        )
       )
     ),
     h('section', { className: "py-24 glass-header" },
       h('div', { className: "max-w-7xl mx-auto px-6" },
-        h('div', { className: "grid grid-cols-1 md:grid-cols-3 gap-12" },
+        h('div', { className: "grid grid-cols-1 md:grid-cols-2 gap-12" },
+          h('div', { className: "space-y-4 p-6 rounded-2xl glass-card hover:bg-white/10 transition-colors group" },
+            h('div', { className: "w-12 h-12 bg-white/10 rounded-xl border border-white/10 flex items-center justify-center text-cream-100 group-hover:scale-110 transition-transform duration-300" },
+              h(Icons.Zap, { size: 24 })
+            ),
+            h('h3', { className: "font-serif text-2xl text-white" }, 'Visual Flow Builder'),
+            h('p', { className: "text-white/60 leading-relaxed" },
+              'Automate your perfect sales process. Nurture leads, handle objections, and book meetings on autopilot—24/7.'
+            )
+          ),
+          h('div', { className: "space-y-4 p-6 rounded-2xl glass-card hover:bg-white/10 transition-colors group" },
+            h('div', { className: "w-12 h-12 bg-white/10 rounded-xl border border-white/10 flex items-center justify-center text-cream-100 group-hover:scale-110 transition-transform duration-300" },
+              h(Icons.Layout, { size: 24 })
+            ),
+            h('h3', { className: "font-serif text-2xl text-white" }, 'Unified Neural Inbox'),
+            h('p', { className: "text-white/60 leading-relaxed" },
+              'Clear your pipeline in minutes. Instantly spot interested leads among thousands of replies and never let a deal slip through the cracks.'
+            )
+          ),
           h('div', { className: "space-y-4 p-6 rounded-2xl glass-card hover:bg-white/10 transition-colors group" },
             h('div', { className: "w-12 h-12 bg-white/10 rounded-xl border border-white/10 flex items-center justify-center text-cream-100 group-hover:scale-110 transition-transform duration-300" },
               h(Icons.Shield, { size: 24 })
             ),
             h('h3', { className: "font-serif text-2xl text-white" }, 'Bulletproof Infrastructure'),
             h('p', { className: "text-white/60 leading-relaxed" },
-              'Hybrid sending via AWS WorkMail and custom Stalwart SMTP relays ensures your domain reputation remains pristine.'
+              'Scale revenue, not headaches. Send millions of emails with confidence, knowing your message lands in the primary inbox every single time.'
             )
           ),
           h('div', { className: "space-y-4 p-6 rounded-2xl glass-card hover:bg-white/10 transition-colors group" },
             h('div', { className: "w-12 h-12 bg-white/10 rounded-xl border border-white/10 flex items-center justify-center text-cream-100 group-hover:scale-110 transition-transform duration-300" },
-              h(Icons.Zap, { size: 24 })
+              h(Icons.Shield, { size: 24 })
             ),
-            h('h3', { className: "font-serif text-2xl text-white" }, 'Multi-Step Sequences'),
+            h('h3', { className: "font-serif text-2xl text-white" }, 'Sovereign Infrastructure'),
             h('p', { className: "text-white/60 leading-relaxed" },
-              'Build sophisticated multi-step email sequences with delays and conditions to maximize engagement and conversions.'
-            )
-          ),
-          h('div', { className: "space-y-4 p-6 rounded-2xl glass-card hover:bg-white/10 transition-colors group" },
-            h('div', { className: "w-12 h-12 bg-white/10 rounded-xl border border-white/10 flex items-center justify-center text-cream-100 group-hover:scale-110 transition-transform duration-300" },
-              h(Icons.BarChart, { size: 24 })
-            ),
-            h('h3', { className: "font-serif text-2xl text-white" }, 'Precision Analytics'),
-            h('p', { className: "text-white/60 leading-relaxed" },
-              'Track opens, clicks, and replies in real-time. Visualize your funnel and optimize for conversion.'
+              'Own your reputation. Hybrid sending architecture ensures your emails hit the primary inbox, not spam.'
             )
           )
         )
