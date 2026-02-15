@@ -63,24 +63,44 @@ function getNextSendTime(schedule) {
  * @returns {boolean} True if within limit, false otherwise
  */
 async function checkDailyLimit(emailAccountId, campaignId) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const { count } = await supabase
-    .from('email_events')
-    .select('*', { count: 'exact', head: true })
-    .eq('campaign_id', campaignId)
-    .eq('event_type', 'sent')
-    .gte('created_at', today.toISOString());
-
-  const { data: account } = await supabase
+  const { data: account, error } = await supabase
     .from('email_accounts')
-    .select('daily_send_limit')
+    .select('daily_send_limit, current_daily_sent, last_daily_reset')
     .eq('id', emailAccountId)
     .single();
 
-  const limit = account?.daily_send_limit || 10000;
-  return count < limit;
+  if (error || !account) {
+    console.error('[EMAIL-SERVICE] ❌ Failed to fetch account for limit check:', error);
+    return false; // Fail safe
+  }
+
+  // Calculate sent_today based on last_daily_reset
+  // If the last reset was not today (UTC), then the effective count is 0
+  const now = new Date();
+  const lastReset = account.last_daily_reset ? new Date(account.last_daily_reset) : null;
+  let sentToday = account.current_daily_sent || 0;
+
+  if (lastReset) {
+    const isSameDay =
+      lastReset.getUTCDate() === now.getUTCDate() &&
+      lastReset.getUTCMonth() === now.getUTCMonth() &&
+      lastReset.getUTCFullYear() === now.getUTCFullYear();
+
+    if (!isSameDay) {
+      sentToday = 0;
+    }
+  } else {
+    // If never sent, count is 0
+    sentToday = 0;
+  }
+
+  const limit = account.daily_send_limit || 10000;
+
+  if (sentToday >= limit) {
+    console.log(`[EMAIL-SERVICE] ⚠️ Daily limit reached for account ${emailAccountId} (${sentToday}/${limit})`);
+  }
+
+  return sentToday < limit;
 }
 
 /**
@@ -248,6 +268,21 @@ async function sendEmail({
 
   console.log(`[EMAIL-SERVICE] ✅ Email sent successfully!`);
   console.log(`[EMAIL-SERVICE]    Message ID: ${result.messageId}`);
+
+  // Increment global account counter (for daily limits)
+  try {
+    const { error: incError } = await supabase.rpc('increment_email_account_sent_count', {
+      account_id: emailAccountId
+    });
+
+    if (incError) {
+      console.error('[EMAIL-SERVICE] ⚠️ Failed to increment account counter:', incError);
+    } else {
+      console.log('[EMAIL-SERVICE]    📊 Incremented account daily sent counter');
+    }
+  } catch (incErr) {
+    console.error('[EMAIL-SERVICE] ⚠️ Error incrementing account counter:', incErr);
+  }
 
   return result;
 }

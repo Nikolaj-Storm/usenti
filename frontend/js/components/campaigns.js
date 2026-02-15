@@ -663,7 +663,10 @@ const CampaignBuilder = () => {
     }),
 
     // Block Toolbar (top bar)
-    h(BlockToolbar, { onAddStep: handleAddStep }),
+    h(BlockToolbar, {
+      onAddStep: handleAddStep,
+      trackOpens: selectedCampaign ? selectedCampaign.track_opens : true
+    }),
 
     // Main Layout - Canvas + Editor
     h('div', { className: "flex flex-1 overflow-hidden gap-0" },
@@ -684,7 +687,8 @@ const CampaignBuilder = () => {
           onNodeDrag: handleNodeDrag,
           onNodeDragEnd: handleNodeDragEnd,
           onReorderSteps: handleReorderSteps,
-          containerRef
+          containerRef,
+          trackOpens: selectedCampaign ? selectedCampaign.track_opens : true
         })
       ),
 
@@ -789,7 +793,7 @@ const MiniStat = ({ label, value, rate, icon: IconComponent }) => {
 
 // --- 6. Canvas Component ---
 
-const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, setActiveStep, canvasState, onAddStep, onDeleteStep, onNodeDrag, onNodeDragEnd, onReorderSteps, containerRef }) => {
+const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, setActiveStep, canvasState, onAddStep, onDeleteStep, onNodeDrag, onNodeDragEnd, onReorderSteps, containerRef, trackOpens }) => {
   const { zoom, setZoom, pan, setPan, isPanning, setIsPanning } = canvasState;
 
   const [draggingNode, setDraggingNode] = React.useState(null);
@@ -1112,7 +1116,8 @@ const WorkflowCanvas = ({ steps, selectedNodes, setSelectedNodes, activeStep, se
             label: branchType === 'yes' ? ct.yesLabel : ct.noLabel,
             conditionStepId: condStep.id,
             branchType,
-            onAddStep: onAddStep
+            onAddStep: onAddStep,
+            trackOpens
           });
         });
       }),
@@ -1271,14 +1276,17 @@ const CanvasNode = ({ step, steps, isSelected, isActive, isDragging, onMouseDown
 };
 
 // Branch add buttons (shown below condition blocks on canvas)
-const BranchAddButtons = ({ x, y, label, conditionStepId, branchType, onAddStep }) => {
+const BranchAddButtons = ({ x, y, label, conditionStepId, branchType, onAddStep, trackOpens = true }) => {
   const [showMenu, setShowMenu] = React.useState(false);
 
   const addOpts = [
     { type: 'email', icon: Icons.Mail, label: 'Email', color: '#3b82f6' },
     { type: 'wait', icon: Icons.Clock, label: 'Wait', color: '#8b5cf6' },
-    { type: 'condition', icon: Icons.Split, label: 'Condition', color: '#f59e0b' }
   ];
+
+  if (trackOpens) {
+    addOpts.push({ type: 'condition', icon: Icons.Split, label: 'Condition', color: '#f59e0b' });
+  }
 
   return h('div', {
     className: "canvas-node",
@@ -1349,7 +1357,7 @@ const BranchAddButtons = ({ x, y, label, conditionStepId, branchType, onAddStep 
 };
 
 // Horizontal toolbar for adding blocks
-const BlockToolbar = ({ onAddStep }) => {
+const BlockToolbar = ({ onAddStep, trackOpens = true }) => {
   const handleDragStart = (e, stepType) => {
     e.dataTransfer.setData('stepType', stepType);
     e.dataTransfer.effectAllowed = 'copy';
@@ -1358,8 +1366,11 @@ const BlockToolbar = ({ onAddStep }) => {
   const blocks = [
     { type: 'email', icon: 'Mail', label: 'Email', color: '#3b82f6', desc: 'Send an email' },
     { type: 'wait', icon: 'Clock', label: 'Wait', color: '#8b5cf6', desc: 'Add a delay' },
-    { type: 'condition', icon: 'Split', label: 'Condition', color: '#f59e0b', desc: 'Branch based on recipient behavior' }
   ];
+
+  if (trackOpens) {
+    blocks.push({ type: 'condition', icon: 'Split', label: 'Condition', color: '#f59e0b', desc: 'Branch based on recipient behavior' });
+  }
 
   return h('div', { className: "flex items-center gap-2 p-2 glass-card rounded-xl mb-2" },
     h('span', { className: "text-xs font-semibold text-white/40 uppercase tracking-wider px-2" }, "Add Block:"),

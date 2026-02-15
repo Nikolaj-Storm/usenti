@@ -248,38 +248,35 @@ app.get('/api/email-accounts', authenticateUser, async (req, res) => {
     // Get base email account data
     const { data: accounts, error } = await supabase
       .from('email_accounts')
-      .select('id, email_address, account_type, sender_name, daily_send_limit, is_active, health_score, created_at, smtp_host, smtp_port, smtp_username, imap_host, imap_port, imap_username')
+      .select('id, email_address, account_type, sender_name, daily_send_limit, is_active, health_score, created_at, smtp_host, smtp_port, smtp_username, imap_host, imap_port, imap_username, current_daily_sent, last_daily_reset')
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    // Get aggregated sent_today from campaign_email_accounts junction table
-    // This sums all emails_sent_today across all campaigns for each email account
-    const accountIds = accounts.map(a => a.id);
+    // Calculate sent_today for each account
+    // accuracy depends on last_daily_reset being today (UTC)
+    const now = new Date();
 
-    if (accountIds.length > 0) {
-      const { data: sentData, error: sentError } = await supabase
-        .from('campaign_email_accounts')
-        .select('email_account_id, emails_sent_today')
-        .in('email_account_id', accountIds);
+    accounts.forEach(account => {
+      let sent = account.current_daily_sent || 0;
+      const lastReset = account.last_daily_reset ? new Date(account.last_daily_reset) : null;
 
-      if (!sentError && sentData) {
-        // Aggregate sent_today per email account
-        const sentTodayByAccount = {};
-        sentData.forEach(row => {
-          if (!sentTodayByAccount[row.email_account_id]) {
-            sentTodayByAccount[row.email_account_id] = 0;
-          }
-          sentTodayByAccount[row.email_account_id] += (row.emails_sent_today || 0);
-        });
+      if (lastReset) {
+        // specific check for UTC day match
+        const isSameDay =
+          lastReset.getUTCDate() === now.getUTCDate() &&
+          lastReset.getUTCMonth() === now.getUTCMonth() &&
+          lastReset.getUTCFullYear() === now.getUTCFullYear();
 
-        // Add sent_today to each account
-        accounts.forEach(account => {
-          account.sent_today = sentTodayByAccount[account.id] || 0;
-        });
+        if (!isSameDay) sent = 0;
+      } else {
+        // If never reset, assume 0 (or if null)
+        sent = 0;
       }
-    }
+
+      account.sent_today = sent;
+    });
 
     res.json(accounts);
   } catch (error) {
