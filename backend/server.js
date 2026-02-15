@@ -426,14 +426,41 @@ app.post('/api/email-accounts', authenticateUser, async (req, res) => {
   }
 });
 
-// Test email account credentials (before creating)
-app.post('/api/email-accounts/test', async (req, res) => {
+// Test email account credentials (before creating or updating)
+app.post('/api/email-accounts/test', authenticateUser, async (req, res) => {
   try {
-    const {
+    let {
       smtp_host, smtp_port, smtp_username, smtp_password,
       imap_host, imap_port, imap_username, imap_password,
-      account_type
+      account_type, id
     } = req.body;
+
+    // If testing an existing account (editing), fetch stored passwords if not provided
+    if (id) {
+      const { data: account } = await supabase
+        .from('email_accounts')
+        .select('smtp_password, imap_password')
+        .eq('id', id)
+        .eq('user_id', req.user.id)
+        .single();
+
+      if (account) {
+        if (!smtp_password && account.smtp_password) {
+          try {
+            smtp_password = decrypt(account.smtp_password);
+          } catch (e) {
+            console.error('Failed to decrypt stored SMTP password during test:', e);
+          }
+        }
+        if (!imap_password && account.imap_password) {
+          try {
+            imap_password = decrypt(account.imap_password);
+          } catch (e) {
+            console.error('Failed to decrypt stored IMAP password during test:', e);
+          }
+        }
+      }
+    }
 
     const results = {
       smtp: null,

@@ -1,6 +1,19 @@
 // Mr. Snowman - Email Accounts / Infrastructure Component
 
 
+const LabelWithTooltip = ({ label, helpText }) => (
+  h('div', { className: "flex items-center gap-2 mb-2" },
+    h('label', { className: "block text-sm font-medium text-white/70" }, label),
+    helpText && h('div', { className: "group relative" },
+      h(Icons.HelpCircle, { size: 14, className: "text-white/30 hover:text-white/70 cursor-help transition-colors" }),
+      h('div', { className: "absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 border border-white/10 rounded-lg text-xs text-white/80 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 pointer-events-none" },
+        helpText,
+        h('div', { className: "absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900" })
+      )
+    )
+  )
+);
+
 const EmailAccounts = () => {
   const [accounts, setAccounts] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -294,9 +307,14 @@ const AccountModal = ({ account, onClose, onSave }) => {
     setTestResult(null);
 
     try {
-      const testData = { ...formData, account_type: accountType };
+      const testData = {
+        ...formData,
+        account_type: accountType,
+        id: account?.id
+      };
+
       const result = await api.testEmailAccount(testData);
-      setTestResult({ success: true, message: result.message || 'Connection successful!' });
+      setTestResult(result);
     } catch (error) {
       setTestResult({ success: false, message: error.message || 'Connection failed' });
     } finally {
@@ -458,9 +476,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
                 'If you have Two-Factor Authentication (TFA) enabled, you must use an Application Specific Password:'
               ),
               h('ol', { className: "text-sm text-purple-200/80 list-decimal list-inside space-y-1" },
-                h('li', { key: 1 }, 'Log in to your Zoho account and go to Security'),
-                h('li', { key: 2 }, 'Select "App Passwords" and generate a new one'),
-                h('li', { key: 3 }, 'Use that password in the IMAP/SMTP password fields below')
+                h('li', { key: 1 }, 'Log in to ', h('a', { href: "https://accounts.zoho.com/home#security/app_password", target: "_blank", className: "underline text-purple-300" }, 'accounts.zoho.com')),
+                h('li', { key: 2 }, 'Go to Security > App Passwords'),
+                h('li', { key: 3 }, 'Generate a new password (e.g. name it "MrSnowman")'),
+                h('li', { key: 4 }, 'Use that password in the IMAP/SMTP password fields below')
               )
             )
           )
@@ -483,7 +502,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
           )
         ),
         h('div', null,
-          h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'Email Address'),
+          h(LabelWithTooltip, {
+            label: 'Email Address',
+            helpText: 'The full email address you want to send campaigns from (e.g. john@company.com).'
+          }),
           h('input', {
             type: "email",
             required: true,
@@ -503,7 +525,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
           })
         ),
         h('div', null,
-          h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'Sender Display Name'),
+          h(LabelWithTooltip, {
+            label: 'Sender Display Name',
+            helpText: 'How your name appears in the recipient\'s inbox. E.g., "John Smith" results in "John Smith <john@company.com>". Essential for high deliverability.'
+          }),
           h('input', {
             type: "text",
             value: formData.sender_name,
@@ -511,13 +536,16 @@ const AccountModal = ({ account, onClose, onSave }) => {
             className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
             placeholder: "John Smith"
           }),
-          h('p', { className: "text-xs text-white/50 mt-1" }, 'How your name appears in the From field. E.g., "John Smith" results in "John Smith <john@company.com>". Improves deliverability.')
+          h('p', { className: "text-xs text-white/50 mt-1" }, 'How your name appears in the From field.')
         ),
         h('div', { className: "p-4 glass-card space-y-4" },
           h('h4', { className: "font-medium text-white" }, 'SMTP Settings (Outgoing)'),
           h('div', { className: "grid grid-cols-2 gap-4" },
             h('div', null,
-              h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'SMTP Host'),
+              h(LabelWithTooltip, {
+                label: 'SMTP Host',
+                helpText: 'The server address for sending emails (e.g. smtp.gmail.com, smtp.office365.com).'
+              }),
               h('input', {
                 type: "text",
                 required: true,
@@ -528,7 +556,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
               })
             ),
             h('div', null,
-              h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'SMTP Port'),
+              h(LabelWithTooltip, {
+                label: 'SMTP Port',
+                helpText: 'Usually 587 (STARTTLS) or 465 (SSL/TLS). Port 25 is not recommended.'
+              }),
               h('input', {
                 type: "number",
                 required: true,
@@ -540,7 +571,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
           ),
           h('div', { className: "grid grid-cols-2 gap-4" },
             h('div', null,
-              h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'SMTP Username'),
+              h(LabelWithTooltip, {
+                label: 'SMTP Username',
+                helpText: 'Usually your full email address. Some providers use a different username.'
+              }),
               h('input', {
                 type: "text",
                 required: true,
@@ -550,7 +584,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
               })
             ),
             h('div', null,
-              h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'SMTP Password'),
+              h(LabelWithTooltip, {
+                label: 'SMTP Password',
+                helpText: 'Your email password or App Password. If editing, leave blank to keep the existing password.'
+              }),
               h('input', {
                 type: "password",
                 required: !isEditing,
@@ -566,7 +603,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
           h('h4', { className: "font-medium text-white" }, 'IMAP Settings (Incoming)'),
           h('div', { className: "grid grid-cols-2 gap-4" },
             h('div', null,
-              h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'IMAP Host'),
+              h(LabelWithTooltip, {
+                label: 'IMAP Host',
+                helpText: 'The server address for receiving emails (e.g. imap.gmail.com).'
+              }),
               h('input', {
                 type: "text",
                 required: true,
@@ -577,7 +617,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
               })
             ),
             h('div', null,
-              h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'IMAP Port'),
+              h(LabelWithTooltip, {
+                label: 'IMAP Port',
+                helpText: 'Usually 993 (SSL/TLS) or 143 (STARTTLS).'
+              }),
               h('input', {
                 type: "number",
                 required: true,
@@ -589,7 +632,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
           ),
           h('div', { className: "grid grid-cols-2 gap-4" },
             h('div', null,
-              h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'IMAP Username'),
+              h(LabelWithTooltip, {
+                label: 'IMAP Username',
+                helpText: 'Usually your full email address.'
+              }),
               h('input', {
                 type: "text",
                 required: true,
@@ -599,7 +645,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
               })
             ),
             h('div', null,
-              h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'IMAP Password'),
+              h(LabelWithTooltip, {
+                label: 'IMAP Password',
+                helpText: 'Your email password or App Password (same as SMTP). If editing, leave blank to keep existing.'
+              }),
               h('input', {
                 type: "password",
                 required: !isEditing,
@@ -612,7 +661,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
           )
         ),
         h('div', null,
-          h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'Daily Send Limit'),
+          h(LabelWithTooltip, {
+            label: 'Daily Send Limit',
+            helpText: 'Maximum emails to send from this account per day. Used to respect provider limits (e.g. Gmail ~500/day, paid Workspace ~2000/day).'
+          }),
           h('input', {
             type: "number",
             required: true,
@@ -622,14 +674,33 @@ const AccountModal = ({ account, onClose, onSave }) => {
           })
         ),
         testResult && h('div', {
-          className: `p-4 rounded-xl ${testResult.success
-              ? 'bg-green-500/20 border border-green-500/30 text-green-300'
-              : 'bg-red-500/20 border border-red-500/30 text-red-300'
+          className: `p-4 rounded-xl space-y-2 ${testResult.success
+            ? 'bg-green-500/20 border border-green-500/30 text-green-300'
+            : 'bg-red-500/20 border border-red-500/30 text-red-300'
             }`
         },
-          h('div', { className: "flex items-center gap-2" },
+          h('div', { className: "flex items-center gap-2 font-medium" },
             testResult.success ? h(Icons.Check, { size: 20 }) : h(Icons.AlertCircle, { size: 20 }),
-            h('span', { className: "font-medium" }, testResult.message)
+            testResult.message
+          ),
+          testResult.results && h('div', { className: "mt-2 pt-2 border-t border-white/10 text-sm space-y-1" },
+            testResult.results.smtp && h('div', { className: "flex items-center gap-2 justify-between" },
+              h('span', null, 'SMTP (Outgoing):'),
+              testResult.results.smtp.success
+                ? h('span', { className: "text-green-300 flex items-center gap-1" }, h(Icons.Check, { size: 14 }), 'Connected')
+                : h('span', { className: "text-red-300 flex items-center gap-1" }, h(Icons.X, { size: 14 }), 'Failed')
+            ),
+            (!testResult.results.smtp?.success && testResult.results.smtp?.message) &&
+            h('p', { className: "text-xs opacity-80 pl-2 border-l-2 border-white/20 ml-1" }, testResult.results.smtp.message),
+
+            testResult.results.imap && h('div', { className: "flex items-center gap-2 justify-between mt-2" },
+              h('span', null, 'IMAP (Incoming):'),
+              testResult.results.imap.success
+                ? h('span', { className: "text-green-300 flex items-center gap-1" }, h(Icons.Check, { size: 14 }), 'Connected')
+                : h('span', { className: "text-red-300 flex items-center gap-1" }, h(Icons.X, { size: 14 }), 'Failed')
+            ),
+            (!testResult.results.imap?.success && testResult.results.imap?.message) &&
+            h('p', { className: "text-xs opacity-80 pl-2 border-l-2 border-white/20 ml-1" }, testResult.results.imap.message)
           )
         ),
         h('div', { className: "flex gap-3" },
