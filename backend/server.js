@@ -1755,7 +1755,7 @@ app.get('/api/campaigns/:id', authenticateUser, async (req, res) => {
 
 app.post('/api/campaigns', authenticateUser, async (req, res) => {
   try {
-    const { name, email_account_id, contact_list_id, send_schedule, daily_limit, send_immediately } = req.body;
+    const { name, email_account_id, contact_list_id, send_schedule, daily_limit, send_immediately, track_opens } = req.body;
 
     if (!name || !email_account_id || !contact_list_id) {
       return res.status(400).json({ error: 'Name, email account, and contact list are required' });
@@ -1799,7 +1799,8 @@ app.post('/api/campaigns', authenticateUser, async (req, res) => {
           end_hour: 17
         },
         daily_limit: daily_limit || 500,
-        send_immediately: send_immediately || false
+        send_immediately: send_immediately || false,
+        track_opens: track_opens !== undefined ? track_opens : true // Default to true if not provided
       })
       .select(`
         *,
@@ -1817,13 +1818,14 @@ app.post('/api/campaigns', authenticateUser, async (req, res) => {
 
 app.put('/api/campaigns/:id', authenticateUser, async (req, res) => {
   try {
-    const { name, send_schedule, daily_limit, status } = req.body;
+    const { name, send_schedule, daily_limit, status, track_opens } = req.body;
 
     const updates = {};
     if (name) updates.name = name;
     if (send_schedule) updates.send_schedule = send_schedule;
     if (daily_limit !== undefined) updates.daily_limit = daily_limit;
     if (status) updates.status = status;
+    if (track_opens !== undefined) updates.track_opens = track_opens;
 
     const { data, error } = await supabase
       .from('campaigns')
