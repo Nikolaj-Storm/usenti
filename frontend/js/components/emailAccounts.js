@@ -275,7 +275,6 @@ const AccountModal = ({ account, onClose, onSave }) => {
           imap_host: 'imap.gmail.com',
           imap_port: '993'
         }));
-        alert('⚠️ Important: Gmail requires App Passwords for third-party applications.\n\nTo connect your Gmail account:\n\n1. Enable 2-Step Verification on your Google account\n2. Go to https://myaccount.google.com/apppasswords\n3. Generate an app password for "Mail"\n4. Use that password (not your regular password) in the IMAP/SMTP password fields');
       } else if (type === 'outlook') {
         setFormData(prev => ({
           ...prev,
@@ -284,7 +283,6 @@ const AccountModal = ({ account, onClose, onSave }) => {
           imap_host: 'outlook.office365.com',
           imap_port: '993'
         }));
-        alert('⚠️ Important: Microsoft disabled basic authentication for Outlook/Office 365 in late 2022.\n\nTo connect your Outlook account, you MUST use an App Password:\n\n1. Go to https://account.microsoft.com/security\n2. Navigate to "Advanced security options"\n3. Create a new app password\n4. Use that password (not your regular password) in the IMAP/SMTP password fields\n\nIf app passwords are disabled by your organization, you will need to contact your IT administrator.');
       }
     }
 
@@ -351,8 +349,7 @@ const AccountModal = ({ account, onClose, onSave }) => {
           h('div', { className: "flex items-center gap-4" },
             h('div', { className: "w-12 h-12 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-300 font-bold text-xl group-hover:scale-110 transition-transform" }, 'ST'),
             h('div', null,
-              h('h4', { className: "font-medium text-white mb-1" }, 'Stalwart SMTP'),
-              h('p', { className: "text-sm text-white/60" }, 'Custom SMTP relay for maximum deliverability')
+              h('h4', { className: "font-medium text-white mb-1" }, 'Stalwart')
             )
           )
         ),
@@ -363,8 +360,7 @@ const AccountModal = ({ account, onClose, onSave }) => {
           h('div', { className: "flex items-center gap-4" },
             h('div', { className: "w-12 h-12 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-300 font-bold text-xl group-hover:scale-110 transition-transform" }, 'AWS'),
             h('div', null,
-              h('h4', { className: "font-medium text-white mb-1" }, 'AWS WorkMail'),
-              h('p', { className: "text-sm text-white/60" }, 'Enterprise email service from Amazon')
+              h('h4', { className: "font-medium text-white mb-1" }, 'AWS')
             )
           )
         ),
@@ -375,8 +371,7 @@ const AccountModal = ({ account, onClose, onSave }) => {
           h('div', { className: "flex items-center gap-4" },
             h('div', { className: "w-12 h-12 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-300 font-bold text-xl group-hover:scale-110 transition-transform" }, 'Z'),
             h('div', null,
-              h('h4', { className: "font-medium text-white mb-1" }, 'Zoho Mail'),
-              h('p', { className: "text-sm text-white/60" }, 'Professional email with simple setup (no app passwords needed)')
+              h('h4', { className: "font-medium text-white mb-1" }, 'Zoho Mail')
             )
           )
         ),
@@ -387,8 +382,7 @@ const AccountModal = ({ account, onClose, onSave }) => {
           h('div', { className: "flex items-center gap-4" },
             h('div', { className: "w-12 h-12 rounded-lg bg-red-500/20 flex items-center justify-center text-red-300 font-bold text-xl group-hover:scale-110 transition-transform" }, 'G'),
             h('div', null,
-              h('h4', { className: "font-medium text-white mb-1" }, 'Gmail / Google Workspace'),
-              h('p', { className: "text-sm text-white/60" }, 'Connect your Gmail or Google Workspace account')
+              h('h4', { className: "font-medium text-white mb-1" }, 'Gmail / Google Workspace')
             )
           )
         ),
@@ -399,8 +393,7 @@ const AccountModal = ({ account, onClose, onSave }) => {
           h('div', { className: "flex items-center gap-4" },
             h('div', { className: "w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-300 font-bold text-xl group-hover:scale-110 transition-transform" }, 'M'),
             h('div', null,
-              h('h4', { className: "font-medium text-white mb-1" }, 'Microsoft Outlook / Office 365'),
-              h('p', { className: "text-sm text-white/60" }, 'Connect your Outlook or Microsoft 365 account')
+              h('h4', { className: "font-medium text-white mb-1" }, 'Microsoft Outlook / Office 365')
             )
           )
         )
@@ -422,27 +415,69 @@ const AccountModal = ({ account, onClose, onSave }) => {
             )
           )
         ),
-        (accountType === 'outlook' || accountType === 'gmail') && h('div', { className: "p-4 glass-card border-amber-500/30" },
+        accountType === 'gmail' && h('div', { className: "p-4 glass-card border-red-500/30" },
           h('div', { className: "flex gap-3" },
-            h(Icons.AlertCircle, { size: 20, className: "text-amber-400 shrink-0 mt-0.5" }),
+            h(Icons.AlertCircle, { size: 20, className: "text-red-400 shrink-0 mt-0.5" }),
             h('div', null,
-              h('h4', { className: "font-medium text-amber-300 mb-1" }, 'App Password Required'),
-              h('p', { className: "text-sm text-amber-200/80 mb-2" },
-                accountType === 'outlook'
-                  ? 'Microsoft disabled basic authentication for Outlook/Office 365. You must use an App Password:'
-                  : 'Gmail requires App Passwords for third-party applications. You must use an App Password:'
+              h('h4', { className: "font-medium text-red-300 mb-1" }, 'Gmail App Password Required'),
+              h('p', { className: "text-sm text-red-200/80 mb-2" },
+                'Gmail requires App Passwords for third-party applications. You must use an App Password instead of your regular login:'
               ),
-              h('ol', { className: "text-sm text-amber-200/80 list-decimal list-inside space-y-1" },
-                accountType === 'outlook' ? [
-                  h('li', { key: 1 }, 'Visit ', h('a', { href: "https://account.microsoft.com/security", target: "_blank", className: "underline text-amber-300" }, 'account.microsoft.com/security')),
-                  h('li', { key: 2 }, 'Create a new app password under "Advanced security options"'),
-                  h('li', { key: 3 }, 'Use that password in the IMAP/SMTP password fields below')
-                ] : [
-                  h('li', { key: 1 }, 'Enable 2-Step Verification on your Google account'),
-                  h('li', { key: 2 }, 'Visit ', h('a', { href: "https://myaccount.google.com/apppasswords", target: "_blank", className: "underline text-amber-300" }, 'myaccount.google.com/apppasswords')),
-                  h('li', { key: 3 }, 'Generate an app password for "Mail"'),
-                  h('li', { key: 4 }, 'Use that password in the IMAP/SMTP password fields below')
-                ]
+              h('ol', { className: "text-sm text-red-200/80 list-decimal list-inside space-y-1" },
+                h('li', { key: 1 }, 'Enable 2-Step Verification on your Google account'),
+                h('li', { key: 2 }, 'Visit ', h('a', { href: "https://myaccount.google.com/apppasswords", target: "_blank", className: "underline text-red-300" }, 'myaccount.google.com/apppasswords')),
+                h('li', { key: 3 }, 'Generate an app password for "Mail"'),
+                h('li', { key: 4 }, 'Use that password in the IMAP/SMTP password fields below')
+              )
+            )
+          )
+        ),
+        accountType === 'outlook' && h('div', { className: "p-4 glass-card border-blue-500/30" },
+          h('div', { className: "flex gap-3" },
+            h(Icons.AlertCircle, { size: 20, className: "text-blue-400 shrink-0 mt-0.5" }),
+            h('div', null,
+              h('h4', { className: "font-medium text-blue-300 mb-1" }, 'Outlook App Password Required'),
+              h('p', { className: "text-sm text-blue-200/80 mb-2" },
+                'Microsoft disabled basic authentication. You must use an App Password:'
+              ),
+              h('ol', { className: "text-sm text-blue-200/80 list-decimal list-inside space-y-1" },
+                h('li', { key: 1 }, 'Visit ', h('a', { href: "https://account.microsoft.com/security", target: "_blank", className: "underline text-blue-300" }, 'account.microsoft.com/security')),
+                h('li', { key: 2 }, 'Go to "Advanced security options"'),
+                h('li', { key: 3 }, 'Create a new app password'),
+                h('li', { key: 4 }, 'Use that password in the IMAP/SMTP password fields below')
+              )
+            )
+          )
+        ),
+        accountType === 'zoho' && h('div', { className: "p-4 glass-card border-purple-500/30" },
+          h('div', { className: "flex gap-3" },
+            h(Icons.Info, { size: 20, className: "text-purple-400 shrink-0 mt-0.5" }),
+            h('div', null,
+              h('h4', { className: "font-medium text-purple-300 mb-1" }, 'Zoho App Password Setup'),
+              h('p', { className: "text-sm text-purple-200/80 mb-2" },
+                'If you have Two-Factor Authentication (TFA) enabled, you must use an Application Specific Password:'
+              ),
+              h('ol', { className: "text-sm text-purple-200/80 list-decimal list-inside space-y-1" },
+                h('li', { key: 1 }, 'Log in to your Zoho account and go to Security'),
+                h('li', { key: 2 }, 'Select "App Passwords" and generate a new one'),
+                h('li', { key: 3 }, 'Use that password in the IMAP/SMTP password fields below')
+              )
+            )
+          )
+        ),
+        accountType === 'aws_workmail' && h('div', { className: "p-4 glass-card border-orange-500/30" },
+          h('div', { className: "flex gap-3" },
+            h(Icons.Server, { size: 20, className: "text-orange-400 shrink-0 mt-0.5" }),
+            h('div', null,
+              h('h4', { className: "font-medium text-orange-300 mb-1" }, 'AWS SMTP Credentials'),
+              h('p', { className: "text-sm text-orange-200/80 mb-2" },
+                'For AWS SES/WorkMail, ensure you use SMTP credentials, not IAM user credentials:'
+              ),
+              h('ol', { className: "text-sm text-orange-200/80 list-decimal list-inside space-y-1" },
+                h('li', { key: 1 }, 'Go to the AWS SES Console -> SMTP Settings'),
+                h('li', { key: 2 }, 'Click "Create My SMTP Credentials"'),
+                h('li', { key: 3 }, 'Use the generated SMTP Username and Password below'),
+                h('li', { key: 4 }, 'Note: These are different from your AWS console login!')
               )
             )
           )
