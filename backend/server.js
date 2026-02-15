@@ -945,6 +945,66 @@ app.get('/api/inbox/:id/content', authenticateUser, async (req, res) => {
   }
 });
 
+// Download an attachment from an inbox message (on-demand from IMAP - no binary stored in DB)
+app.get('/api/inbox/:id/attachment/:index', authenticateUser, async (req, res) => {
+  const requestId = `ATTACH-${Date.now()}`;
+
+  try {
+    const { id, index } = req.params;
+    const attachmentIndex = parseInt(index, 10);
+
+    // Get the inbox message record
+    const { data: message, error: msgError } = await supabase
+      .from('inbox_messages')
+      .select('*, email_accounts!inner(id, user_id)')
+      .eq('id', id)
+      .single();
+
+    if (msgError || !message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Verify ownership
+    if (message.email_accounts.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Fetch full email content from IMAP (with attachments including binary content)
+    const imapMonitor = require('./services/imapMonitor');
+
+    try {
+      const content = await imapMonitor.fetchEmailContent(
+        message.email_account_id,
+        message,
+        true // includeAttachmentContent flag
+      );
+
+      if (!content.attachments || !content.attachments[attachmentIndex]) {
+        return res.status(404).json({ error: 'Attachment not found' });
+      }
+
+      const attachment = content.attachments[attachmentIndex];
+
+      if (!attachment.content) {
+        return res.status(404).json({ error: 'Attachment content not available' });
+      }
+
+      // Send binary content with appropriate headers
+      const buffer = Buffer.from(attachment.content, 'base64');
+      res.setHeader('Content-Type', attachment.contentType || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(attachment.filename || 'attachment')}"`);
+      res.setHeader('Content-Length', buffer.length);
+      res.send(buffer);
+    } catch (imapError) {
+      console.error(`[${requestId}] IMAP fetch failed:`, imapError.message);
+      res.status(500).json({ error: 'Failed to fetch attachment from mail server' });
+    }
+  } catch (error) {
+    console.error(`[${requestId}] Error:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Send reply to an inbox message (supports attachments via multipart form data)
 app.post('/api/inbox/:id/reply', authenticateUser, upload.any(), async (req, res) => {
   const requestId = `REPLY-${Date.now()}`;

@@ -658,6 +658,9 @@ class ImapMonitor {
                     date: parsed.date?.toISOString() || new Date().toISOString(),
                     messageId: parsed.messageId,
                     snippet: snippet + (body.length > 200 ? '...' : ''),
+                    // Store full body for reliable display
+                    bodyHtml: parsed.html || parsed.textAsHtml || null,
+                    bodyText: cleanText || null,
                     flags: null // will be set by attributes
                   });
 
@@ -702,6 +705,10 @@ class ImapMonitor {
                     from_address: (msg.fromAddress || 'unknown').toLowerCase(),
                     subject: msg.subject,
                     snippet: msg.snippet || '',
+                    // Store body for reliable display - GDPR compliance maintained via
+                    // 30-day auto-cleanup and 500-message-per-account limit
+                    body_html: msg.bodyHtml || null,
+                    body_text: msg.bodyText || null,
                     received_at: msg.date || new Date().toISOString(),
                     is_read: msg.flags?.includes('\\Seen') || false
                   }, {
@@ -762,7 +769,8 @@ class ImapMonitor {
 
   // Fetch a specific email's full content from IMAP (on-demand, not stored)
   // Accepts accountId and either messageId (string) or message object (with metadata for fallback)
-  async fetchEmailContent(accountId, messageOrId) {
+  // If includeAttachmentContent is true, attachment binary data is included (base64-encoded)
+  async fetchEmailContent(accountId, messageOrId, includeAttachmentContent = false) {
     return new Promise(async (resolve, reject) => {
       const requestId = `FETCH-${Date.now()}`;
 
@@ -978,8 +986,8 @@ class ImapMonitor {
                         filename: a.filename,
                         contentType: a.contentType,
                         size: a.size,
-                        // Don't send content buffer to frontend to keep payload light
-                        // Frontend can request attachment content separately if needed
+                        // Include binary content only when explicitly requested (for attachment downloads)
+                        ...(includeAttachmentContent && a.content ? { content: a.content.toString('base64') } : {})
                       }))
                     };
                   });
@@ -1044,6 +1052,13 @@ class ImapMonitor {
       const snippet = simpleBody.substring(0, 100).replace(/\s+/g, ' ').trim();
       const snippetWithEllipsis = snippet + (simpleBody.length > 100 ? '...' : '');
 
+      // Extract attachment metadata (without content, for display purposes)
+      const attachmentMeta = (message.attachments || []).map(a => ({
+        filename: a.filename || 'unnamed',
+        contentType: a.contentType || 'application/octet-stream',
+        size: a.size || 0
+      }));
+
       await supabase.from('inbox_messages').upsert({
         email_account_id: account.id,
         message_id: message.messageId,
@@ -1051,8 +1066,10 @@ class ImapMonitor {
         from_address: from.address?.toLowerCase(),
         subject: message.subject || '(No Subject)',
         snippet: snippetWithEllipsis,
-        // body_html and body_text intentionally omitted for GDPR data minimization.
-        // Full email content is fetched on-demand via IMAP (fetchEmailContent).
+        // Store body for reliable display - GDPR compliance maintained via
+        // 30-day auto-cleanup and 500-message-per-account limit
+        body_html: message.html || message.textAsHtml || null,
+        body_text: simpleBody || null,
         received_at: message.date || new Date().toISOString()
       }, {
         onConflict: 'email_account_id, message_id'
