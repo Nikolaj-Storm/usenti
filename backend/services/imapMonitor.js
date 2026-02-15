@@ -1095,57 +1095,64 @@ class ImapMonitor {
   // Handle reply to campaign email
   async handleCampaignReply(message, fromEmail, account) {
     try {
-      // Find the contact who sent this reply
-      const { data: contact } = await supabase
+      // Find ALL contacts with this email address (may exist in multiple lists)
+      // Using .select() without .single() to avoid errors when email exists in multiple lists
+      const { data: contacts, error: contactError } = await supabase
         .from('contacts')
         .select('id, list_id')
-        .eq('email', fromEmail)
-        .single();
+        .eq('email', fromEmail);
 
+      if (contactError) {
+        console.error(`[IMAP]    ❌ Error querying contacts for ${fromEmail}:`, contactError);
+        return;
+      }
 
-
-      if (!contact) {
+      if (!contacts || contacts.length === 0) {
         console.log(`[IMAP]    ❌ Contact not found for email: ${fromEmail}`);
         return;
       }
 
-      console.log(`[IMAP]    🔍 Found contact ID: ${contact.id} (List ID: ${contact.list_id})`);
+      const contactIds = contacts.map(c => c.id);
+      console.log(`[IMAP]    🔍 Found ${contacts.length} contact(s) for ${fromEmail}: ${contactIds.join(', ')}`);
 
-      // Find the campaign that most recently sent an email to this contact.
+      // Find the campaign that most recently sent an email to ANY of these contacts.
       // This prevents cross-campaign contamination: a reply to Campaign A's email
       // should NOT create a "replied" event for Campaign B.
-      const { data: lastSentEvent } = await supabase
+      const { data: lastSentEvent, error: sentError } = await supabase
         .from('email_events')
-        .select('campaign_id')
-        .eq('contact_id', contact.id)
+        .select('campaign_id, contact_id')
+        .in('contact_id', contactIds)
         .eq('event_type', 'sent')
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
 
-
+      if (sentError) {
+        console.log(`[IMAP]    ❌ No recent 'sent' event found for contacts [${contactIds.join(', ')}]. Cannot attribute reply. (${sentError.message})`);
+        return;
+      }
 
       if (!lastSentEvent) {
-        console.log(`[IMAP]    ❌ No recent 'sent' event found for contact ${contact.id}. Cannot attribute reply.`);
+        console.log(`[IMAP]    ❌ No recent 'sent' event found for contacts [${contactIds.join(', ')}]. Cannot attribute reply.`);
         return;
       }
 
       const targetCampaignId = lastSentEvent.campaign_id;
-      console.log(`[IMAP]    🔍 Most recent campaign sent to this contact: ${targetCampaignId}`);
+      const targetContactId = lastSentEvent.contact_id;
+      console.log(`[IMAP]    🔍 Most recent campaign sent to contact ${targetContactId}: ${targetCampaignId}`);
 
       // Verify this contact is still active in the campaign
+      // Include 'processing' status since the executor temporarily sets this during execution
       const { data: campaignContact } = await supabase
         .from('campaign_contacts')
         .select('campaign_id, contact_id')
-        .eq('contact_id', contact.id)
+        .eq('contact_id', targetContactId)
         .eq('campaign_id', targetCampaignId)
-        .in('status', ['in_progress', 'completed'])
+        .in('status', ['in_progress', 'completed', 'processing'])
         .single();
 
-
-
       if (!campaignContact) {
-        console.log(`[IMAP]    ❌ Contact ${contact.id} is NOT active in campaign ${targetCampaignId}. Ignoring reply.`);
+        console.log(`[IMAP]    ❌ Contact ${targetContactId} is NOT active in campaign ${targetCampaignId}. Ignoring reply.`);
         return;
       }
 
@@ -1158,7 +1165,7 @@ class ImapMonitor {
       // Log reply event only for the specific campaign the contact is replying to
       await supabase.from('email_events').insert({
         campaign_id: targetCampaignId,
-        contact_id: contact.id,
+        contact_id: targetContactId,
         event_type: 'replied',
         event_data: {
           from: fromEmail,
@@ -1167,7 +1174,7 @@ class ImapMonitor {
         }
       });
 
-      // Mark campaign contact as replied
+      // Mark campaign contact as replied - stops all future follow-ups in this campaign
       await supabase
         .from('campaign_contacts')
         .update({
@@ -1175,7 +1182,7 @@ class ImapMonitor {
           replied_at: new Date().toISOString()
         })
         .eq('campaign_id', targetCampaignId)
-        .eq('contact_id', contact.id);
+        .eq('contact_id', targetContactId);
 
       console.log(`[IMAP] ✓ Logged reply from ${fromEmail} for campaign ${targetCampaignId} (subject: "${message.subject}")`);
     } catch (error) {
