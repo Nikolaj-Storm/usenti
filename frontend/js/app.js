@@ -6,6 +6,7 @@ const App = () => {
   const [privateView, setPrivateView] = React.useState('dashboard');
   const [user, setUser] = React.useState(null);
   const [recoveryToken, setRecoveryToken] = React.useState(null);
+  const [unansweredCount, setUnansweredCount] = React.useState(0);
 
   // 1. Check for password recovery token in URL hash, then verify session
   React.useEffect(() => {
@@ -26,6 +27,32 @@ const App = () => {
     }
     verifySession();
   }, []);
+
+  // Fetch unanswered inbox count when authenticated
+  const fetchUnansweredCount = async () => {
+    try {
+      const data = await api.getUnansweredCount();
+      setUnansweredCount(data.count || 0);
+    } catch (error) {
+      console.error('Failed to fetch unanswered count:', error);
+    }
+  };
+
+  React.useEffect(() => {
+    if (authState === 'authenticated') {
+      fetchUnansweredCount();
+      // Poll every 60 seconds for updates
+      const interval = setInterval(fetchUnansweredCount, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [authState]);
+
+  // Re-fetch when navigating away from inbox (user may have replied/deleted)
+  React.useEffect(() => {
+    if (authState === 'authenticated' && privateView !== 'inbox') {
+      fetchUnansweredCount();
+    }
+  }, [privateView]);
 
   const verifySession = async () => {
     console.log('🔄 [App] Verifying session...');
@@ -133,7 +160,7 @@ const App = () => {
   // --- Private Dashboard View ---
   console.log('📍 [Router] Rendering private view:', privateView, '| User:', user?.email);
 
-  const NavItem = ({ view, icon: IconComponent, label }) =>
+  const NavItem = ({ view, icon: IconComponent, label, badge }) =>
     h('button', {
       onClick: () => setPrivateView(view),
       className: `w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${privateView === view
@@ -144,7 +171,14 @@ const App = () => {
       h('div', { className: `${privateView === view ? 'text-rust-800' : 'group-hover:text-cream-100 transition-colors'}` },
         h(IconComponent, { size: 20 })
       ),
-      h('span', { className: "font-medium tracking-wide" }, label)
+      h('span', { className: "font-medium tracking-wide flex-1 text-left" }, label),
+      badge > 0 && h('span', {
+        className: `min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[11px] font-bold rounded-full ${
+          privateView === view
+            ? 'bg-red-500 text-white'
+            : 'bg-red-500 text-white'
+        }`
+      }, badge > 99 ? '99+' : badge)
     );
 
   return h('div', { className: "flex h-screen font-sans text-white overflow-hidden animate-fade-in" },
@@ -166,7 +200,7 @@ const App = () => {
         h(NavItem, { view: "dashboard", icon: Icons.LayoutDashboard, label: "Overview" }),
         h(NavItem, { view: "campaigns", icon: Icons.Send, label: "Campaigns" }),
         h(NavItem, { view: "contacts", icon: Icons.Users, label: "Contacts" }),
-        h(NavItem, { view: "inbox", icon: Icons.Inbox, label: "Inbox" }),
+        h(NavItem, { view: "inbox", icon: Icons.Inbox, label: "Inbox", badge: unansweredCount }),
         h('div', { className: "py-6" }),
         h('p', { className: "px-4 text-xs font-bold text-white/40 uppercase tracking-widest mb-4" }, 'System'),
         h(NavItem, { view: "infrastructure", icon: Icons.Layers, label: "Accounts" })
@@ -208,7 +242,7 @@ const App = () => {
           privateView === 'campaigns' && h(CampaignBuilder),
           privateView === 'infrastructure' && h(EmailAccounts),
           privateView === 'contacts' && h(Contacts),
-          privateView === 'inbox' && h(Inbox)
+          privateView === 'inbox' && h(Inbox, { onUnansweredCountChange: fetchUnansweredCount })
         )
       )
     )

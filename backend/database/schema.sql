@@ -311,6 +311,7 @@ CREATE TABLE IF NOT EXISTS inbox_messages (
   body_text TEXT,
   received_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
   is_read BOOLEAN DEFAULT false,
+  is_answered BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
 
@@ -328,6 +329,7 @@ CREATE POLICY "Users can manage own inbox messages" ON inbox_messages
 
 CREATE INDEX idx_inbox_account_created ON inbox_messages(email_account_id, received_at DESC);
 CREATE INDEX idx_inbox_is_read ON inbox_messages(is_read);
+CREATE INDEX idx_inbox_is_answered ON inbox_messages(is_answered);
 
 -- ============================================================================
 -- SECTION 10: FUNCTIONS & TRIGGERS

@@ -318,6 +318,17 @@ const api = {
     window.URL.revokeObjectURL(blobUrl);
   },
 
+  // Delete an inbox message
+  async deleteInboxMessage(messageId) {
+    console.log('🗑️ [API] Deleting inbox message...');
+    return this.delete(`/api/inbox/${messageId}`);
+  },
+
+  // Get count of unanswered inbox messages
+  async getUnansweredCount() {
+    return this.get('/api/inbox/unanswered-count');
+  },
+
   // Cleanup old inbox messages
   async cleanupInbox() {
     console.log('🧹 [API] Cleaning up old inbox messages...');
