@@ -818,9 +818,83 @@ app.get('/api/inbox', authenticateUser, async (req, res) => {
       throw error;
     }
 
+    // Enrich messages with campaign affiliations
+    if (data && data.length > 0) {
+      // Collect unique from_addresses
+      const fromAddresses = [...new Set(data.map(m => m.from_address).filter(Boolean))];
+
+      if (fromAddresses.length > 0) {
+        // Find contacts matching these email addresses that belong to user's campaigns
+        const { data: campaignData } = await supabase
+          .from('campaign_contacts')
+          .select(`
+            contact_id,
+            contacts!inner(email),
+            campaigns!inner(id, name, user_id)
+          `)
+          .eq('campaigns.user_id', req.user.id)
+          .in('contacts.email', fromAddresses);
+
+        if (campaignData && campaignData.length > 0) {
+          // Build a map: email -> [campaign names]
+          const emailToCampaigns = {};
+          for (const cc of campaignData) {
+            const email = cc.contacts?.email;
+            const campaignName = cc.campaigns?.name;
+            if (email && campaignName) {
+              if (!emailToCampaigns[email]) emailToCampaigns[email] = new Set();
+              emailToCampaigns[email].add(campaignName);
+            }
+          }
+
+          // Attach campaign names to each message
+          for (const msg of data) {
+            const campaigns = emailToCampaigns[msg.from_address];
+            msg.campaign_names = campaigns ? [...campaigns] : [];
+          }
+        } else {
+          for (const msg of data) {
+            msg.campaign_names = [];
+          }
+        }
+      }
+    }
+
     res.json(data);
   } catch (error) {
     console.error(`[${requestId}] Error in inbox route:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get count of unanswered inbox messages
+app.get('/api/inbox/unanswered-count', authenticateUser, async (req, res) => {
+  try {
+    // Get user's email account IDs
+    const { data: userAccounts, error: accountsError } = await supabase
+      .from('email_accounts')
+      .select('id')
+      .eq('user_id', req.user.id);
+
+    if (accountsError) throw accountsError;
+
+    const userAccountIds = userAccounts.map(a => a.id);
+
+    if (userAccountIds.length === 0) {
+      return res.json({ count: 0 });
+    }
+
+    const { count, error } = await supabase
+      .from('inbox_messages')
+      .select('*', { count: 'exact', head: true })
+      .in('email_account_id', userAccountIds)
+      .eq('is_answered', false);
+
+    if (error) throw error;
+
+    res.json({ count: count || 0 });
+  } catch (error) {
+    console.error('Error getting unanswered count:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -863,6 +937,45 @@ app.put('/api/inbox/:id/read', authenticateUser, async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error(`[${requestId}] Error in route:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete an inbox message
+app.delete('/api/inbox/:id', authenticateUser, async (req, res) => {
+  const requestId = `INBOX-DEL-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  try {
+    const { id } = req.params;
+
+    // Verify the message belongs to user's email account
+    const { data: message, error: fetchError } = await supabase
+      .from('inbox_messages')
+      .select('email_account_id, email_accounts!inner(user_id)')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (message.email_accounts.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Delete the message
+    const { error } = await supabase
+      .from('inbox_messages')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({ success: true, message: 'Message deleted' });
+  } catch (error) {
+    console.error(`[${requestId}] Error deleting inbox message:`, error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1141,6 +1254,12 @@ app.post('/api/inbox/:id/reply', authenticateUser, upload.any(), async (req, res
       trackOpens: false,
       trackClicks: false
     });
+
+    // Mark the inbox message as answered
+    await supabase
+      .from('inbox_messages')
+      .update({ is_answered: true })
+      .eq('id', id);
 
     res.json({ success: true, message: 'Reply sent successfully' });
   } catch (error) {

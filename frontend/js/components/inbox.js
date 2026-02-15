@@ -1,6 +1,6 @@
 // Mr. Snowman - Unified Inbox Component
 
-const Inbox = () => {
+const Inbox = ({ onUnansweredCountChange }) => {
   const [accounts, setAccounts] = React.useState([]);
   const [messages, setMessages] = React.useState([]);
   const [selectedAccount, setSelectedAccount] = React.useState('all');
@@ -14,6 +14,7 @@ const Inbox = () => {
   const [replyBody, setReplyBody] = React.useState('');
   const [sendingReply, setSendingReply] = React.useState(false);
   const [attachments, setAttachments] = React.useState([]);
+  const [deleting, setDeleting] = React.useState(null);
   const fileInputRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -79,6 +80,12 @@ const Inbox = () => {
     setSendingReply(true);
     try {
       await api.sendReply(selectedMessage.id, replyBody, attachments);
+      // Mark the message as answered in local state
+      setMessages(prev => prev.map(m =>
+        m.id === selectedMessage.id ? { ...m, is_answered: true } : m
+      ));
+      setSelectedMessage(prev => prev ? { ...prev, is_answered: true } : prev);
+      if (onUnansweredCountChange) onUnansweredCountChange();
       alert('Reply sent successfully!');
       closeReplyForm();
     } catch (error) {
@@ -93,6 +100,27 @@ const Inbox = () => {
     setShowReplyForm(false);
     setReplyBody('');
     setAttachments([]);
+  };
+
+  const handleDeleteMessage = async (msgId, e) => {
+    if (e) e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this email?')) return;
+
+    setDeleting(msgId);
+    try {
+      await api.deleteInboxMessage(msgId);
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+      if (selectedMessage?.id === msgId) {
+        setSelectedMessage(null);
+        setEmailContent(null);
+      }
+      if (onUnansweredCountChange) onUnansweredCountChange();
+    } catch (error) {
+      console.error('Failed to delete message:', error);
+      alert('Failed to delete message: ' + error.message);
+    } finally {
+      setDeleting(null);
+    }
   };
 
   const handleFileSelect = (e) => {
@@ -292,7 +320,7 @@ const Inbox = () => {
                 h('div', {
                   key: msg.id,
                   onClick: () => handleSelectMessage(msg),
-                  className: `p-4 border-b border-white/5 cursor-pointer transition-all ${selectedMessage?.id === msg.id
+                  className: `p-4 border-b border-white/5 cursor-pointer transition-all relative group/msg ${selectedMessage?.id === msg.id
                     ? 'bg-cream-100/20 border-l-4 border-l-cream-100'
                     : msg.is_read
                       ? 'hover:bg-white/5'
@@ -303,15 +331,40 @@ const Inbox = () => {
                     h('span', {
                       className: `truncate pr-2 ${msg.is_read ? 'text-white/70' : 'font-semibold text-white'}`
                     }, msg.from_name || msg.from_address),
-                    h('span', { className: "text-xs text-white/40 whitespace-nowrap" }, formatDate(msg.received_at))
+                    h('div', { className: "flex items-center gap-2 flex-shrink-0" },
+                      h('span', { className: "text-xs text-white/40 whitespace-nowrap" }, formatDate(msg.received_at)),
+                      // Delete button (visible on hover)
+                      h('button', {
+                        className: "opacity-0 group-hover/msg:opacity-100 p-1 text-white/30 hover:text-red-400 hover:bg-red-400/10 rounded transition-all",
+                        onClick: (e) => handleDeleteMessage(msg.id, e),
+                        disabled: deleting === msg.id,
+                        title: "Delete message"
+                      }, deleting === msg.id
+                        ? h(Icons.Loader2, { size: 14, className: "animate-spin" })
+                        : h(Icons.Trash2, { size: 14 })
+                      )
+                    )
                   ),
                   h('h4', {
                     className: `text-sm truncate mb-1 ${msg.is_read ? 'text-white/60 font-normal' : 'text-white/90 font-medium'}`
                   }, msg.subject || '(No Subject)'),
                   h('p', { className: "text-xs text-white/50 line-clamp-2" }, msg.snippet || ''),
-                  selectedAccount === 'all' && msg.email_accounts && h('div', { className: "mt-2" },
-                    h('span', { className: "text-[10px] bg-white/10 text-white/60 px-2 py-0.5 rounded-full" },
-                      msg.email_accounts.email_address || 'Unknown Account'
+                  // Labels row: account, answered status, campaigns
+                  h('div', { className: "mt-2 flex flex-wrap items-center gap-1.5" },
+                    // Account label (when showing all inboxes)
+                    selectedAccount === 'all' && msg.email_accounts && h('span', {
+                      className: "text-[10px] bg-white/10 text-white/60 px-2 py-0.5 rounded-full"
+                    }, msg.email_accounts.email_address || 'Unknown Account'),
+                    // Answered/Unanswered label
+                    msg.is_answered
+                      ? h('span', { className: "text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30" }, 'Answered')
+                      : h('span', { className: "text-[10px] bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full border border-red-500/30" }, 'Unanswered'),
+                    // Campaign labels
+                    msg.campaign_names && msg.campaign_names.length > 0 && msg.campaign_names.map((name, i) =>
+                      h('span', {
+                        key: `camp-${i}`,
+                        className: "text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full border border-blue-500/30"
+                      }, name)
                     )
                   )
                 )
@@ -419,7 +472,18 @@ const Inbox = () => {
                     navigator.clipboard.writeText(text);
                     alert('Email content copied to clipboard for forwarding');
                   }
-                }, 'Copy for Forward')
+                }, 'Copy for Forward'),
+                h('div', { className: "flex-1" }),
+                h('button', {
+                  className: "px-4 py-2 text-red-400 hover:bg-red-400/10 rounded-full transition-colors flex items-center gap-2",
+                  onClick: () => handleDeleteMessage(selectedMessage.id),
+                  disabled: deleting === selectedMessage.id
+                },
+                  deleting === selectedMessage.id
+                    ? h(Icons.Loader2, { size: 16, className: "animate-spin" })
+                    : h(Icons.Trash2, { size: 16 }),
+                  h('span', null, 'Delete')
+                )
               )
             )
             : h('div', { className: "h-full flex flex-col items-center justify-center text-white/40" },
