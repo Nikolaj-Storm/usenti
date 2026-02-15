@@ -172,6 +172,66 @@ app.get('/api/auth/me', authenticateUser, async (req, res) => {
   res.json({ user: req.user });
 });
 
+// Forgot Password - sends reset email via Supabase
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    // Determine the redirect URL for the password reset link
+    const frontendUrl = process.env.FRONTEND_URL || 'https://nikolaj-storm.github.io/Snowman.2.0';
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: frontendUrl
+    });
+
+    if (error) throw error;
+
+    // Always return success to avoid leaking which emails are registered
+    res.json({ success: true, message: 'If an account exists with that email, a password reset link has been sent.' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    // Still return success to avoid email enumeration
+    res.json({ success: true, message: 'If an account exists with that email, a password reset link has been sent.' });
+  }
+});
+
+// Reset Password - updates password using the recovery access token
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { access_token, new_password } = req.body;
+
+    if (!access_token || !new_password) {
+      return res.status(400).json({ error: 'Access token and new password are required' });
+    }
+
+    if (new_password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Verify the recovery token and get the user
+    const { data: { user }, error: userError } = await supabase.auth.getUser(access_token);
+    if (userError || !user) {
+      return res.status(400).json({ error: 'Invalid or expired reset link. Please request a new one.' });
+    }
+
+    // Update the user's password using admin API
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
+      password: new_password
+    });
+
+    if (updateError) throw updateError;
+
+    res.json({ success: true, message: 'Password has been reset successfully.' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(400).json({ error: error.message || 'Failed to reset password. The link may have expired.' });
+  }
+});
+
 // ============================================================================
 // OAUTH ROUTES
 // ============================================================================
