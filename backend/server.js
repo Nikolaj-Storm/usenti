@@ -537,11 +537,23 @@ app.post('/api/email-accounts/test', authenticateUser, async (req, res) => {
       }
     }
 
-    const allSuccess = (!results.smtp || results.smtp.success) && (!results.imap || results.imap.success);
+    // Ensure at least one test was attempted
+    if (!results.smtp && !results.imap) {
+      return res.json({
+        success: false,
+        message: 'No connection details provided for testing',
+        results
+      });
+    }
+
+    // Success if all attempted tests passed
+    const smtpSuccess = !results.smtp || results.smtp.success;
+    const imapSuccess = !results.imap || results.imap.success;
+    const allSuccess = smtpSuccess && imapSuccess;
 
     res.json({
       success: allSuccess,
-      message: allSuccess ? 'All connections successful!' : 'Some connections failed',
+      message: allSuccess ? 'Connection successful! Your account is ready to send.' : 'Some connections failed',
       results
     });
   } catch (error) {

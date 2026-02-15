@@ -303,6 +303,33 @@ const AccountModal = ({ account, onClose, onSave }) => {
   };
 
   const handleTest = async () => {
+    // Validation
+    const errors = [];
+    if (!formData.email_address) errors.push('Email address is required');
+    if (!formData.smtp_host) errors.push('SMTP Host is required');
+    if (!formData.smtp_username) errors.push('SMTP Username is required');
+
+    // Check if password is required (only if not editing or if user started typing)
+    if (!isEditing && !formData.smtp_password) errors.push('SMTP Password is required');
+
+    if (!formData.imap_host) errors.push('IMAP Host is required');
+    if (!formData.imap_username) errors.push('IMAP Username is required');
+
+    // Check if password is required
+    if (!isEditing && !formData.imap_password) errors.push('IMAP Password is required');
+
+    if (errors.length > 0) {
+      setTestResult({
+        success: false,
+        message: 'Please fill in all required fields',
+        results: {
+          smtp: { success: false, message: 'Missing required fields' },
+          imap: { success: false, message: 'Missing required fields' }
+        }
+      });
+      return;
+    }
+
     setTesting(true);
     setTestResult(null);
 
@@ -701,6 +728,10 @@ const AccountModal = ({ account, onClose, onSave }) => {
             ),
             (!testResult.results.imap?.success && testResult.results.imap?.message) &&
             h('p', { className: "text-xs opacity-80 pl-2 border-l-2 border-white/20 ml-1" }, testResult.results.imap.message)
+          ),
+          testResult.success && h('div', { className: "mt-3 pt-3 border-t border-green-500/30 text-sm animate-fade-in" },
+            h('p', { className: "font-medium mb-1" }, "✅ System checked: Ready for campaigns"),
+            h('p', { className: "opacity-80" }, "Your SMTP (sending) and IMAP (receiving) connections are both working correctly. You can safely add this account.")
           )
         ),
         h('div', { className: "flex gap-3" },
