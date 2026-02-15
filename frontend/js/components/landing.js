@@ -34,27 +34,29 @@ const LandingPage = ({ onNavigate }) => {
           h('span', { className: "w-2 h-2 rounded-full bg-cream-100 animate-pulse" }),
           'v2.0 is now live'
         ),
-        h('h1', { className: "font-serif text-5xl md:text-7xl leading-[1.1] text-white" },
-          'The art of ',
-          h('span', { className: "italic text-cream-100" }, 'outreach'),
-          ',',
-          h('br'),
-          'refined for closers.'
-        ),
-        h('p', { className: "text-xl text-white/60 max-w-2xl mx-auto font-light leading-relaxed" },
-          'Mr. Snowman combines minimalist design with brutal efficiency. Automate your campaigns, manage your infrastructure, and scale your revenue without the noise.'
+        h('div', { className: "flex flex-col md:flex-row items-center gap-8 md:gap-12 py-8" },
+          // Text Container (Left on desktop/Left generally) - Wait, user said "to the left of this quote please place the image" -> So Image Left, Quote Right.
+          h('div', { className: "w-full md:w-1/2 order-1" },
+            h('img', {
+              src: "visuals/steve.png",
+              alt: "Steve Jobs",
+              className: "w-full rounded-2xl shadow-2xl glass-card object-cover"
+            })
+          ),
+          h('div', { className: "w-full md:w-1/2 order-2 text-left space-y-6" },
+            h('p', { className: "font-serif text-2xl md:text-3xl leading-relaxed text-white italic" },
+              '"For years, Steve Jobs courted biographer Walter Isaacson to write the definitive story of his life… And he called me up. I hadn’t really felt that I was the right person at first… I turned Jobs down a number of times, but finally accepted when I found out Jobs might not have long to live."'
+            ),
+            h('p', { className: "text-lg text-cream-100 font-medium" },
+              '- npr interview of Walter Isaacson'
+            )
+          )
         ),
         h('div', { className: "flex flex-col sm:flex-row items-center justify-center gap-4 pt-6" },
           h('button', {
             onClick: () => onNavigate('signup'),
             className: "w-full sm:w-auto px-8 py-4 bg-cream-100 text-rust-900 text-lg rounded-full hover:bg-cream-200 transition-all hover:-translate-y-1 font-medium"
-          }, 'Get Started for Free'),
-          h('button', { className: "w-full sm:w-auto px-8 py-4 glass-card text-white text-lg rounded-full hover:bg-white/15 transition-all flex items-center justify-center gap-2 group" },
-            'View Demo ',
-            h('div', { className: "bg-white/10 rounded-full p-1 group-hover:bg-white/20" },
-              h(Icons.ChevronRight, { size: 16 })
-            )
-          )
+          }, 'Get Started for Free')
         ),
         h('div', { className: "pt-12 flex items-center justify-center gap-8 text-white/30 grayscale" },
           h('div', { className: "font-serif font-bold text-xl" }, 'ACME Corp'),
