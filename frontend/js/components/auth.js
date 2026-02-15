@@ -219,17 +219,19 @@ const Auth = ({ view, onAuthenticate, onNavigate, recoveryToken }) => {
         )
       ),
       h('div', { className: "relative z-10 max-w-lg" },
-        h('h2', { className: "font-serif text-4xl leading-tight mb-6" }, '"Simplicity is the ultimate sophistication."'),
-        h('p', { className: "text-white/60 font-light text-lg" }, '— Leonardo da Vinci'),
+        h('h2', { className: "font-serif text-4xl leading-tight mb-6" }, '"Hell yeah! This is going to be awesome!"'),
+        h('div', { className: "text-white/60 font-light text-lg" },
+          'Magnus',
+          h('br'),
+          'Company Hypeman'
+        ),
         h('div', { className: "mt-12 flex gap-2" },
           h('div', { className: "w-12 h-1 bg-cream-100 rounded-full" }),
           h('div', { className: "w-2 h-1 bg-white/20 rounded-full" }),
           h('div', { className: "w-2 h-1 bg-white/20 rounded-full" })
         )
       ),
-      h('div', { className: "text-xs text-white/40" },
-        'Secure Encryption • SOC2 Compliant • 99.9% Uptime'
-      )
+
     ),
     // Right Side - Form or Verification Screen
     h('div', { className: "w-full lg:w-1/2 flex flex-col justify-center items-center p-8 sm:p-16 relative" },
