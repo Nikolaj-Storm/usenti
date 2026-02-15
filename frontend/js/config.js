@@ -22,6 +22,8 @@ const APP_CONFIG = {
     CONTACTS: '/api/contacts',
     CONTACTS_IMPORT: '/api/contact-lists/:id/import',
     CAMPAIGNS: '/api/campaigns',
-    DASHBOARD_STATS: '/api/dashboard/stats'
+    DASHBOARD_STATS: '/api/dashboard/stats',
+    AUTH_FORGOT_PASSWORD: '/api/auth/forgot-password',
+    AUTH_RESET_PASSWORD: '/api/auth/reset-password'
   }
 };

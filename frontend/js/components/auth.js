@@ -1,6 +1,6 @@
 // Mr. Snowman - Authentication Component
 
-const Auth = ({ view, onAuthenticate, onNavigate }) => {
+const Auth = ({ view, onAuthenticate, onNavigate, recoveryToken }) => {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const [success, setSuccess] = React.useState('');
@@ -12,6 +12,8 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
   const [waitingForVerification, setWaitingForVerification] = React.useState(false);
   const [verificationEmail, setVerificationEmail] = React.useState('');
   const [verificationPassword, setVerificationPassword] = React.useState('');
+  const [newPassword, setNewPassword] = React.useState('');
+  const [confirmPassword, setConfirmPassword] = React.useState('');
 
   // Countdown timer for Supabase's rate limit
   React.useEffect(() => {
@@ -73,6 +75,53 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
 
     return () => clearInterval(pollInterval);
   }, [waitingForVerification, verificationEmail, verificationPassword, onAuthenticate]);
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await api.forgotPassword(email);
+      setSuccess('If an account exists with that email, a password reset link has been sent. Check your inbox (and spam folder).');
+      setEmail('');
+    } catch (err) {
+      setError(err.message || 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.');
+      setLoading(false);
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError('Password must be at least 6 characters.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      await api.resetPassword(recoveryToken, newPassword);
+      setSuccess('Your password has been reset successfully!');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      setError(err.message || 'Failed to reset password. The link may have expired.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     console.log('🎯 [Auth] Form submitted!', { view, email, hasPassword: !!password, hasName: !!name });
@@ -237,11 +286,123 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
               onNavigate('login');
             },
             className: "mt-6 text-white/60 hover:text-white underline text-sm"
-          }, 'I\'ll verify later and log in manually →')
+          }, 'I\'ll verify later and log in manually \u2192')
         )
       ) :
 
-      // Regular Form
+      // Forgot Password Form
+      view === 'forgot-password' ? h('div', { className: "w-full max-w-md space-y-8 animate-fade-in" },
+        h('div', { className: "text-center lg:text-left" },
+          h('h2', { className: "font-serif text-3xl text-white" }, 'Reset your password'),
+          h('p', { className: "text-white/60 mt-2" },
+            'Enter the email address associated with your account and we\'ll send you a link to reset your password.'
+          )
+        ),
+        error && h('div', { className: "p-4 glass-card border-red-500/30 text-red-300 text-sm flex items-center gap-2" },
+          h(Icons.AlertCircle, { size: 16 }),
+          error
+        ),
+        success && h('div', { className: "p-4 glass-card border-green-500/30 text-green-300 text-sm flex items-center gap-2" },
+          h(Icons.Mail, { size: 16 }),
+          h('div', null,
+            h('div', { className: "font-medium" }, success),
+            h('button', {
+              onClick: () => { setSuccess(''); onNavigate('login'); },
+              className: "mt-2 text-green-300 underline hover:text-green-200"
+            }, 'Back to login \u2192')
+          )
+        ),
+        !success && h('form', { onSubmit: handleForgotPassword, className: "space-y-6" },
+          h('div', { className: "space-y-2" },
+            h('label', { className: "text-sm font-medium text-white/70" }, 'Email Address'),
+            h('input', {
+              type: "email",
+              required: true,
+              value: email,
+              onChange: (e) => setEmail(e.target.value),
+              className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
+              placeholder: "john@company.com"
+            })
+          ),
+          h('button', {
+            type: "submit",
+            disabled: loading,
+            className: "w-full py-3 bg-cream-100 text-rust-900 rounded-full font-medium hover:bg-cream-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+          },
+            loading
+              ? h(Icons.Loader2, { size: 20, className: "animate-spin" })
+              : 'Send Reset Link'
+          )
+        ),
+        h('div', { className: "text-center text-sm text-white/60" },
+          'Remember your password? ',
+          h('button', {
+            onClick: () => { setError(''); setSuccess(''); onNavigate('login'); },
+            className: "font-medium text-cream-100 hover:text-white underline underline-offset-2"
+          }, 'Log in')
+        )
+      ) :
+
+      // Reset Password Form (after clicking email link)
+      view === 'reset-password' ? h('div', { className: "w-full max-w-md space-y-8 animate-fade-in" },
+        h('div', { className: "text-center lg:text-left" },
+          h('h2', { className: "font-serif text-3xl text-white" }, 'Set new password'),
+          h('p', { className: "text-white/60 mt-2" },
+            'Enter your new password below.'
+          )
+        ),
+        error && h('div', { className: "p-4 glass-card border-red-500/30 text-red-300 text-sm flex items-center gap-2" },
+          h(Icons.AlertCircle, { size: 16 }),
+          error
+        ),
+        success && h('div', { className: "p-4 glass-card border-green-500/30 text-green-300 text-sm flex items-center gap-2" },
+          h(Icons.Mail, { size: 16 }),
+          h('div', null,
+            h('div', { className: "font-medium" }, success),
+            h('button', {
+              onClick: () => { setSuccess(''); onNavigate('login'); },
+              className: "mt-2 text-green-300 underline hover:text-green-200"
+            }, 'Go to login \u2192')
+          )
+        ),
+        !success && h('form', { onSubmit: handleResetPassword, className: "space-y-6" },
+          h('div', { className: "space-y-2" },
+            h('label', { className: "text-sm font-medium text-white/70" }, 'New Password'),
+            h('input', {
+              type: "password",
+              required: true,
+              value: newPassword,
+              onChange: (e) => setNewPassword(e.target.value),
+              className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
+              placeholder: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
+              minLength: 6
+            })
+          ),
+          h('div', { className: "space-y-2" },
+            h('label', { className: "text-sm font-medium text-white/70" }, 'Confirm New Password'),
+            h('input', {
+              type: "password",
+              required: true,
+              value: confirmPassword,
+              onChange: (e) => setConfirmPassword(e.target.value),
+              className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
+              placeholder: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
+              minLength: 6
+            })
+          ),
+          h('button', {
+            type: "submit",
+            disabled: loading,
+            className: "w-full py-3 bg-cream-100 text-rust-900 rounded-full font-medium hover:bg-cream-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+          },
+            loading
+              ? h(Icons.Loader2, { size: 20, className: "animate-spin" })
+              : 'Reset Password'
+          )
+        )
+      ) :
+
+      // Regular Login/Signup Form
       h('div', { className: "w-full max-w-md space-y-8 animate-fade-in" },
         h('div', { className: "text-center lg:text-left" },
           h('h2', { className: "font-serif text-3xl text-white" },
@@ -264,7 +425,7 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
             h('button', {
               onClick: () => onNavigate('login'),
               className: "mt-2 text-green-300 underline hover:text-green-200"
-            }, 'Go to login →')
+            }, 'Go to login \u2192')
           )
         ),
         h('form', { onSubmit: handleSubmit, className: "space-y-6" },
@@ -293,7 +454,11 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
           h('div', { className: "space-y-2" },
             h('div', { className: "flex justify-between" },
               h('label', { className: "text-sm font-medium text-white/70" }, 'Password'),
-              view === 'login' && h('a', { href: "#", className: "text-xs text-white/50 hover:text-cream-100" }, 'Forgot password?')
+              view === 'login' && h('button', {
+                type: "button",
+                onClick: (e) => { e.preventDefault(); setError(''); setSuccess(''); onNavigate('forgot-password'); },
+                className: "text-xs text-white/50 hover:text-cream-100"
+              }, 'Forgot password?')
             ),
             h('input', {
               type: "password",
@@ -301,7 +466,7 @@ const Auth = ({ view, onAuthenticate, onNavigate }) => {
               value: password,
               onChange: (e) => setPassword(e.target.value),
               className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
-              placeholder: "••••••••"
+              placeholder: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
             })
           ),
           h('button', {

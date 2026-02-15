@@ -5,9 +5,25 @@ const App = () => {
   const [publicView, setPublicView] = React.useState('landing');
   const [privateView, setPrivateView] = React.useState('dashboard');
   const [user, setUser] = React.useState(null);
+  const [recoveryToken, setRecoveryToken] = React.useState(null);
 
-  // 1. Verify Session on Load
+  // 1. Check for password recovery token in URL hash, then verify session
   React.useEffect(() => {
+    // Supabase redirects with hash params: #access_token=xxx&type=recovery
+    const hash = window.location.hash;
+    if (hash && hash.includes('type=recovery')) {
+      const params = new URLSearchParams(hash.substring(1));
+      const accessToken = params.get('access_token');
+      if (accessToken) {
+        console.log('🔑 [App] Password recovery token detected in URL');
+        setRecoveryToken(accessToken);
+        setPublicView('reset-password');
+        setAuthState('unauthenticated');
+        // Clean the URL hash so it doesn't persist
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        return;
+      }
+    }
     verifySession();
   }, []);
 
@@ -111,7 +127,7 @@ const App = () => {
     if (publicView === 'landing') {
       return h(LandingPage, { onNavigate: handlePublicNavigate });
     }
-    return h(Auth, { view: publicView, onAuthenticate: handleLogin, onNavigate: handlePublicNavigate });
+    return h(Auth, { view: publicView, onAuthenticate: handleLogin, onNavigate: handlePublicNavigate, recoveryToken: recoveryToken });
   }
 
   // --- Private Dashboard View ---

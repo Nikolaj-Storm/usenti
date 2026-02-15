@@ -159,6 +159,17 @@ const api = {
     }
   },
 
+  async forgotPassword(email) {
+    return this.post(APP_CONFIG.ENDPOINTS.AUTH_FORGOT_PASSWORD, { email }, { skipAuth: true });
+  },
+
+  async resetPassword(accessToken, newPassword) {
+    return this.post(APP_CONFIG.ENDPOINTS.AUTH_RESET_PASSWORD, {
+      access_token: accessToken,
+      new_password: newPassword
+    }, { skipAuth: true });
+  },
+
   // Email Accounts
   async getEmailAccounts() {
     return this.get(APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS);
