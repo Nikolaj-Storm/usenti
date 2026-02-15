@@ -44,6 +44,47 @@ class ImapMonitor {
       .toLowerCase();
   }
 
+  // Helper to extract cleaner text body, removing tracking pixels and artifacts
+  extractCleanerText(parsed) {
+    let text = parsed.text || '';
+
+    // If text is empty or looks like just a URL/image, try to get it from HTML (simple strip tags)
+    if ((!text || text.length < 5) && parsed.html) {
+      // Very basic HTML to text fallback
+      text = parsed.html
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove style blocks
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove script blocks
+        .replace(/<br\s*\/?>/gi, '\n') // Replace <br> with newline
+        .replace(/<\/p>/gi, '\n') // Replace </p> with newline
+        .replace(/<[^>]*>?/gm, '') // Remove all other tags
+        .replace(/&nbsp;/g, ' '); // Replace &nbsp;
+    }
+
+    if (!text) return '';
+
+    // Filter out common tracking pixel patterns and image placeholders
+    return text
+      .split('\n')
+      .map(line => {
+        let cleaned = line.trim();
+        // Remove [https://...] patterns (common mailparser image placeholder)
+        cleaned = cleaned.replace(/\[https?:\/\/[^\]]*\]/gi, '').trim();
+
+        // Remove raw URLs if they look like trackers
+        if (cleaned.match(/^https?:\/\/[^\s]*$/i) && (cleaned.includes('track') || cleaned.includes('pixel') || cleaned.includes('click'))) {
+          return '';
+        }
+
+        // Remove lines that are just "images" or "links" or empty brackets
+        if (cleaned === '[]' || cleaned === '[image]' || cleaned === '[link]') return '';
+
+        return cleaned;
+      })
+      .filter(line => line.length > 0)
+      .join('\n')
+      .trim();
+  }
+
   // Check if an account is a Zoho account
   isZohoAccount(account) {
     return this.isZohoHost(account.imap_host) ||
@@ -602,7 +643,10 @@ class ImapMonitor {
                   }
 
                   const from = parsed.from?.value?.[0] || {};
-                  const body = parsed.text || parsed.html || '';
+
+                  // Use cleaner text extraction
+                  const cleanText = this.extractCleanerText(parsed);
+                  const body = cleanText || parsed.html || '';
                   const snippet = body.substring(0, 200).replace(/\s+/g, ' ').trim();
 
                   messages.push({
@@ -927,8 +971,8 @@ class ImapMonitor {
                       from_address: parsed.from?.value?.[0]?.address || '',
                       to: parsed.to?.text || '',
                       subject: parsed.subject || '(No Subject)',
-                      body_html: parsed.html || '',
-                      body_text: parsed.text || '',
+                      body_html: parsed.html || parsed.textAsHtml || '',
+                      body_text: this.extractCleanerText(parsed),
                       received_at: parsed.date?.toISOString() || new Date().toISOString(),
                       attachments: (parsed.attachments || []).map(a => ({
                         filename: a.filename,
@@ -985,7 +1029,16 @@ class ImapMonitor {
   async saveToInbox(message, account) {
     try {
       const from = message.from?.value?.[0] || {};
-      const simpleBody = message.text || message.html || '';
+
+      // Use cleaner text extraction for snippet
+      let simpleBody = typeof message.extractCleanerText === 'function' ?
+        message.extractCleanerText(message) : // If passed the parsed object directly
+        (message.text || message.html || '');
+
+      // If message is the parsed object from simpleParser, we can use our helper
+      if (message.html || message.text) {
+        simpleBody = this.extractCleanerText(message);
+      }
 
       // Create a snippet (first 100 chars)
       const snippet = simpleBody.substring(0, 100).replace(/\s+/g, ' ').trim();
