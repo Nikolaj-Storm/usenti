@@ -4,6 +4,7 @@ const gmailService = require('../services/gmailService');
 const microsoftService = require('../services/microsoftService');
 const supabase = require('../config/supabase');
 const { authenticateUser } = require('../middleware/auth');
+const { getFrontendUrlFromRequest } = require('../config/urls');
 
 /**
  * OAuth Routes for Email Provider Authentication
@@ -22,8 +23,9 @@ router.get('/gmail/authorize', authenticateUser, (req, res) => {
   console.log(`[OAUTH] 🚀 Initiating Gmail OAuth flow for user ${req.user.id}...`);
 
   try {
+    const frontendUrl = getFrontendUrlFromRequest(req);
     // Generate authorization URL with user ID in state
-    const authUrl = gmailService.getAuthorizationUrl(req.user.id);
+    const authUrl = gmailService.getAuthorizationUrl(req.user.id, frontendUrl);
 
     console.log(`[OAUTH] ✅ Authorization URL generated`);
     console.log(`[OAUTH]    Redirecting to Google...`);
@@ -49,26 +51,33 @@ router.get('/gmail/callback', async (req, res) => {
 
   console.log(`[OAUTH] 🔄 Gmail OAuth callback received`);
 
+  let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  let userId = null;
+
+  try {
+    if (state) {
+      const stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
+      userId = stateData.userId;
+      if (stateData.frontendUrl) {
+        frontendUrl = stateData.frontendUrl;
+      }
+    }
+  } catch (e) {
+    console.warn(`[OAUTH] ⚠️ Failed to parse state payload:`, e.message);
+  }
+
   // Check for OAuth errors
   if (error) {
     console.error(`[OAUTH] ❌ OAuth error from Google: ${error}`);
-    return res.redirect(
-      `${process.env.FRONTEND_URL || 'http://localhost:3001'}/email-accounts?error=oauth_denied`
-    );
+    return res.redirect(`${frontendUrl}/email-accounts?error=oauth_denied`);
   }
 
-  if (!code || !state) {
-    console.error(`[OAUTH] ❌ Missing code or state parameter`);
-    return res.redirect(
-      `${process.env.FRONTEND_URL || 'http://localhost:3001'}/email-accounts?error=invalid_callback`
-    );
+  if (!code || !userId) {
+    console.error(`[OAUTH] ❌ Missing code or valid state parameter`);
+    return res.redirect(`${frontendUrl}/email-accounts?error=invalid_callback`);
   }
 
   try {
-    // Decode state to get user ID
-    const stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
-    const userId = stateData.userId;
-
     console.log(`[OAUTH]    User ID: ${userId}`);
     console.log(`[OAUTH] 🔐 Exchanging authorization code for tokens...`);
 
@@ -82,9 +91,7 @@ router.get('/gmail/callback', async (req, res) => {
 
     if (!tokens.refresh_token) {
       console.error(`[OAUTH] ❌ No refresh token received. User may need to revoke access and try again.`);
-      return res.redirect(
-        `${process.env.FRONTEND_URL || 'http://localhost:3001'}/email-accounts?error=no_refresh_token`
-      );
+      return res.redirect(`${frontendUrl}/email-accounts?error=no_refresh_token`);
     }
 
     // Get user's email address from Gmail API
@@ -156,18 +163,14 @@ router.get('/gmail/callback', async (req, res) => {
     console.log(`[OAUTH] ✅ OAuth flow completed successfully`);
     console.log(`[OAUTH]    Redirecting to frontend...`);
 
-    res.redirect(
-      `${process.env.FRONTEND_URL || 'http://localhost:3001'}/email-accounts?success=gmail_connected&email=${encodeURIComponent(emailAddress)}`
-    );
+    res.redirect(`${frontendUrl}/email-accounts?success=gmail_connected&email=${encodeURIComponent(emailAddress)}`);
 
   } catch (error) {
     console.error(`[OAUTH] ❌ Error processing OAuth callback:`, error);
     console.error(`[OAUTH]    Error message: ${error.message}`);
     console.error(`[OAUTH]    Stack trace:`, error.stack);
 
-    res.redirect(
-      `${process.env.FRONTEND_URL || 'http://localhost:3001'}/email-accounts?error=processing_failed`
-    );
+    res.redirect(`${frontendUrl}/email-accounts?error=processing_failed`);
   }
 });
 
@@ -274,8 +277,9 @@ router.get('/microsoft/authorize', authenticateUser, (req, res) => {
   console.log(`[OAUTH] 🚀 Initiating Microsoft OAuth flow for user ${req.user.id}...`);
 
   try {
+    const frontendUrl = getFrontendUrlFromRequest(req);
     // Generate authorization URL with user ID in state
-    const authUrl = microsoftService.getAuthorizationUrl(req.user.id);
+    const authUrl = microsoftService.getAuthorizationUrl(req.user.id, frontendUrl);
 
     console.log(`[OAUTH] ✅ Authorization URL generated`);
     console.log(`[OAUTH]    Redirecting to Microsoft...`);
@@ -301,26 +305,33 @@ router.get('/microsoft/callback', async (req, res) => {
 
   console.log(`[OAUTH] 🔄 Microsoft OAuth callback received`);
 
+  let frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  let userId = null;
+
+  try {
+    if (state) {
+      const stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
+      userId = stateData.userId;
+      if (stateData.frontendUrl) {
+        frontendUrl = stateData.frontendUrl;
+      }
+    }
+  } catch (e) {
+    console.warn(`[OAUTH] ⚠️ Failed to parse state payload:`, e.message);
+  }
+
   // Check for OAuth errors
   if (error) {
     console.error(`[OAUTH] ❌ OAuth error from Microsoft: ${error}`);
-    return res.redirect(
-      `${process.env.FRONTEND_URL || 'http://localhost:3001'}/email-accounts?error=oauth_denied`
-    );
+    return res.redirect(`${frontendUrl}/email-accounts?error=oauth_denied`);
   }
 
-  if (!code || !state) {
-    console.error(`[OAUTH] ❌ Missing code or state parameter`);
-    return res.redirect(
-      `${process.env.FRONTEND_URL || 'http://localhost:3001'}/email-accounts?error=invalid_callback`
-    );
+  if (!code || !userId) {
+    console.error(`[OAUTH] ❌ Missing code or valid state parameter`);
+    return res.redirect(`${frontendUrl}/email-accounts?error=invalid_callback`);
   }
 
   try {
-    // Decode state to get user ID
-    const stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
-    const userId = stateData.userId;
-
     console.log(`[OAUTH]    User ID: ${userId}`);
     console.log(`[OAUTH] 🔐 Exchanging authorization code for tokens...`);
 
@@ -333,9 +344,7 @@ router.get('/microsoft/callback', async (req, res) => {
 
     if (!tokens.refresh_token) {
       console.error(`[OAUTH] ❌ No refresh token received.`);
-      return res.redirect(
-        `${process.env.FRONTEND_URL || 'http://localhost:3001'}/email-accounts?error=no_refresh_token`
-      );
+      return res.redirect(`${frontendUrl}/email-accounts?error=no_refresh_token`);
     }
 
     // Get user's email address from Microsoft Graph API
@@ -410,18 +419,14 @@ router.get('/microsoft/callback', async (req, res) => {
     console.log(`[OAUTH] ✅ OAuth flow completed successfully`);
     console.log(`[OAUTH]    Redirecting to frontend...`);
 
-    res.redirect(
-      `${process.env.FRONTEND_URL || 'http://localhost:3001'}/email-accounts?success=microsoft_connected&email=${encodeURIComponent(emailAddress)}`
-    );
+    res.redirect(`${frontendUrl}/email-accounts?success=microsoft_connected&email=${encodeURIComponent(emailAddress)}`);
 
   } catch (error) {
     console.error(`[OAUTH] ❌ Error processing OAuth callback:`, error);
     console.error(`[OAUTH]    Error message: ${error.message}`);
     console.error(`[OAUTH]    Stack trace:`, error.stack);
 
-    res.redirect(
-      `${process.env.FRONTEND_URL || 'http://localhost:3001'}/email-accounts?error=processing_failed`
-    );
+    res.redirect(`${frontendUrl}/email-accounts?error=processing_failed`);
   }
 });
 

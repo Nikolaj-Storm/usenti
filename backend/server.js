@@ -25,20 +25,12 @@ const campaignExecutor = require('./services/campaignExecutor');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware - Updated CORS to support GitHub Pages
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:5173', // Vite dev server
-  'https://nikolaj-storm.github.io',
-  process.env.FRONTEND_URL
-].filter(Boolean); // Remove any undefined values
+const { isOriginAllowed, getFrontendUrlFromRequest } = require('./config/urls');
 
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+    if (isOriginAllowed(origin)) {
       callback(null, true);
     } else {
       console.warn(`CORS blocked origin: ${origin}`);
@@ -190,7 +182,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     }
 
     // Determine the redirect URL for the password reset link
-    const frontendUrl = process.env.FRONTEND_URL || 'https://nikolaj-storm.github.io/Usenti.2.0';
+    const frontendUrl = getFrontendUrlFromRequest(req);
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: frontendUrl

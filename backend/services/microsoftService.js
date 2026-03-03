@@ -40,9 +40,10 @@ class MicrosoftService {
   /**
    * Generate authorization URL for user to grant access
    * @param {string} userId - User ID to store in state
+   * @param {string} frontendUrl - Frontend URL to redirect back to
    * @returns {string} Authorization URL
    */
-  getAuthorizationUrl(userId) {
+  getAuthorizationUrl(userId, frontendUrl) {
     const scopes = [
       'offline_access',
       'User.Read',
@@ -50,7 +51,7 @@ class MicrosoftService {
       'Mail.ReadWrite'
     ].join(' ');
 
-    const state = Buffer.from(JSON.stringify({ userId })).toString('base64');
+    const state = Buffer.from(JSON.stringify({ userId, frontendUrl })).toString('base64');
 
     const params = new URLSearchParams({
       client_id: this.clientId,

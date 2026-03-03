@@ -41,9 +41,10 @@ class GmailService {
   /**
    * Generate authorization URL for user to grant access
    * @param {string} userId - User ID to store in state
+   * @param {string} frontendUrl - Frontend URL to redirect back to
    * @returns {string} Authorization URL
    */
-  getAuthorizationUrl(userId) {
+  getAuthorizationUrl(userId, frontendUrl) {
     const oauth2Client = this.createOAuth2Client();
 
     const scopes = [
@@ -52,7 +53,7 @@ class GmailService {
       'https://www.googleapis.com/auth/userinfo.email'
     ];
 
-    const state = Buffer.from(JSON.stringify({ userId })).toString('base64');
+    const state = Buffer.from(JSON.stringify({ userId, frontendUrl })).toString('base64');
 
     return oauth2Client.generateAuthUrl({
       access_type: 'offline',
