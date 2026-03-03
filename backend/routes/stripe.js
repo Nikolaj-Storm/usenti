@@ -111,6 +111,35 @@ router.post('/create-checkout-session', authenticateUser, async (req, res) => {
 });
 
 /**
+ * POST /api/stripe/customer-portal
+ * Creates a billing portal session so users can manage payment details and subscriptions
+ */
+router.post('/customer-portal', authenticateUser, async (req, res) => {
+    try {
+        const { data: subscription } = await supabase
+            .from('subscriptions')
+            .select('stripe_customer_id')
+            .eq('user_id', req.user.id)
+            .single();
+
+        if (!subscription || !subscription.stripe_customer_id) {
+            return res.status(400).json({ error: 'No active Stripe customer found for this user.' });
+        }
+
+        const frontendUrl = getFrontendUrlFromRequest(req);
+        const session = await stripe.billingPortal.sessions.create({
+            customer: subscription.stripe_customer_id,
+            return_url: `${frontendUrl}/billing`,
+        });
+
+        res.json({ url: session.url });
+    } catch (err) {
+        console.error('[STRIPE] Error creating customer portal session:', err);
+        res.status(500).json({ error: 'Failed to create customer portal session' });
+    }
+});
+
+/**
  * POST /api/stripe/webhook
  * Stripe Webhooks endpoint (must use express.raw for signature verification)
  */
@@ -195,7 +224,32 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                 break;
             }
 
-            // 3. Subscription deleted / canceled
+            // 3. Subscription updated (e.g. upgraded/downgraded via Customer Portal)
+            case 'customer.subscription.updated': {
+                const subscription = event.data.object;
+                const subscriptionId = subscription.id;
+
+                // Get the new price
+                const priceId = subscription.items.data[0].price.id;
+
+                let planTier = 'free';
+                if (priceId === STRIPE_PRICES.growth) planTier = 'growth';
+                else if (priceId === STRIPE_PRICES.hypergrowth) planTier = 'hypergrowth';
+
+                const { error } = await supabase
+                    .from('subscriptions')
+                    .update({
+                        plan_tier: planTier,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('stripe_subscription_id', subscriptionId);
+
+                if (error) console.error('[STRIPE] Supabase update error on sub updated:', error);
+                else console.log(`[STRIPE] Updated subscription ${subscriptionId} to tier ${planTier}`);
+                break;
+            }
+
+            // 4. Subscription deleted / canceled
             case 'customer.subscription.deleted': {
                 const subscription = event.data.object;
                 const subscriptionId = subscription.id;

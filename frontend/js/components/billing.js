@@ -5,9 +5,23 @@ const Billing = () => {
     const [currentTier, setCurrentTier] = React.useState('loading');
     const [usage, setUsage] = React.useState(null);
     const [error, setError] = React.useState(null);
+    const [successMsg, setSuccessMsg] = React.useState(null);
 
     React.useEffect(() => {
         fetchSubscription();
+
+        // Check URL for Stripe redirect parameters
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('success') === 'true') {
+            setSuccessMsg('Payment successful! Your subscription has been updated.');
+            // Clean up URL
+            window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+        }
+        if (params.get('canceled') === 'true') {
+            setError('Checkout canceled. Your plan has not been changed.');
+            // Clean up URL
+            window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+        }
     }, []);
 
     const fetchSubscription = async () => {
@@ -66,7 +80,11 @@ const Billing = () => {
             )
         ),
 
-        error && h('div', { className: 'p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-red-200' }, error),
+        error && h('div', { className: 'p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-red-200 animate-slide-up' }, error),
+        successMsg && h('div', { className: 'p-4 bg-emerald-500/20 border border-emerald-500/50 rounded-xl text-emerald-200 animate-slide-up font-medium flex items-center' },
+            h(Icons.Check, { size: 20, className: 'mr-3' }),
+            successMsg
+        ),
 
         // Current Usage Widget
         h('div', { className: 'glass-panel p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-6' },
@@ -124,8 +142,8 @@ const Billing = () => {
                     onClick: () => handleSubscribe('growth'),
                     disabled: loading || currentTier === 'growth' || currentTier === 'hypergrowth',
                     className: `w-full py-3 px-4 rounded-xl font-medium transition-all ${currentTier === 'growth' ? 'bg-white/5 text-white/40 cursor-not-allowed' :
-                            currentTier === 'hypergrowth' ? 'bg-white/5 text-white/40 cursor-not-allowed hidden' :
-                                'bg-cream-100 hover:bg-cream-200 text-rust-900 shadow-[0_0_20px_rgba(245,230,211,0.3)] hover:shadow-[0_0_25px_rgba(245,230,211,0.5)]'
+                        currentTier === 'hypergrowth' ? 'bg-white/5 text-white/40 cursor-not-allowed hidden' :
+                            'bg-cream-100 hover:bg-cream-200 text-rust-900 shadow-[0_0_20px_rgba(245,230,211,0.3)] hover:shadow-[0_0_25px_rgba(245,230,211,0.5)]'
                         }`
                 }, loading ? 'Processing...' : currentTier === 'growth' ? 'Active' : 'Upgrade to Growth')
             ),
@@ -147,7 +165,7 @@ const Billing = () => {
                     onClick: () => handleSubscribe('hypergrowth'),
                     disabled: loading || currentTier === 'hypergrowth',
                     className: `w-full py-3 px-4 rounded-xl font-medium transition-all ${currentTier === 'hypergrowth' ? 'bg-white/5 text-white/40 cursor-not-allowed' :
-                            'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+                        'bg-white/10 hover:bg-white/20 text-white border border-white/20'
                         }`
                 }, loading ? 'Processing...' : currentTier === 'hypergrowth' ? 'Active' : 'Upgrade to Hypergrowth')
             )
