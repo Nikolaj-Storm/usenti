@@ -57,25 +57,36 @@ function getNextSendTime(schedule) {
 }
 
 /**
- * Check if email account is within its daily sending limit
+ * Check if email account is within its daily sending limit AND if the user is within their subscription limits
  * @param {string} emailAccountId - Email account UUID
  * @param {string} campaignId - Campaign UUID
- * @returns {boolean} True if within limit, false otherwise
+ * @returns {object} { withinLimit: boolean, planTier: string, errorMessage?: string }
  */
 async function checkDailyLimit(emailAccountId, campaignId) {
-  const { data: account, error } = await supabase
+  // 1. Get the account and its user ID
+  const { data: account, error: accountError } = await supabase
     .from('email_accounts')
-    .select('daily_send_limit, current_daily_sent, last_daily_reset')
+    .select('user_id, daily_send_limit, current_daily_sent, last_daily_reset')
     .eq('id', emailAccountId)
     .single();
 
-  if (error || !account) {
-    console.error('[EMAIL-SERVICE] ❌ Failed to fetch account for limit check:', error);
-    return false; // Fail safe
+  if (accountError || !account) {
+    console.error('[EMAIL-SERVICE] ❌ Failed to fetch account for limit check:', accountError);
+    return { withinLimit: false, planTier: 'free', errorMessage: 'Account not found' };
   }
 
-  // Calculate sent_today based on last_daily_reset
-  // If the last reset was not today (UTC), then the effective count is 0
+  // 2. Get the user's subscription tier and usage
+  const { data: subscription, error: subError } = await supabase
+    .from('subscriptions')
+    .select('plan_tier, emails_sent_this_cycle, cycle_start_date')
+    .eq('user_id', account.user_id)
+    .single();
+
+  // Default to free if no subscription record is found (e.g. legacy users before backfill)
+  const planTier = subscription?.plan_tier || 'free';
+  const cycleSent = subscription?.emails_sent_this_cycle || 0;
+
+  // 3. Process Account-level limit first
   const now = new Date();
   const lastReset = account.last_daily_reset ? new Date(account.last_daily_reset) : null;
   let sentToday = account.current_daily_sent || 0;
@@ -90,17 +101,44 @@ async function checkDailyLimit(emailAccountId, campaignId) {
       sentToday = 0;
     }
   } else {
-    // If never sent, count is 0
     sentToday = 0;
   }
 
-  const limit = account.daily_send_limit || 10000;
+  const accountLimit = account.daily_send_limit || 10000;
 
-  if (sentToday >= limit) {
-    console.log(`[EMAIL-SERVICE] ⚠️ Daily limit reached for account ${emailAccountId} (${sentToday}/${limit})`);
+  if (sentToday >= accountLimit) {
+    console.log(`[EMAIL-SERVICE] ⚠️ Daily limit reached for account ${emailAccountId} (${sentToday}/${accountLimit})`);
+    return { withinLimit: false, planTier, errorMessage: 'Account daily limit reached' };
   }
 
-  return sentToday < limit;
+  // 4. Process Subscription-level limit
+  // Free: 50 emails/day, 200/week (For simplicity, we track 'cycle' as the current period)
+  // Growth: 5,000/month
+  // Hypergrowth: 100,000/month
+  if (planTier === 'free') {
+    // Free has a strict absolute daily limit in addition to account limit
+    if (sentToday >= 50) {
+      console.log(`[EMAIL-SERVICE] ⚠️ Free tier daily limit reached for user ${account.user_id} (${sentToday}/50)`);
+      return { withinLimit: false, planTier, errorMessage: 'Free tier limit reached (50/day)' };
+    }
+    // E.g. cycle is 1 week for free
+    if (cycleSent >= 200) {
+      console.log(`[EMAIL-SERVICE] ⚠️ Free tier weekly limit reached for user ${account.user_id} (${cycleSent}/200)`);
+      return { withinLimit: false, planTier, errorMessage: 'Free tier limit reached (200/week)' };
+    }
+  } else if (planTier === 'growth') {
+    if (cycleSent >= 5000) {
+      console.log(`[EMAIL-SERVICE] ⚠️ Growth tier monthly limit reached for user ${account.user_id} (${cycleSent}/5000)`);
+      return { withinLimit: false, planTier, errorMessage: 'Growth tier limit reached (5,000/mo)' };
+    }
+  } else if (planTier === 'hypergrowth') {
+    if (cycleSent >= 100000) {
+      console.log(`[EMAIL-SERVICE] ⚠️ Hypergrowth tier monthly limit reached for user ${account.user_id} (${cycleSent}/100000)`);
+      return { withinLimit: false, planTier, errorMessage: 'Hypergrowth tier limit reached (100,000/mo)' };
+    }
+  }
+
+  return { withinLimit: true, planTier };
 }
 
 /**
@@ -141,6 +179,7 @@ function personalizeContent(content, contact) {
  * @param {boolean} [params.trackOpens] - Whether to add open tracking pixel
  * @param {boolean} [params.trackClicks] - Whether to rewrite links for click tracking
  * @param {Array} [params.attachments] - Optional attachments array
+ * @param {string} [params.planTier] - The user's subscription tier ('free', 'growth', etc.)
  * @returns {Object} Result with success flag and messageId
  */
 async function sendEmail({
@@ -152,7 +191,8 @@ async function sendEmail({
   contactId = null,
   trackOpens = false,
   trackClicks = false,
-  attachments = []
+  attachments = [],
+  planTier = 'free'
 }) {
   console.log(`[EMAIL-SERVICE] 📧 Preparing to send email...`);
   console.log(`[EMAIL-SERVICE]    Account ID: ${emailAccountId}`);
@@ -174,6 +214,12 @@ async function sendEmail({
   console.log(`[EMAIL-SERVICE]    From: ${account.email_address}`);
 
   let finalBody = body;
+
+  // Append footer if user is on Free tier
+  if (planTier === 'free') {
+    finalBody += `<br><br><p style="color: gray; font-size: 12px; margin-top: 15px;">Powered by <a href="https://usenti.com" style="color: inherit; text-decoration: underline;">Usenti.com</a> - email outreach for the rebels</p>`;
+    console.log(`[EMAIL-SERVICE]    Added 'Powered by Usenti' footer (Free Tier)`);
+  }
 
   // Add tracking pixel if requested
   if (trackOpens && campaignId && contactId) {

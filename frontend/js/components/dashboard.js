@@ -30,9 +30,17 @@ const Dashboard = () => {
   const loadDashboardData = async () => {
     console.log('📊 [Dashboard] Loading dashboard stats...');
     try {
-      const data = await api.getDashboardStats();
+      const [data, subData] = await Promise.all([
+        api.getDashboardStats(),
+        api.get('/api/stripe/status').catch(() => ({ planTier: 'free', usage: { sent: 0, limit: 200 } }))
+      ]);
       console.log('✅ [Dashboard] Dashboard data loaded successfully:', data);
-      setDashboardData(data);
+
+      // Inject subscription data into dashboard metrics
+      setDashboardData({
+        ...data,
+        subscription: subData
+      });
     } catch (err) {
       console.error('❌ [Dashboard] Failed to load dashboard data:', err);
       console.error('💥 [Dashboard] Error details:', {
@@ -70,10 +78,26 @@ const Dashboard = () => {
 
   // Use actual data or fallback to empty arrays
   const data = dashboardData?.activity || [];
-  const metrics = dashboardData?.metrics || [
+
+  const subTier = dashboardData?.subscription?.planTier || 'free';
+  const sentCycle = dashboardData?.subscription?.usage?.sent || 0;
+  const limitCycle = dashboardData?.subscription?.usage?.limit || 200;
+
+  const baseMetrics = dashboardData?.metrics || [
     { label: 'Total Sent', value: '0', change: '+0%', icon: Icons.Mail, color: 'text-blue-600' },
     { label: 'Open Rate', value: '0%', change: '+0%', icon: Icons.ArrowUpRight, color: 'text-emerald-600' },
     { label: 'Reply Rate', value: '0%', change: '+0%', icon: Icons.MessageSquare, color: 'text-jaguar-900' },
+  ];
+
+  const metrics = [
+    ...baseMetrics,
+    {
+      label: 'Active Plan',
+      value: subTier.charAt(0).toUpperCase() + subTier.slice(1),
+      change: `${sentCycle} / ${limitCycle === Infinity ? 'Unlimited' : limitCycle} sent`,
+      icon: Icons.CreditCard,
+      color: 'text-gold-500'
+    }
   ];
 
   return h('div', { className: "space-y-8 animate-fade-in" },

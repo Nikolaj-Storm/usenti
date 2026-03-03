@@ -318,17 +318,23 @@ class CampaignExecutor {
       }
     }
 
-    // Check daily limit
-    console.log(`[EXECUTOR]   📊 Checking daily limit...`);
-    const withinLimit = await emailService.checkDailyLimit(
+    // Check daily limit and subscription tier limits
+    console.log(`[EXECUTOR]   📊 Checking limits and subscription tier...`);
+    const limitCheck = await emailService.checkDailyLimit(
       campaign.email_account_id,
       campaign.id
     );
 
-    console.log(`[EXECUTOR]      Within daily limit: ${withinLimit ? '✅ YES' : '❌ NO'}`);
+    const withinLimit = limitCheck.withinLimit;
+    const planTier = limitCheck.planTier;
+
+    // Temporarily attach planTier to campaign object so handleEmailStep can access it
+    campaign._currentPlanTier = planTier;
+
+    console.log(`[EXECUTOR]      Plan Tier: ${planTier} | Within limit: ${withinLimit ? '✅ YES' : '❌ NO'} ${limitCheck.errorMessage ? `(${limitCheck.errorMessage})` : ''}`);
 
     if (!withinLimit) {
-      console.log(`[EXECUTOR]      ⏸️  Daily limit reached, rescheduling to tomorrow 9 AM`);
+      console.log(`[EXECUTOR]      ⏸️  Limit reached, rescheduling to tomorrow 9 AM`);
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(9, 0, 0, 0);
@@ -442,7 +448,8 @@ class CampaignExecutor {
         campaignId: campaign.id,
         contactId: contact.id,
         trackOpens: true,  // Always add tracking pixel for campaign emails (required for open conditions)
-        trackClicks: true
+        trackClicks: true,
+        planTier: campaign._currentPlanTier || 'free' // Pass tier to conditionally append footer
       });
 
       console.log(`[EXECUTOR]      ✅ Email sent successfully!`);

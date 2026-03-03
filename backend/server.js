@@ -248,6 +248,8 @@ app.use('/api/extension', extensionRoutes);
 // ============================================================================
 // EMAIL ACCOUNTS ROUTES
 // ============================================================================
+const stripeRoutes = require('./routes/stripe');
+app.use('/api/stripe', stripeRoutes);
 
 app.get('/api/email-accounts', authenticateUser, async (req, res) => {
   try {
@@ -2736,7 +2738,8 @@ async function processCampaignContact(campaignContact) {
   }
 
   // Check daily limit
-  const withinLimit = await checkDailyLimit(campaign.email_account_id, campaign.id);
+  const limitCheck = await require('./services/emailService').checkDailyLimit(campaign.email_account_id, campaign.id);
+  const withinLimit = limitCheck.withinLimit;
   if (!withinLimit) {
     console.log(`[EXECUTOR] Daily limit reached for campaign ${campaign.id}`);
     const tomorrow = new Date();
@@ -2953,27 +2956,7 @@ function getNextSendTime(schedule) {
   return checkDate;
 }
 
-async function checkDailyLimit(emailAccountId, campaignId) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const { count } = await supabase
-    .from('email_events')
-    .select('*', { count: 'exact', head: true })
-    .eq('campaign_id', campaignId)
-    .eq('event_type', 'sent')
-    .gte('created_at', today.toISOString());
-
-  const { data: account } = await supabase
-    .from('email_accounts')
-    .select('daily_send_limit')
-    .eq('id', emailAccountId)
-    .single();
-
-  const limit = account?.daily_send_limit || 10000;
-  return count < limit;
-}
-
+// Removed local checkDailyLimit in favor of the emailService implementation
 // ============================================================================
 // SCHEDULED JOBS
 // ============================================================================

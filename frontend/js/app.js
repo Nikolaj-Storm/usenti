@@ -190,8 +190,8 @@ const App = () => {
       h('span', { className: "font-medium tracking-wide flex-1 text-left" }, label),
       badge > 0 && h('span', {
         className: `min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[11px] font-bold rounded-full ${privateView === view
-            ? 'bg-red-500 text-white'
-            : 'bg-red-500 text-white'
+          ? 'bg-red-500 text-white'
+          : 'bg-red-500 text-white'
           }`
       }, badge > 99 ? '99+' : badge)
     );
@@ -218,7 +218,8 @@ const App = () => {
         h(NavItem, { view: "inbox", icon: Icons.Inbox, label: "Inbox", badge: unansweredCount }),
         h('div', { className: "py-6" }),
         h('p', { className: "px-4 text-xs font-bold text-white/40 uppercase tracking-widest mb-4" }, 'System'),
-        h(NavItem, { view: "infrastructure", icon: Icons.Layers, label: "Accounts" })
+        h(NavItem, { view: "infrastructure", icon: Icons.Layers, label: "Accounts" }),
+        h(NavItem, { view: "billing", icon: Icons.CreditCard, label: "Billing" })
       ),
       h('div', { className: "p-4 border-t border-white/10" },
         h('div', { className: "flex items-center gap-3 px-4 py-3 group" },
@@ -246,6 +247,7 @@ const App = () => {
           privateView === 'dashboard' && 'Dashboard',
           privateView === 'campaigns' && 'Campaign Management',
           privateView === 'infrastructure' && 'Email Accounts',
+          privateView === 'billing' && 'Billing & Usage',
           privateView === 'contacts' && 'Contact Management',
           privateView === 'inbox' && 'Unified Inbox'
         ),
@@ -256,6 +258,7 @@ const App = () => {
           privateView === 'dashboard' && h(Dashboard),
           privateView === 'campaigns' && h(CampaignBuilder),
           privateView === 'infrastructure' && h(EmailAccounts),
+          privateView === 'billing' && h(Billing),
           privateView === 'contacts' && h(Contacts),
           privateView === 'inbox' && h(Inbox, { onUnansweredCountChange: fetchUnansweredCount })
         )

@@ -64,6 +64,13 @@ const Icons = {
     ]
   }),
 
+  CreditCard: (p) => Icon({
+    ...p, path: [
+      h('rect', { key: 1, width: "20", height: "14", x: "2", y: "5", rx: "2" }),
+      h('line', { key: 2, x1: "2", x2: "22", y1: "10", y2: "10" })
+    ]
+  }),
+
   Inbox: (p) => Icon({
     ...p, path: [
       h('polyline', { key: 1, points: "22 12 16 12 14 15 10 15 8 12 2 12" }),
