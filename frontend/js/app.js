@@ -56,6 +56,22 @@ const App = () => {
 
   const verifySession = async () => {
     console.log('🔄 [App] Verifying session...');
+
+    // First, try to sync native Supabase session (e.g. from Google OAuth redirect)
+    try {
+      await api.initSupabase();
+      if (window.usentiSupabase) {
+        const { data } = await window.usentiSupabase.auth.getSession();
+        if (data?.session?.access_token) {
+          console.log('⚡ [App] Native Supabase session found! Syncing to Usenti storage.');
+          localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, data.session.access_token);
+          localStorage.setItem(APP_CONFIG.STORAGE_KEYS.USER, JSON.stringify(data.session.user));
+        }
+      }
+    } catch (e) {
+      console.warn("⚠️ [App] Could not sync native Supabase session:", e);
+    }
+
     const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
     const storedUser = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.USER);
     console.log('🔍 [App] Session check:', { hasToken: !!token, hasStoredUser: !!storedUser });
@@ -144,7 +160,7 @@ const App = () => {
         h('div', { className: "w-16 h-16 bg-cream-100 rounded-xl rotate-45 mx-auto flex items-center justify-center shadow-2xl animate-pulse" },
           h('div', { className: "w-8 h-8 bg-rust-900 -rotate-45 rounded-lg" })
         ),
-        h('p', { className: "text-white/60 font-medium" }, 'Connecting to Snowman...')
+        h('p', { className: "text-white/60 font-medium" }, 'Connecting to Usenti...')
       )
     );
   }
@@ -164,8 +180,8 @@ const App = () => {
     h('button', {
       onClick: () => setPrivateView(view),
       className: `w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${privateView === view
-          ? 'bg-cream-100 text-rust-900 shadow-lg'
-          : 'text-white/60 hover:text-white hover:bg-white/10'
+        ? 'bg-cream-100 text-rust-900 shadow-lg'
+        : 'text-white/60 hover:text-white hover:bg-white/10'
         }`
     },
       h('div', { className: `${privateView === view ? 'text-rust-800' : 'group-hover:text-cream-100 transition-colors'}` },
@@ -173,11 +189,10 @@ const App = () => {
       ),
       h('span', { className: "font-medium tracking-wide flex-1 text-left" }, label),
       badge > 0 && h('span', {
-        className: `min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[11px] font-bold rounded-full ${
-          privateView === view
+        className: `min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[11px] font-bold rounded-full ${privateView === view
             ? 'bg-red-500 text-white'
             : 'bg-red-500 text-white'
-        }`
+          }`
       }, badge > 99 ? '99+' : badge)
     );
 
@@ -191,7 +206,7 @@ const App = () => {
           ),
           h('h1', { className: "font-serif text-2xl tracking-tight text-white" },
             'Mr. ',
-            h('span', { className: "text-cream-100 font-normal" }, 'Snowman')
+            h('span', { className: "text-cream-100 font-normal" }, 'Usenti')
           )
         )
       ),

@@ -1,4 +1,4 @@
-// Mr. Snowman - Landing Page Component
+// Usenti - Landing Page Component
 
 const LandingPage = ({ onNavigate }) => {
   return h('div', { className: "min-h-screen text-white font-sans selection:bg-cream-100 selection:text-rust-900" },
@@ -10,7 +10,7 @@ const LandingPage = ({ onNavigate }) => {
           ),
           h('h1', { className: "font-serif text-2xl tracking-tight font-medium" },
             'Mr. ',
-            h('span', { className: "text-cream-100 font-normal" }, 'Snowman')
+            h('span', { className: "text-cream-100 font-normal" }, 'Usenti')
           )
         ),
         h('div', { className: "flex items-center gap-6" },
@@ -106,7 +106,7 @@ const LandingPage = ({ onNavigate }) => {
     h('footer', { className: "glass-sidebar text-white py-12 px-6" },
       h('div', { className: "max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6" },
         h('div', { className: "text-sm text-white/40" },
-          '© 2024 Mr. Snowman Inc. All rights reserved.'
+          '© 2024 Usenti Inc. All rights reserved.'
         ),
         h('div', { className: "flex gap-8 text-sm font-medium" },
           h('a', { href: "#", className: "text-white/60 hover:text-cream-100 transition-colors" }, 'Privacy'),

@@ -1,4 +1,4 @@
-# Mr. Snowman 2.0 - Technical Specifications
+# Usenti 2.0 - Technical Specifications
 
 ## 1. System Architecture
 

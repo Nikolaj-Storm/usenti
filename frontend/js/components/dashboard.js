@@ -1,4 +1,4 @@
-// Mr. Snowman - Dashboard Component
+// Usenti - Dashboard Component
 
 const Card = ({ children, className = '', title, subtitle, action }) => {
   return h('div', { className: `glass-card overflow-hidden transition-all duration-300 hover:bg-white/10 ${className}` },

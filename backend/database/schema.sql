@@ -1,10 +1,10 @@
 -- ============================================================================
--- Mr. Snowman 2.0 - Database Schema (Verified)
+-- Usenti 2.0 - Database Schema (Verified)
 -- ============================================================================
 -- Version: 2.1 (Synced with Current DB Dump + v2.0 Features)
 -- Updated: 2026-02-01
 --
--- This is the COMPLETE schema for Mr. Snowman 2.0.
+-- This is the COMPLETE schema for Usenti 2.0.
 -- It matches your current database CSV structure while preserving v2.0 upgrades.
 --
 -- EXECUTION INSTRUCTIONS:

@@ -1,4 +1,4 @@
-// Mr. Snowman - Email Accounts / Infrastructure Component
+// Usenti - Email Accounts / Infrastructure Component
 
 
 const LabelWithTooltip = ({ label, helpText }) => (
@@ -97,11 +97,66 @@ const EmailAccounts = () => {
         h(Icons.Loader2, { size: 48, className: "text-cream-100 animate-spin" })
       )
       : h(AccountsTab, { accounts: accounts, onEdit: handleEditAccount, onDelete: handleDeleteAccount }),
+
+    // Add extension info at the bottom
+    h('div', { className: "border-t border-white/10 pt-8 mt-8" },
+      h('h3', { className: "font-serif text-2xl text-white mb-4" }, 'LinkedIn Extension'),
+      h('p', { className: "text-white/60 mb-6 font-light" }, 'Connect your LinkedIn account to Usenti by installing our invisible Chrome extension. This lets you execute LinkedIn campaigns locally, avoiding server proxies and risks.'),
+      h(ExtensionSetupCard, null)
+    ),
+
     showModal && h(AccountModal, {
       account: editingAccount,
       onClose: () => { setShowModal(false); setEditingAccount(null); },
       onSave: handleSaveAccount
     })
+  );
+};
+
+const ExtensionSetupCard = () => {
+  const [copied, setCopied] = React.useState(false);
+
+  const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+  const userStr = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.USER);
+  const userObj = userStr ? JSON.parse(userStr) : null;
+  const userEmail = userObj?.email || 'Unknown';
+
+  const handleCopyLink = () => {
+    // Generate a quick snippet that users can paste into the console OR
+    // direct them to install the plugin manually. Since it's a dev plugin:
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return h('div', { className: "glass-card p-6" },
+    h('div', { className: "flex items-start gap-4 mb-6" },
+      h('div', { className: "w-12 h-12 rounded-xl bg-[#0a66c2]/20 text-[#0a66c2] flex items-center justify-center shrink-0" },
+        h(Icons.Linkedin, { size: 24 })
+      ),
+      h('div', { className: "flex-1" },
+        h('h3', { className: "text-lg font-medium text-white mb-1" }, 'Install Developer Extension (MVP)'),
+        h('p', { className: "text-sm text-white/60" }, "Currently, the Usenti extension is in developer preview. Follow these steps to install it locally and link it to this browser.")
+      )
+    ),
+
+    h('div', { className: "space-y-4 text-sm text-white/80" },
+      h('ol', { className: "list-decimal list-inside space-y-3" },
+        h('li', null, "Open Chrome extensions page: ", h('code', { className: "bg-white/10 px-2 py-0.5 rounded ml-1" }, "chrome://extensions")),
+        h('li', null, "Enable ", h('strong', { className: "text-white" }, "Developer mode"), " toggle in the top right."),
+        h('li', null, "Click ", h('strong', { className: "text-white" }, "Load unpacked"), " and select the ", h('code', { className: "bg-white/10 px-2 py-0.5 rounded ml-1" }, "/extension"), " folder from this project."),
+        h('li', null, "Click the Usenti icon in your browser toolbar to open the popup."),
+        h('li', null, "Click the ", h('strong', { className: "text-[#0a66c2]" }, "Link Account"), " button inside the extension.")
+      ),
+
+      h('div', { className: "mt-6 p-4 bg-[#0a66c2]/10 border border-[#0a66c2]/20 rounded-xl" },
+        h('h4', { className: "font-medium text-[#0a66c2] mb-2 flex items-center gap-2" },
+          h(Icons.Info, { size: 16 }), "How it works"
+        ),
+        h('p', { className: "text-white/60 text-xs leading-relaxed" },
+          "Because LinkedIn is very strict about automated API usage and scraping, Usenti runs these tasks securely in your local browser using the Chrome extension. As long as you have Chrome open and the extension is authenticated, your queued LinkedIn messages and connection requests will automatically fire in the background through normal DOM simulation. It is almost completely undetectable from LinkedIn's perspective."
+        )
+      )
+    )
   );
 };
 
@@ -505,7 +560,7 @@ const AccountModal = ({ account, onClose, onSave }) => {
               h('ol', { className: "text-sm text-purple-200/80 list-decimal list-inside space-y-1" },
                 h('li', { key: 1 }, 'Log in to ', h('a', { href: "https://accounts.zoho.com/home#security/app_password", target: "_blank", className: "underline text-purple-300" }, 'accounts.zoho.com')),
                 h('li', { key: 2 }, 'Go to Security > App Passwords'),
-                h('li', { key: 3 }, 'Generate a new password (e.g. name it "MrSnowman")'),
+                h('li', { key: 3 }, 'Generate a new password (e.g. name it "MrUsenti")'),
                 h('li', { key: 4 }, 'Use that password in the IMAP/SMTP password fields below')
               )
             )

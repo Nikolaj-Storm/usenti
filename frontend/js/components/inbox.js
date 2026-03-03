@@ -1,4 +1,4 @@
-// Mr. Snowman - Unified Inbox Component
+// Usenti - Unified Inbox Component
 
 const Inbox = ({ onUnansweredCountChange }) => {
   const [accounts, setAccounts] = React.useState([]);

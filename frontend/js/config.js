@@ -3,12 +3,12 @@
 // FORCE LIVE CONFIGURATION
 const APP_CONFIG = {
   // Always point to the live Render backend
-  API_BASE_URL: 'https://snowman-2-0.onrender.com',
+  API_BASE_URL: 'https://usenti-2-0.onrender.com',
   
   // New unique keys to clear out any old "ghost" sessions
   STORAGE_KEYS: {
-    TOKEN: 'snowman_live_token',
-    USER: 'snowman_live_user'
+    TOKEN: 'usenti_live_token',
+    USER: 'usenti_live_user'
   },
   
   ENDPOINTS: {

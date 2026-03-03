@@ -1,4 +1,4 @@
-// Mr. Snowman - Icon Library (Pure React, no JSX)
+// Usenti - Icon Library (Pure React, no JSX)
 
 const Icon = ({ path, size = 24, className = "" }) => {
   return h('svg', {

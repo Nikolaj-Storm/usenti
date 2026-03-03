@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Usenti - LinkedIn Integration</title>
+  <style>
+    body {
+      width: 300px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #2D1810;
+      color: #FDF8F3;
+    }
+    
+    .header {
+      padding: 16px;
+      text-align: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: #F5E6D3;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .status-card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .status-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+
+    .status-active { background-color: #34D399; box-shadow: 0 0 8px rgba(52, 211, 153, 0.5); }
+    .status-inactive { background-color: #9CA3AF; }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      background: #F5E6D3;
+      color: #2D1810;
+      border: none;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: center;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+
+    .btn:hover {
+      background: #EBD9C4;
+    }
+    
+    .footer {
+      text-align: center;
+      padding: 12px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.4);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Usenti Integration</h1>
+  </div>
+  
+  <div class="content">
+    <div class="status-card">
+      <div class="status-row">
+        <span>Link Status:</span>
+        <span id="connection-status">
+          <span class="status-indicator status-inactive"></span> Not Linked
+        </span>
+      </div>
+      <div class="status-row">
+        <span>Pending Tasks:</span>
+        <strong id="task-count">0</strong>
+      </div>
+      <div class="status-row" id="user-email-row" style="display: none;">
+        <span>User:</span>
+        <span id="user-email" style="color: rgba(255,255,255,0.7); font-size: 12px;">...</span>
+      </div>
+    </div>
+
+    <button id="link-btn" class="btn">Link to Usenti Account</button>
+  </div>
+  
+  <div class="footer">
+    Leave Chrome open to execute LinkedIn tasks.
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

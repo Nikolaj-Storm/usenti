@@ -1,4 +1,4 @@
-// Mr. Snowman - API Service Layer
+// Usenti - API Service Layer
 
 const api = {
   async request(endpoint, options = {}) {
@@ -159,6 +159,45 @@ const api = {
     }
   },
 
+  async initSupabase() {
+    if (window.usentiSupabase) return;
+    console.log('⚡ [API] Fetching Supabase public configuration...');
+    try {
+      const response = await fetch(APP_CONFIG.API_BASE_URL + '/api/config');
+      const config = await response.json();
+      if (!config.supabaseUrl || !config.supabaseAnonKey) {
+        throw new Error('Supabase configuration missing from backend.');
+      }
+      // Initialize the global client
+      window.usentiSupabase = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+      console.log('✅ [API] Supabase client initialized securely.');
+    } catch (err) {
+      console.error('❌ [API] Failed to initialize Supabase config:', err);
+      throw new Error('Could not establish secure connection to provider. Please try again later.');
+    }
+  },
+
+  async loginWithGoogle() {
+    console.log('🔑 [API] Google OAuth login initiated');
+
+    // Ensure the client is instantiated before firing the auth flow
+    await this.initSupabase();
+
+    const { data, error } = await window.usentiSupabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    });
+
+    if (error) {
+      console.error('❌ [API] Google Login Error:', error);
+      throw error;
+    }
+
+    return data;
+  },
+
   async forgotPassword(email) {
     return this.post(APP_CONFIG.ENDPOINTS.AUTH_FORGOT_PASSWORD, { email }, { skipAuth: true });
   },
@@ -201,10 +240,10 @@ const api = {
     return this.put(`${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}/${id}`, accountData);
   },
 
-    async deleteEmailAccount(id) {
-          console.log(`[API] Deleting email account ${id}...`);
-          return this.delete(`${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}/${id}`);
-        },
+  async deleteEmailAccount(id) {
+    console.log(`[API] Deleting email account ${id}...`);
+    return this.delete(`${APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS}/${id}`);
+  },
 
   async testEmailAccount(accountData) {
     return this.post(APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS_TEST, accountData);

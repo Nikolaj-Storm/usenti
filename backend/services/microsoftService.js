@@ -15,7 +15,7 @@ const supabase = createClient(
  * 1. Go to https://portal.azure.com/
  * 2. Navigate to "Azure Active Directory" → "App registrations"
  * 3. Click "New registration"
- * 4. Name: Your app name (e.g., "Snowman Email Platform")
+ * 4. Name: Your app name (e.g., "Usenti Email Platform")
  * 5. Supported account types: "Accounts in any organizational directory and personal Microsoft accounts"
  * 6. Redirect URI: Web → https://your-domain.com/api/oauth/microsoft/callback
  * 7. Click "Register"

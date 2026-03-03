@@ -108,6 +108,14 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Public Configuration endpoint
+app.get('/api/config', (req, res) => {
+  res.json({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+  });
+});
+
 // ============================================================================
 // AUTH ROUTES
 // ============================================================================
@@ -182,7 +190,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     }
 
     // Determine the redirect URL for the password reset link
-    const frontendUrl = process.env.FRONTEND_URL || 'https://nikolaj-storm.github.io/Snowman.2.0';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://nikolaj-storm.github.io/Usenti.2.0';
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: frontendUrl
@@ -238,6 +246,12 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
 const oauthRoutes = require('./routes/oauth');
 app.use('/api/oauth', oauthRoutes);
+
+// ============================================================================
+// EXTENSION ROUTES
+// ============================================================================
+const extensionRoutes = require('./routes/extension');
+app.use('/api/extension', extensionRoutes);
 
 // ============================================================================
 // EMAIL ACCOUNTS ROUTES
@@ -3008,7 +3022,7 @@ app.listen(PORT, async () => {
   console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
-║          🎯 Mr. Snowman API Server Running                ║
+║          🎯 Usenti API Server Running                ║
 ║                                                           ║
 ║  Port:              ${PORT.toString().padEnd(38)} ║
 ║  Environment:       ${(process.env.NODE_ENV || 'development').padEnd(38)} ║

@@ -1,4 +1,4 @@
-// Mr. Snowman - Campaign Builder (Canvas-Based Visual Workflow)
+// Usenti - Campaign Builder (Canvas-Based Visual Workflow)
 // n8n meets Scratch meets Miro style interface
 
 // --- 1. Data Sanitizers ---
@@ -49,6 +49,8 @@ const NODE_TYPES = {
   email: { icon: 'Mail', color: '#3b82f6', label: 'Email', bgClass: 'email' },
   wait: { icon: 'Clock', color: '#8b5cf6', label: 'Wait', bgClass: 'wait' },
   condition: { icon: 'Split', color: '#f59e0b', label: 'Condition', bgClass: 'condition' },
+  linkedin_dm: { icon: 'MessageSquare', color: '#0a66c2', label: 'LinkedIn DM', bgClass: 'linkedin_dm' },
+  linkedin_connection_request: { icon: 'UserPlus', color: '#0a66c2', label: 'LinkedIn Connect', bgClass: 'linkedin_connection_request' },
   end: { icon: 'Check', color: '#ef4444', label: 'End', bgClass: 'end' }
 };
 
@@ -1210,6 +1212,8 @@ const CanvasNode = ({ step, steps, isSelected, isActive, isDragging, onMouseDown
   // Get node title
   const getNodeTitle = () => {
     if (step.step_type === 'email') return step.subject || 'New Email';
+    if (step.step_type === 'linkedin_dm') return 'LinkedIn Message';
+    if (step.step_type === 'linkedin_connection_request') return 'Connection Request';
     if (step.step_type === 'wait') return `Wait ${formatWaitDuration(step)}`;
     if (step.step_type === 'condition') return getConditionLabel(step.condition_type);
     return 'Step';
@@ -1238,6 +1242,10 @@ const CanvasNode = ({ step, steps, isSelected, isActive, isDragging, onMouseDown
       // Content
       h('div', { className: "node-content" },
         step.step_type === 'email' && h('p', { className: "text-xs text-stone-500 truncate" },
+          (step.body || 'No content yet...').substring(0, 50) + (step.body?.length > 50 ? '...' : '')
+        ),
+
+        (step.step_type === 'linkedin_dm' || step.step_type === 'linkedin_connection_request') && h('p', { className: "text-xs text-stone-500 truncate" },
           (step.body || 'No content yet...').substring(0, 50) + (step.body?.length > 50 ? '...' : '')
         ),
 
@@ -1367,6 +1375,8 @@ const BlockToolbar = ({ onAddStep, trackOpens = true }) => {
   const blocks = [
     { type: 'email', icon: 'Mail', label: 'Email', color: '#3b82f6', desc: 'Send an email' },
     { type: 'wait', icon: 'Clock', label: 'Wait', color: '#8b5cf6', desc: 'Add a delay' },
+    { type: 'linkedin_dm', icon: 'MessageSquare', label: 'LI Message', color: '#0a66c2', desc: 'Send a LinkedIn message' },
+    { type: 'linkedin_connection_request', icon: 'UserPlus', label: 'LI Connect', color: '#0a66c2', desc: 'Send a LinkedIn connection request' },
   ];
 
   if (trackOpens) {
@@ -1459,8 +1469,8 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
 
     // Content
     h('div', { className: "flex-1 overflow-y-auto p-4" },
-      step.step_type === 'email' && h('div', { className: "space-y-4" },
-        h('div', null,
+      (step.step_type === 'email' || step.step_type === 'linkedin_dm' || step.step_type === 'linkedin_connection_request') && h('div', { className: "space-y-4" },
+        step.step_type === 'email' && h('div', null,
           h('label', { className: "block text-sm font-medium text-white mb-1" }, "Subject"),
           h('input', {
             className: "glass-input w-full px-3 py-2 rounded-xl text-sm",
@@ -1472,23 +1482,41 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
         ),
         h('div', null,
           h('div', { className: "flex justify-between items-center mb-1" },
-            h('label', { className: "block text-sm font-medium text-white" }, "Body"),
+            h('label', { className: "block text-sm font-medium text-white" }, step.step_type === 'email' ? "Body" : "Message Note"),
             h('div', { className: "flex flex-wrap gap-1" },
-              personalizationVars.slice(0, 3).map(v => h('button', {
+              personalizationVars.slice(0, 4).map(v => h('button', {
                 key: v.var,
                 onClick: () => insertVar(v.var),
                 className: "text-xs bg-white/10 text-white/70 px-1.5 py-0.5 rounded-lg hover:bg-cream-100 hover:text-rust-900 transition-colors"
               }, v.var))
             )
           ),
-          h('textarea', {
-            id: "emailBody",
-            className: "glass-input w-full px-3 py-2 rounded-xl h-64 font-mono text-sm",
-            value: data.body,
-            onChange: e => handleChange('body', e.target.value),
-            onBlur: handleBlur,
-            placeholder: "Write your email here..."
-          })
+          h('div', { className: "relative" },
+            h('textarea', {
+              id: "emailBody",
+              className: "glass-input w-full px-3 py-2 rounded-xl h-64 font-mono text-sm",
+              value: data.body,
+              onChange: e => handleChange('body', e.target.value),
+              onBlur: handleBlur,
+              placeholder: step.step_type === 'email' ? "Write your email here..." : "Write your personalized linkedin message/note here..."
+            }),
+            step.step_type === 'linkedin_connection_request' && h('div', {
+              className: `absolute bottom-3 right-3 text-xs font-mono font-medium px-2 py-1 rounded bg-black/40 backdrop-blur ${data.body?.length > 300 ? 'text-red-400' : 'text-white/60'}`
+            },
+              `${data.body?.length || 0} / 300 max`
+            )
+          ),
+
+          step.step_type !== 'email' && h('div', { className: "space-y-2 mt-2" },
+            step.step_type === 'linkedin_connection_request' && data.body?.length > 300 && h('p', { className: "text-xs text-red-400 flex items-start gap-1 p-2 bg-red-500/10 rounded-lg border border-red-500/20" },
+              h(Icons.AlertCircle, { size: 14, className: "shrink-0 mt-0.5" }),
+              "LinkedIn restricts connection request notes to 300 characters. Your message will be truncated."
+            ),
+            h('p', { className: "text-xs text-white/40 italic flex items-start gap-1 p-2 bg-white/5 rounded-lg border border-white/10" },
+              h(Icons.Info, { size: 14, className: "shrink-0 mt-0.5" }),
+              "LinkedIn tasks rely on the Usenti Chrome extension. Users must have their browser open to execute these tasks."
+            )
+          )
         )
       ),
 

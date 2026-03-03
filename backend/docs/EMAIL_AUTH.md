@@ -18,7 +18,7 @@ If your organization allows it, you can use app-specific passwords:
 2. Navigate to "Advanced security options"
 3. Under "App passwords", click "Create a new app password"
 4. Copy the generated password
-5. Use this password in Mr. Snowman instead of your regular password
+5. Use this password in Usenti instead of your regular password
 
 **Note:** App passwords may be disabled by your organization's IT admin.
 
@@ -48,7 +48,7 @@ Gmail also has restrictions on basic authentication:
 1. Enable 2-Step Verification on your Google account
 2. Go to https://myaccount.google.com/apppasswords
 3. Generate an app password for "Mail"
-4. Use this password in Mr. Snowman
+4. Use this password in Usenti
 
 ### OAuth 2.0
 

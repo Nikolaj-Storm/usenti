@@ -372,6 +372,10 @@ class CampaignExecutor {
       case 'condition':
         await this.handleConditionStep(campaignContact, campaign, contact, step);
         break;
+      case 'linkedin_dm':
+      case 'linkedin_connection_request':
+        await this.handleLinkedinStep(campaignContact, campaign, contact, step);
+        break;
       default:
         console.error(`[EXECUTOR] ❌ Unknown step type: ${step.step_type}`);
         // Reset status so contact doesn't stay stuck in 'processing'
@@ -469,12 +473,101 @@ class CampaignExecutor {
       // Provide actionable guidance for common SMTP errors
       if (error.message.includes('Authentication credentials invalid') || error.message.includes('Invalid login')) {
         console.error(`[EXECUTOR]      💡 TROUBLESHOOTING: SMTP authentication rejected. Check that:`);
-        console.error(`[EXECUTOR]         1. The password in Snowman matches the mail server password`);
+        console.error(`[EXECUTOR]         1. The password in Usenti matches the mail server password`);
         console.error(`[EXECUTOR]         2. The SMTP username format is correct (full email vs local part)`);
         console.error(`[EXECUTOR]         3. SMTP authentication is enabled on the mail server`);
       } else if (error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND')) {
         console.error(`[EXECUTOR]      💡 TROUBLESHOOTING: Cannot connect to SMTP server. Check hostname/IP and firewall rules.`);
       }
+
+      // Mark as failed
+      console.log(`[EXECUTOR]      🔴 Marking contact as failed...`);
+      await supabase
+        .from('campaign_contacts')
+        .update({ status: 'failed' })
+        .eq('id', campaignContact.id);
+    }
+  }
+
+  // Handle linkedin steps by pushing them to the extension task queue
+  async handleLinkedinStep(campaignContact, campaign, contact, step) {
+    try {
+      console.log(`[EXECUTOR]      🔗 Checking LinkedIn task: ${step.step_type}`);
+
+      // First check if it's already in the queue for this specific step
+      const { data: existingTask, error: checkError } = await supabase
+        .from('task_queue')
+        .select('id, status, error_message')
+        .eq('campaign_id', campaign.id)
+        .eq('contact_id', contact.id)
+        .eq('campaign_step_id', step.id)
+        .maybeSingle();
+
+      if (checkError) throw checkError;
+
+      if (existingTask) {
+        if (existingTask.status === 'completed') {
+          console.log(`[EXECUTOR]      ✅ Task previously completed. Moving to next step.`);
+          await this.moveToNextStep(campaignContact, campaign.id, step);
+          return;
+        } else if (existingTask.status === 'failed') {
+          console.log(`[EXECUTOR]      ❌ Task previously failed. Marking contact as failed.`);
+          await supabase
+            .from('campaign_contacts')
+            .update({ status: 'failed', updated_at: new Date().toISOString() })
+            .eq('id', campaignContact.id);
+          return;
+        } else {
+          console.log(`[EXECUTOR]      ⏳ Task still pending. Will check again later.`);
+          // Update next_send_time to 5 minutes from now so the executor doesn't spam queries
+          const nextCheck = new Date(Date.now() + 5 * 60 * 1000);
+          await supabase
+            .from('campaign_contacts')
+            .update({ status: 'in_progress', next_send_time: nextCheck.toISOString() })
+            .eq('id', campaignContact.id);
+          return;
+        }
+      }
+
+      console.log(`[EXECUTOR]      🔗 Queueing NEW LinkedIn task: ${step.step_type}`);
+
+      // Personalize message content if applicable
+      const personalizedMessage = emailService.personalizeContent(
+        step.body || '',
+        contact
+      );
+
+      // Create a task queue entry
+      const { error } = await supabase
+        .from('task_queue')
+        .insert({
+          user_id: campaign.user_id,
+          contact_id: contact.id,
+          campaign_id: campaign.id,
+          campaign_step_id: step.id,
+          action_type: step.step_type,
+          payload: {
+            linkedin_url: contact.custom_fields?.linkedin_url,
+            message: personalizedMessage
+          },
+          status: 'pending'
+        });
+
+      if (error) throw error;
+
+      console.log(`[EXECUTOR]      ✅ Queued LinkedIn task successfully!`);
+
+      // Update campaigns contact status to processing.
+      // Re-check in 5 minutes
+      const nextCheck = new Date(Date.now() + 5 * 60 * 1000);
+      await supabase
+        .from('campaign_contacts')
+        .update({ status: 'in_progress', next_send_time: nextCheck.toISOString() })
+        .eq('id', campaignContact.id);
+
+    } catch (error) {
+      console.error(`[EXECUTOR]      ❌ Failed to handle linkedin task to ${contact.email}`);
+      console.error(`[EXECUTOR]         Error: ${error.message}`);
 
       // Mark as failed
       console.log(`[EXECUTOR]      🔴 Marking contact as failed...`);

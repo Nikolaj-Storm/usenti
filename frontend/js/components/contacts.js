@@ -1,4 +1,4 @@
-// Mr. Snowman - Contacts Component (COMPLETE FIX)
+// Usenti - Contacts Component (COMPLETE FIX)
 
 const Contacts = () => {
   const [contactLists, setContactLists] = React.useState([]);
