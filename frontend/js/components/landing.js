@@ -34,30 +34,14 @@ const LandingPage = ({ onNavigate }) => {
           h('span', { className: "w-2 h-2 rounded-full bg-cream-100 animate-pulse" }),
           'v2.0 is now live'
         ),
-        h('div', { className: "max-w-3xl mx-auto flex flex-col md:flex-row items-center gap-8 md:gap-12 py-8" },
-          // Text Container (Left on desktop/Left generally) - Wait, user said "to the left of this quote please place the image" -> So Image Left, Quote Right.
-          h('div', { className: "w-full md:w-1/3 order-1" },
-            h('img', {
-              src: "visuals/steve.png",
-              alt: "Steve Jobs",
-              className: "w-full rounded-2xl shadow-2xl glass-card object-cover"
-            })
+        h('div', { className: "max-w-5xl mx-auto flex flex-col items-center justify-center py-20 pb-12 space-y-10" },
+          h('h2', { className: "font-serif text-6xl md:text-8xl text-center leading-tight tracking-tight text-white mb-4" },
+            'Fortune favors the bold.'
           ),
-          h('div', { className: "w-full md:w-2/3 order-2 text-left space-y-4" },
-            h('p', { className: "font-serif text-lg md:text-xl leading-relaxed text-white italic" },
-              h('span', { className: "text-3xl md:text-4xl leading-none block mb-2" }, '"For years,'),
-              'Steve Jobs courted biographer Walter Isaacson to write the definitive story of his life… And he called me up. I hadn’t really felt that I was the right person at first… I turned Jobs down a number of times, but finally accepted when I found out Jobs might not have long to live."'
-            ),
-            h('p', { className: "text-base text-cream-100 font-medium" },
-              '- npr interview of Walter Isaacson'
-            )
-          )
-        ),
-        h('div', { className: "flex flex-col sm:flex-row items-center justify-center gap-4 pt-6 pb-8" },
           h('button', {
             onClick: () => onNavigate('signup'),
-            className: "w-full sm:w-auto px-8 py-4 bg-cream-100 text-rust-900 text-lg rounded-full hover:bg-cream-200 transition-all hover:-translate-y-1 font-medium"
-          }, 'Get Started for Free')
+            className: "w-full sm:w-auto px-10 py-5 bg-cream-100 text-rust-900 text-xl shadow-[0_0_40px_-10px_rgba(245,230,211,0.5)] rounded-full hover:bg-cream-200 transition-all hover:scale-105 font-bold"
+          }, 'Get started now!')
         ),
       )
     ),
