@@ -40,13 +40,13 @@ const LandingPage = ({ onNavigate }) => {
         )
       )
     ),
-    h('section', { className: "pt-24 pb-32 px-6" },
+    h('section', { style: { minHeight: '85vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }, className: "px-6" },
       h('div', { className: "max-w-4xl mx-auto text-center space-y-8 animate-fade-in" },
         h('div', { className: "inline-flex items-center gap-2 px-3 py-1 rounded-full glass-card text-white text-sm font-medium mb-4" },
           h('span', { className: "w-2 h-2 rounded-full bg-cream-100 animate-pulse" }),
           'v2.0 is now live'
         ),
-        h('div', { className: "max-w-5xl mx-auto flex flex-col items-center justify-center py-20 pb-12 space-y-10" },
+        h('div', { className: "max-w-5xl mx-auto flex flex-col items-center justify-center space-y-10" },
           h('h2', { className: "font-serif text-6xl md:text-8xl text-center leading-tight tracking-tight text-white mb-4" },
             'Fortune favors the bold.'
           ),
