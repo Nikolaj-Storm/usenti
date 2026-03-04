@@ -5,10 +5,9 @@ const supabase = require('../config/supabase');
 const { authenticateUser } = require('../middleware/auth');
 const { getFrontendUrlFromRequest } = require('../config/urls');
 
-// The Growth and Hypergrowth product price IDs (set via dashboard and .env)
+// The Rebel Plan product price ID (set via dashboard and .env)
 const STRIPE_PRICES = {
-    growth: process.env.STRIPE_PRICE_GROWTH,         // e.g. price_1abc123
-    hypergrowth: process.env.STRIPE_PRICE_HYPERGROWTH // e.g. price_1xyz987
+    rebel_plan: process.env.STRIPE_PRICE_REBEL_PLAN // e.g. price_1xyz987
 };
 
 /**
@@ -32,10 +31,7 @@ router.get('/status', authenticateUser, async (req, res) => {
 
         let limit = 200; // default to free limit (per week)
         let cycle = 'week';
-        if (sub.plan_tier === 'growth') {
-            limit = 5000;
-            cycle = 'month';
-        } else if (sub.plan_tier === 'hypergrowth') {
+        if (sub.plan_tier === 'rebel_plan') {
             limit = 100000;
             cycle = 'month';
         }
@@ -59,10 +55,10 @@ router.get('/status', authenticateUser, async (req, res) => {
  * Creates a checkout session for a specific subscription tier
  */
 router.post('/create-checkout-session', authenticateUser, async (req, res) => {
-    const { planTier } = req.body; // 'growth' or 'hypergrowth'
+    const { planTier } = req.body; // 'rebel_plan'
     const frontendUrl = getFrontendUrlFromRequest(req);
 
-    if (!['growth', 'hypergrowth'].includes(planTier)) {
+    if (planTier !== 'rebel_plan') {
         return res.status(400).json({ error: 'Invalid plan tier requested' });
     }
 
@@ -178,8 +174,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
                 // Map priceId back to plan tier
                 let planTier = 'free';
-                if (priceId === STRIPE_PRICES.growth) planTier = 'growth';
-                else if (priceId === STRIPE_PRICES.hypergrowth) planTier = 'hypergrowth';
+                if (priceId === STRIPE_PRICES.rebel_plan) planTier = 'rebel_plan';
 
                 // Update DB
                 const { error } = await supabase
@@ -233,8 +228,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
                 const priceId = subscription.items.data[0].price.id;
 
                 let planTier = 'free';
-                if (priceId === STRIPE_PRICES.growth) planTier = 'growth';
-                else if (priceId === STRIPE_PRICES.hypergrowth) planTier = 'hypergrowth';
+                if (priceId === STRIPE_PRICES.rebel_plan) planTier = 'rebel_plan';
 
                 const { error } = await supabase
                     .from('subscriptions')

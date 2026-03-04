@@ -1414,6 +1414,25 @@ app.post('/api/contact-lists/:id/import', authenticateUser, async (req, res) => 
       return res.json({ success: true, imported: 0, duplicates: contacts.length });
     }
 
+    // --- ENFORCE CONTACT LIMITS ---
+    const { data: sub } = await supabase.from('subscriptions').select('plan_tier').eq('user_id', req.user.id).single();
+    const planTier = sub?.plan_tier || 'free';
+    const contactLimit = (planTier === 'rebel_plan') ? 25000 : 1000;
+
+    const { data: userLists } = await supabase
+      .from('contact_lists')
+      .select('total_contacts')
+      .eq('user_id', req.user.id);
+
+    const totalContacts = userLists?.reduce((sum, list) => sum + (list.total_contacts || 0), 0) || 0;
+
+    if (totalContacts + newContacts.length > contactLimit) {
+      return res.status(403).json({
+        error: `Importing these ${newContacts.length} contacts would exceed your plan's limit of ${contactLimit} total contacts (you currently have ${totalContacts}). Please delete some contacts or upgrade to the Rebel Plan.`
+      });
+    }
+    // ----------------------------
+
     const contactsToInsert = newContacts.map(c => ({
       list_id: req.params.id,
       email: c.email.toLowerCase().trim(),

@@ -104,7 +104,7 @@ const Billing = () => {
         ),
 
         // Pricing Cards
-        h('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-6 pt-4' },
+        h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 max-w-4xl mx-auto' },
 
             // Free Tier
             h('div', { className: `glass-panel p-8 rounded-2xl relative flex flex-col ${currentTier === 'free' ? 'ring-2 ring-cream-100' : ''}` },
@@ -115,8 +115,8 @@ const Billing = () => {
                     h('span', { className: 'text-white/60' }, '/mo')
                 ),
                 h('ul', { className: 'space-y-3 mb-8 flex-1' },
-                    h('li', { className: 'flex items-center text-sm text-white/80' }, h(Icons.Check, { size: 16, className: 'text-cream-100 mr-2 flex-shrink-0' }), '50 emails / day'),
-                    h('li', { className: 'flex items-center text-sm text-white/80' }, h(Icons.Check, { size: 16, className: 'text-cream-100 mr-2 flex-shrink-0' }), 'Max 200 emails / week'),
+                    h('li', { className: 'flex items-center text-sm text-white/80' }, h(Icons.Check, { size: 16, className: 'text-cream-100 mr-2 flex-shrink-0' }), '50 emails / day, 200 / week'),
+                    h('li', { className: 'flex items-center text-sm text-white/80' }, h(Icons.Check, { size: 16, className: 'text-cream-100 mr-2 flex-shrink-0' }), 'Up to 1,000 active contacts'),
                     h('li', { className: 'flex items-start text-sm text-white/80' }, h(Icons.Check, { size: 16, className: 'text-cream-100 mr-2 flex-shrink-0 mt-0.5' }), 'Includes "Powered by Usenti" footer'),
                 ),
                 h('button', {
@@ -125,49 +125,26 @@ const Billing = () => {
                 }, currentTier === 'free' ? 'Active' : 'Free')
             ),
 
-            // Growth Tier
-            h('div', { className: `glass-panel p-8 rounded-2xl relative flex flex-col bg-gradient-to-b from-white/5 to-transparent ${currentTier === 'growth' ? 'ring-2 ring-cream-100' : 'border border-cream-100/20'}` },
-                currentTier === 'growth' && h('div', { className: 'absolute -top-3 left-1/2 -translate-x-1/2 bg-cream-100 text-rust-900 text-xs font-bold px-3 py-1 rounded-full' }, 'CURRENT PLAN'),
-                h('h3', { className: 'text-xl font-medium text-cream-100 mb-2' }, 'Growth'),
+            // Rebel Plan Tier
+            h('div', { className: `glass-panel p-8 rounded-2xl relative flex flex-col bg-gradient-to-b from-white/5 to-transparent ${currentTier === 'rebel_plan' ? 'ring-2 ring-cream-100' : 'border border-cream-100/20'}` },
+                currentTier === 'rebel_plan' && h('div', { className: 'absolute -top-3 left-1/2 -translate-x-1/2 bg-cream-100 text-rust-900 text-xs font-bold px-3 py-1 rounded-full' }, 'CURRENT PLAN'),
+                h('h3', { className: 'text-xl font-medium text-cream-100 mb-2' }, 'Rebel Plan'),
                 h('div', { className: 'mb-6' },
-                    h('span', { className: 'text-4xl font-serif text-white' }, '$47'),
-                    h('span', { className: 'text-white/60' }, '/mo')
-                ),
-                h('ul', { className: 'space-y-3 mb-8 flex-1' },
-                    h('li', { className: 'flex items-center text-sm text-white/80' }, h(Icons.Check, { size: 16, className: 'text-cream-100 mr-2 flex-shrink-0' }), '5,000 emails / month'),
-                    h('li', { className: 'flex items-center text-sm text-white/80' }, h(Icons.Check, { size: 16, className: 'text-cream-100 mr-2 flex-shrink-0' }), 'Unlimited contacts'),
-                    h('li', { className: 'flex items-start text-sm text-white/80' }, h(Icons.Check, { size: 16, className: 'text-cream-100 mr-2 flex-shrink-0 mt-0.5' }), 'No Usenti branding'),
-                ),
-                h('button', {
-                    onClick: () => handleSubscribe('growth'),
-                    disabled: loading || currentTier === 'growth' || currentTier === 'hypergrowth',
-                    className: `w-full py-3 px-4 rounded-xl font-medium transition-all ${currentTier === 'growth' ? 'bg-white/5 text-white/40 cursor-not-allowed' :
-                        currentTier === 'hypergrowth' ? 'bg-white/5 text-white/40 cursor-not-allowed hidden' :
-                            'bg-cream-100 hover:bg-cream-200 text-rust-900 shadow-[0_0_20px_rgba(245,230,211,0.3)] hover:shadow-[0_0_25px_rgba(245,230,211,0.5)]'
-                        }`
-                }, loading ? 'Processing...' : currentTier === 'growth' ? 'Active' : 'Upgrade to Growth')
-            ),
-
-            // Hypergrowth Tier
-            h('div', { className: `glass-panel p-8 rounded-2xl relative flex flex-col ${currentTier === 'hypergrowth' ? 'ring-2 ring-cream-100' : ''}` },
-                currentTier === 'hypergrowth' && h('div', { className: 'absolute -top-3 left-1/2 -translate-x-1/2 bg-cream-100 text-rust-900 text-xs font-bold px-3 py-1 rounded-full' }, 'CURRENT PLAN'),
-                h('h3', { className: 'text-xl font-medium text-white mb-2' }, 'Hypergrowth'),
-                h('div', { className: 'mb-6' },
-                    h('span', { className: 'text-4xl font-serif text-white' }, '$97'),
+                    h('span', { className: 'text-4xl font-serif text-white' }, '$45'),
                     h('span', { className: 'text-white/60' }, '/mo')
                 ),
                 h('ul', { className: 'space-y-3 mb-8 flex-1' },
                     h('li', { className: 'flex items-center text-sm text-white/80' }, h(Icons.Check, { size: 16, className: 'text-cream-100 mr-2 flex-shrink-0' }), '100,000 emails / month'),
-                    h('li', { className: 'flex items-center text-sm text-white/80' }, h(Icons.Check, { size: 16, className: 'text-cream-100 mr-2 flex-shrink-0' }), 'Unlimited contacts'),
+                    h('li', { className: 'flex items-center text-sm text-white/80' }, h(Icons.Check, { size: 16, className: 'text-cream-100 mr-2 flex-shrink-0' }), 'Up to 25,000 total contacts'),
                     h('li', { className: 'flex items-start text-sm text-white/80' }, h(Icons.Check, { size: 16, className: 'text-cream-100 mr-2 flex-shrink-0 mt-0.5' }), 'No Usenti branding'),
                 ),
                 h('button', {
-                    onClick: () => handleSubscribe('hypergrowth'),
-                    disabled: loading || currentTier === 'hypergrowth',
-                    className: `w-full py-3 px-4 rounded-xl font-medium transition-all ${currentTier === 'hypergrowth' ? 'bg-white/5 text-white/40 cursor-not-allowed' :
-                        'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+                    onClick: () => handleSubscribe('rebel_plan'),
+                    disabled: loading || currentTier === 'rebel_plan',
+                    className: `w-full py-3 px-4 rounded-xl font-medium transition-all ${currentTier === 'rebel_plan' ? 'bg-white/5 text-white/40 cursor-not-allowed' :
+                        'bg-cream-100 hover:bg-cream-200 text-rust-900 shadow-[0_0_20px_rgba(245,230,211,0.3)] hover:shadow-[0_0_25px_rgba(245,230,211,0.5)]'
                         }`
-                }, loading ? 'Processing...' : currentTier === 'hypergrowth' ? 'Active' : 'Upgrade to Hypergrowth')
+                }, loading ? 'Processing...' : currentTier === 'rebel_plan' ? 'Active' : 'Upgrade to Rebel Plan')
             )
         )
     );

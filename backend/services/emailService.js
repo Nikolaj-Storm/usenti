@@ -113,8 +113,7 @@ async function checkDailyLimit(emailAccountId, campaignId) {
 
   // 4. Process Subscription-level limit
   // Free: 50 emails/day, 200/week (For simplicity, we track 'cycle' as the current period)
-  // Growth: 5,000/month
-  // Hypergrowth: 100,000/month
+  // Rebel Plan: 100,000/month
   if (planTier === 'free') {
     // Free has a strict absolute daily limit in addition to account limit
     if (sentToday >= 50) {
@@ -126,15 +125,10 @@ async function checkDailyLimit(emailAccountId, campaignId) {
       console.log(`[EMAIL-SERVICE] ⚠️ Free tier weekly limit reached for user ${account.user_id} (${cycleSent}/200)`);
       return { withinLimit: false, planTier, errorMessage: 'Free tier limit reached (200/week)' };
     }
-  } else if (planTier === 'growth') {
-    if (cycleSent >= 5000) {
-      console.log(`[EMAIL-SERVICE] ⚠️ Growth tier monthly limit reached for user ${account.user_id} (${cycleSent}/5000)`);
-      return { withinLimit: false, planTier, errorMessage: 'Growth tier limit reached (5,000/mo)' };
-    }
-  } else if (planTier === 'hypergrowth') {
+  } else if (planTier === 'rebel_plan') {
     if (cycleSent >= 100000) {
-      console.log(`[EMAIL-SERVICE] ⚠️ Hypergrowth tier monthly limit reached for user ${account.user_id} (${cycleSent}/100000)`);
-      return { withinLimit: false, planTier, errorMessage: 'Hypergrowth tier limit reached (100,000/mo)' };
+      console.log(`[EMAIL-SERVICE] ⚠️ Rebel Plan monthly limit reached for user ${account.user_id} (${cycleSent}/100000)`);
+      return { withinLimit: false, planTier, errorMessage: 'Rebel Plan limit reached (100,000/mo)' };
     }
   }
 
