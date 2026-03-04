@@ -187,7 +187,10 @@ const App = () => {
   if (authState === 'checking') {
     return h('div', { className: "min-h-screen flex items-center justify-center" },
       h('div', { className: "text-center space-y-4" },
-        h('h1', { className: "font-serif text-3xl tracking-tight text-white animate-pulse" }, 'USENTI'),
+        h('div', { className: "flex items-center justify-center gap-3 animate-pulse" },
+          h('img', { src: 'visuals/logo_white.png', alt: 'Usenti Logo', style: { height: '32px', width: 'auto' } }),
+          h('h1', { className: "font-serif text-3xl tracking-tight text-white" }, 'USENTI')
+        ),
         h('p', { className: "text-white/60 font-medium" }, 'Connecting to Usenti...')
       )
     );
@@ -229,6 +232,7 @@ const App = () => {
     h('aside', { className: "w-72 glass-sidebar text-white flex flex-col z-20" },
       h('div', { className: "p-8 pb-10" },
         h('div', { className: "flex items-center gap-3" },
+          h('img', { src: 'visuals/logo_white.png', alt: 'Usenti Logo', style: { height: '28px', width: 'auto' } }),
           h('h1', { className: "font-serif text-2xl tracking-tight text-white" },
             'USENTI'
           )

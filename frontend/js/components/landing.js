@@ -21,6 +21,7 @@ const LandingPage = ({ onNavigate }) => {
     h('nav', { className: "px-6 py-6 glass-header sticky top-0 z-50" },
       h('div', { className: "max-w-7xl mx-auto flex justify-between items-center" },
         h('div', { className: "flex items-center gap-3" },
+          h('img', { src: 'visuals/logo_white.png', alt: 'Usenti Logo', style: { height: '28px', width: 'auto' } }),
           h('h1', { className: "font-serif text-2xl tracking-tight font-medium" },
             'USENTI'
           )

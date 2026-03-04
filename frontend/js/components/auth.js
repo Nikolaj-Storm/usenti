@@ -220,6 +220,7 @@ const Auth = ({ view, onAuthenticate, onNavigate, recoveryToken }) => {
         onClick: () => onNavigate('landing'),
         className: "relative z-10 flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
       },
+        h('img', { src: 'visuals/logo_white.png', alt: 'Usenti Logo', style: { height: '28px', width: 'auto' } }),
         h('h1', { className: "font-serif text-2xl tracking-tight font-medium text-white" },
           'USENTI'
         )
@@ -521,8 +522,8 @@ const Auth = ({ view, onAuthenticate, onNavigate, recoveryToken }) => {
                       type: "button",
                       onClick: () => setSelectedPlan('free'),
                       className: `p-4 rounded-xl border-2 transition-all text-left ${selectedPlan === 'free'
-                          ? 'border-cream-100 bg-white/10'
-                          : 'border-white/10 hover:border-white/30'
+                        ? 'border-cream-100 bg-white/10'
+                        : 'border-white/10 hover:border-white/30'
                         }`
                     },
                       h('div', { className: "font-bold text-white text-sm" }, 'Free'),
@@ -534,8 +535,8 @@ const Auth = ({ view, onAuthenticate, onNavigate, recoveryToken }) => {
                       type: "button",
                       onClick: () => setSelectedPlan('rebel_plan'),
                       className: `p-4 rounded-xl border-2 transition-all text-left ${selectedPlan === 'rebel_plan'
-                          ? 'border-cream-100 bg-white/10'
-                          : 'border-white/10 hover:border-white/30'
+                        ? 'border-cream-100 bg-white/10'
+                        : 'border-white/10 hover:border-white/30'
                         }`
                     },
                       h('div', { className: "flex items-center gap-2" },
