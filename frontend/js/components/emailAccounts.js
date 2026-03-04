@@ -114,19 +114,7 @@ const EmailAccounts = () => {
 };
 
 const ExtensionSetupCard = () => {
-  const [copied, setCopied] = React.useState(false);
-
-  const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
-  const userStr = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.USER);
-  const userObj = userStr ? JSON.parse(userStr) : null;
-  const userEmail = userObj?.email || 'Unknown';
-
-  const handleCopyLink = () => {
-    // Generate a quick snippet that users can paste into the console OR
-    // direct them to install the plugin manually. Since it's a dev plugin:
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/usenti-linkedin-outreach/EXTENSION_ID_HERE';
 
   return h('div', { className: "glass-card p-6" },
     h('div', { className: "flex items-start gap-4 mb-6" },
@@ -136,18 +124,37 @@ const ExtensionSetupCard = () => {
         )
       ),
       h('div', { className: "flex-1" },
-        h('h3', { className: "text-lg font-medium text-white mb-1" }, 'Install Usenti LinkedIn Extension'),
-        h('p', { className: "text-sm text-white/60" }, "Install the Usenti Chrome Extension to automate LinkedIn DMs and connection requests as part of your multichannel campaigns.")
+        h('h3', { className: "text-lg font-medium text-white mb-1" }, 'LinkedIn Outreach Extension'),
+        h('p', { className: "text-sm text-white/60" }, "Automate LinkedIn DMs and connection requests from your Usenti campaigns.")
       )
     ),
 
+    h('a', {
+      href: CHROME_STORE_URL,
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      className: "flex items-center justify-center gap-3 w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all mb-6 hover:opacity-90",
+      style: { background: 'linear-gradient(135deg, #F5E6D3, #D4A574)', color: '#2D1810', textDecoration: 'none' }
+    },
+      h(Icons.Download, { size: 18 }),
+      'Install from Chrome Web Store'
+    ),
+
     h('div', { className: "space-y-4 text-sm text-white/80" },
-      h('ol', { className: "list-decimal list-inside space-y-3" },
-        h('li', null, "Open Chrome extensions page: ", h('code', { className: "bg-white/10 px-2 py-0.5 rounded ml-1" }, "chrome://extensions")),
-        h('li', null, "Enable ", h('strong', { className: "text-white" }, "Developer mode"), " toggle in the top right."),
-        h('li', null, "Click ", h('strong', { className: "text-white" }, "Load unpacked"), " and select the ", h('code', { className: "bg-white/10 px-2 py-0.5 rounded ml-1" }, "/extension"), " folder."),
-        h('li', null, "Click the Usenti icon in your browser toolbar to open the popup."),
-        h('li', null, "Click ", h('strong', { className: "text-[#0a66c2]" }, "Link to Usenti Account"), " to connect.")
+      h('div', { className: "font-medium text-white/50 text-xs uppercase tracking-wider mb-2" }, "Setup in 3 steps"),
+      h('div', { className: "space-y-3" },
+        h('div', { className: "flex items-start gap-3" },
+          h('div', { className: "w-6 h-6 rounded-full bg-white/10 flex items-center justify-center shrink-0 text-xs font-bold text-white/60 mt-0.5" }, "1"),
+          h('span', null, "Click the button above to install the extension from the Chrome Web Store")
+        ),
+        h('div', { className: "flex items-start gap-3" },
+          h('div', { className: "w-6 h-6 rounded-full bg-white/10 flex items-center justify-center shrink-0 text-xs font-bold text-white/60 mt-0.5" }, "2"),
+          h('span', null, "Click the ", h('strong', { className: "text-white" }, "Usenti icon"), " in your browser toolbar")
+        ),
+        h('div', { className: "flex items-start gap-3" },
+          h('div', { className: "w-6 h-6 rounded-full bg-white/10 flex items-center justify-center shrink-0 text-xs font-bold text-white/60 mt-0.5" }, "3"),
+          h('span', null, "Click ", h('strong', { className: "text-[#0a66c2]" }, "\"Link to Usenti Account\""), " — done!")
+        )
       ),
 
       h('div', { className: "mt-6 p-4 bg-[#0a66c2]/10 border border-[#0a66c2]/20 rounded-xl" },
@@ -155,7 +162,7 @@ const ExtensionSetupCard = () => {
           h(Icons.Info, { size: 16 }), "How it works"
         ),
         h('p', { className: "text-white/60 text-xs leading-relaxed" },
-          "LinkedIn restricts automated API access, so Usenti runs tasks securely in your local browser using this extension. Keep Chrome open and the extension linked — your queued LinkedIn messages and connection requests will fire automatically in the background through human-like DOM interaction."
+          "LinkedIn restricts automated API access, so Usenti runs tasks securely in your local browser. Keep Chrome open and the extension linked — your queued LinkedIn messages and connection requests will fire automatically in the background."
         )
       )
     )
