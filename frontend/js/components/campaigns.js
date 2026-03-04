@@ -734,7 +734,7 @@ const CampaignBuilder = () => {
 
 // --- 5. Builder Header Component ---
 
-const BuilderHeader = ({ selectedCampaign, campaigns, isDemo, stats, loadingStats, onSelectCampaign, onDeleteCampaign, onStartCampaign, onPauseCampaign, onNewCampaign, onLoadDemo, showEditor, onToggleEditor }) => {
+const BuilderHeader = ({ selectedCampaign, campaigns, isDemo, stats, loadingStats, usage, onSelectCampaign, onDeleteCampaign, onStartCampaign, onPauseCampaign, onNewCampaign, onLoadDemo, showEditor, onToggleEditor }) => {
   return h('div', { className: "flex justify-between items-center mb-3 pb-3 border-b border-white/10" },
     h('div', { className: "flex items-center gap-4" },
       h('div', null,
@@ -781,8 +781,8 @@ const BuilderHeader = ({ selectedCampaign, campaigns, isDemo, stats, loadingStat
             disabled: isLimited,
             title: isLimited ? 'Email limit reached for this billing cycle.' : '',
             className: `px-3 py-2 border rounded-xl flex items-center gap-2 text-sm transition-colors ${isLimited
-                ? 'bg-gray-500/10 text-gray-500 border-gray-500/20 cursor-not-allowed'
-                : 'bg-green-500/20 text-green-300 border-green-500/30 hover:bg-green-500/30'
+              ? 'bg-gray-500/10 text-gray-500 border-gray-500/20 cursor-not-allowed'
+              : 'bg-green-500/20 text-green-300 border-green-500/30 hover:bg-green-500/30'
               }`
           }, h(Icons.Play, { size: 16 }), selectedCampaign.status === 'paused' ? 'Resume' : 'Start');
         }

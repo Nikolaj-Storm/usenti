@@ -89,16 +89,7 @@ const Dashboard = () => {
     { label: 'Reply Rate', value: '0%', change: '+0%', icon: Icons.MessageSquare, color: 'text-jaguar-900' },
   ];
 
-  const metrics = [
-    ...baseMetrics,
-    {
-      label: 'Active Plan',
-      value: subTier.charAt(0).toUpperCase() + subTier.slice(1),
-      change: `${sentCycle} / ${limitCycle === Infinity ? 'Unlimited' : limitCycle} sent`,
-      icon: Icons.CreditCard,
-      color: 'text-gold-500'
-    }
-  ];
+  const metrics = baseMetrics;
 
   return h('div', { className: "space-y-8 animate-fade-in" },
     h('div', { className: "flex justify-between items-end" },
@@ -150,6 +141,10 @@ const Dashboard = () => {
                 h('linearGradient', { id: "colorOpened", x1: "0", y1: "0", x2: "0", y2: "1" },
                   h('stop', { offset: "5%", stopColor: "#F5E6D3", stopOpacity: 0.3 }),
                   h('stop', { offset: "95%", stopColor: "#F5E6D3", stopOpacity: 0 })
+                ),
+                h('linearGradient', { id: "colorReplied", x1: "0", y1: "0", x2: "0", y2: "1" },
+                  h('stop', { offset: "5%", stopColor: "#34d399", stopOpacity: 0.3 }),
+                  h('stop', { offset: "95%", stopColor: "#34d399", stopOpacity: 0 })
                 )
               ),
               h(XAxis, { dataKey: "name", axisLine: false, tickLine: false, tick: { fill: 'rgba(255,255,255,0.5)' } }),
@@ -160,8 +155,9 @@ const Dashboard = () => {
                 labelStyle: { color: 'rgba(255,255,255,0.7)' },
                 itemStyle: { color: '#FFF' }
               }),
-              h(Area, { type: "monotone", dataKey: "sent", stroke: "#FFFFFF", strokeWidth: 2, fillOpacity: 1, fill: "url(#colorSent)" }),
-              h(Area, { type: "monotone", dataKey: "opened", stroke: "#F5E6D3", strokeWidth: 2, fillOpacity: 1, fill: "url(#colorOpened)" })
+              h(Area, { type: "monotone", dataKey: "sent", stroke: "#FFFFFF", strokeWidth: 2, fillOpacity: 1, fill: "url(#colorSent)", name: "Sent" }),
+              h(Area, { type: "monotone", dataKey: "opened", stroke: "#F5E6D3", strokeWidth: 2, fillOpacity: 1, fill: "url(#colorOpened)", name: "Opened" }),
+              h(Area, { type: "monotone", dataKey: "replied", stroke: "#34d399", strokeWidth: 2, fillOpacity: 1, fill: "url(#colorReplied)", name: "Replied" })
             )
           ) : h('div', { className: "h-full flex items-center justify-center text-white/40" },
             h('div', { className: "text-center" },
