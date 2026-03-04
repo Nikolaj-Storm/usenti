@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabaseAdmin = require('../config/supabase');
-const authenticateUser = require('../middleware/auth');
+const { authenticateUser } = require('../middleware/auth');
 
 // POST /api/extension/register
 // Called when the user clicks "Link to Usenti" in the popup
