@@ -1,7 +1,14 @@
 // Usenti - Landing Page Component
 
 const LandingPage = ({ onNavigate }) => {
-  return h('div', { className: "min-h-screen text-white font-sans selection:bg-cream-100 selection:text-rust-900" },
+  return h('div', { className: "min-h-screen text-white font-sans selection:bg-cream-100 selection:text-rust-900 relative" },
+    // Spline 3D Background Overlay
+    h('div', {
+      className: "fixed inset-0 z-[-1]",
+      dangerouslySetInnerHTML: {
+        __html: `<iframe src='https://my.spline.design/dunes-Eg8W4XwLhNxC7F62n6SDsvks/' frameborder='0' width='100%' height='100%'></iframe>`
+      }
+    }),
     h('nav', { className: "px-6 py-6 glass-header sticky top-0 z-50" },
       h('div', { className: "max-w-7xl mx-auto flex justify-between items-center" },
         h('div', { className: "flex items-center gap-3" },
