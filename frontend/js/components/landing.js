@@ -5,12 +5,8 @@ const LandingPage = ({ onNavigate }) => {
     h('nav', { className: "px-6 py-6 glass-header sticky top-0 z-50" },
       h('div', { className: "max-w-7xl mx-auto flex justify-between items-center" },
         h('div', { className: "flex items-center gap-3" },
-          h('div', { className: "w-8 h-8 bg-cream-100 rounded-sm rotate-45 flex items-center justify-center shadow-lg" },
-            h('div', { className: "w-4 h-4 bg-rust-900 -rotate-45" })
-          ),
           h('h1', { className: "font-serif text-2xl tracking-tight font-medium" },
-            'Mr. ',
-            h('span', { className: "text-cream-100 font-normal" }, 'Usenti')
+            'USENTI'
           )
         ),
         h('div', { className: "flex items-center gap-6" },
@@ -22,7 +18,7 @@ const LandingPage = ({ onNavigate }) => {
             onClick: () => onNavigate('signup'),
             className: "px-5 py-2.5 bg-cream-100 text-rust-900 rounded-full hover:bg-cream-200 transition-all flex items-center gap-2 font-medium"
           },
-            'Start Free Trial ',
+            'Try Now ',
             h(Icons.ArrowRight, { size: 16 })
           )
         )
@@ -41,7 +37,7 @@ const LandingPage = ({ onNavigate }) => {
           h('button', {
             onClick: () => onNavigate('signup'),
             className: "w-full sm:w-auto px-10 py-5 bg-cream-100 text-rust-900 text-xl shadow-[0_0_40px_-10px_rgba(245,230,211,0.5)] rounded-full hover:bg-cream-200 transition-all hover:scale-105 font-bold"
-          }, 'Get started now!')
+          }, 'Get Started Now')
         ),
       )
     ),
