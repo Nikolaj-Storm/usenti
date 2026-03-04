@@ -1948,9 +1948,11 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
       y
     } = req.body;
 
-    if (!['email', 'wait', 'condition'].includes(step_type)) {
-      return res.status(400).json({ error: 'Invalid step type. Only email, wait, and condition are supported.' });
+    if (!['email', 'wait', 'condition', 'linkedin_dm', 'linkedin_connection_request'].includes(step_type)) {
+      return res.status(400).json({ error: 'Invalid step type.' });
     }
+
+    const isMessageStep = ['email', 'linkedin_dm', 'linkedin_connection_request'].includes(step_type);
 
     const { data, error } = await supabase
       .from('campaign_steps')
@@ -1959,7 +1961,7 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
         step_type,
         step_order: step_order || 1,
         subject: step_type === 'email' ? subject : null,
-        body: step_type === 'email' ? body : null,
+        body: isMessageStep ? body : null,
         wait_days: wait_days || 0,
         wait_hours: wait_hours || 0,
         wait_minutes: wait_minutes || 0,
