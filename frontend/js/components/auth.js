@@ -14,6 +14,9 @@ const Auth = ({ view, onAuthenticate, onNavigate, recoveryToken }) => {
   const [verificationPassword, setVerificationPassword] = React.useState('');
   const [newPassword, setNewPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
+  const [agreedToTerms, setAgreedToTerms] = React.useState(false);
+  const [agreedToEmails, setAgreedToEmails] = React.useState(false);
+  const [selectedPlan, setSelectedPlan] = React.useState('free');
 
   // Countdown timer for Supabase's rate limit
   React.useEffect(() => {
@@ -126,6 +129,13 @@ const Auth = ({ view, onAuthenticate, onNavigate, recoveryToken }) => {
   const handleSubmit = async (e) => {
     console.log('🎯 [Auth] Form submitted!', { view, email, hasPassword: !!password, hasName: !!name });
     e.preventDefault();
+
+    // Validate signup-specific fields
+    if (view === 'signup' && !agreedToTerms) {
+      setError('You must agree to the Terms & Conditions to create an account.');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
@@ -502,9 +512,74 @@ const Auth = ({ view, onAuthenticate, onNavigate, recoveryToken }) => {
                     placeholder: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
                   })
                 ),
+
+                // --- Signup-only: Plan Selection ---
+                view === 'signup' && h('div', { className: "space-y-3" },
+                  h('label', { className: "text-sm font-medium text-white/70" }, 'Choose your plan'),
+                  h('div', { className: "grid grid-cols-2 gap-3" },
+                    h('button', {
+                      type: "button",
+                      onClick: () => setSelectedPlan('free'),
+                      className: `p-4 rounded-xl border-2 transition-all text-left ${selectedPlan === 'free'
+                          ? 'border-cream-100 bg-white/10'
+                          : 'border-white/10 hover:border-white/30'
+                        }`
+                    },
+                      h('div', { className: "font-bold text-white text-sm" }, 'Free'),
+                      h('div', { className: "text-white/50 text-xs mt-1" }, '$0/mo'),
+                      h('div', { className: "text-white/40 text-xs mt-2" }, '50 emails/day'),
+                      h('div', { className: "text-white/40 text-xs" }, '1,000 contacts')
+                    ),
+                    h('button', {
+                      type: "button",
+                      onClick: () => setSelectedPlan('rebel_plan'),
+                      className: `p-4 rounded-xl border-2 transition-all text-left ${selectedPlan === 'rebel_plan'
+                          ? 'border-cream-100 bg-white/10'
+                          : 'border-white/10 hover:border-white/30'
+                        }`
+                    },
+                      h('div', { className: "flex items-center gap-2" },
+                        h('span', { className: "font-bold text-white text-sm" }, 'Rebel Plan'),
+                        h('span', { className: "text-[10px] px-1.5 py-0.5 bg-cream-100 text-rust-900 rounded-full font-bold" }, 'PRO')
+                      ),
+                      h('div', { className: "text-white/50 text-xs mt-1" }, '$45/mo'),
+                      h('div', { className: "text-white/40 text-xs mt-2" }, '100k emails/mo'),
+                      h('div', { className: "text-white/40 text-xs" }, '25,000 contacts')
+                    )
+                  )
+                ),
+
+                // --- Signup-only: T&C and Marketing Consent checkboxes ---
+                view === 'signup' && h('div', { className: "space-y-3" },
+                  h('label', { className: "flex items-start gap-3 cursor-pointer group" },
+                    h('input', {
+                      type: "checkbox",
+                      checked: agreedToTerms,
+                      onChange: () => setAgreedToTerms(!agreedToTerms),
+                      className: "mt-1 w-4 h-4 accent-cream-100 rounded"
+                    }),
+                    h('span', { className: "text-xs text-white/60 leading-relaxed" },
+                      'I agree to the ',
+                      h('a', { href: '#', className: "text-cream-100 underline" }, 'Terms & Conditions'),
+                      '. I understand that I am solely responsible for complying with all applicable email and anti-spam laws (CAN-SPAM, GDPR, etc.) when using this service, and that Usenti is not liable for any misuse of its outreach tools.'
+                    )
+                  ),
+                  h('label', { className: "flex items-start gap-3 cursor-pointer group" },
+                    h('input', {
+                      type: "checkbox",
+                      checked: agreedToEmails,
+                      onChange: () => setAgreedToEmails(!agreedToEmails),
+                      className: "mt-1 w-4 h-4 accent-cream-100 rounded"
+                    }),
+                    h('span', { className: "text-xs text-white/60 leading-relaxed" },
+                      'I agree to receive product updates and marketing emails from Usenti. You can unsubscribe at any time.'
+                    )
+                  )
+                ),
+
                 h('button', {
                   type: "submit",
-                  disabled: loading || cooldownRemaining > 0,
+                  disabled: loading || cooldownRemaining > 0 || (view === 'signup' && !agreedToTerms),
                   className: "w-full py-3 bg-cream-100 text-rust-900 rounded-full font-medium hover:bg-cream-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                 },
                   loading
