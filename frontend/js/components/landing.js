@@ -2,17 +2,21 @@
 
 const LandingPage = ({ onNavigate }) => {
   return h('div', { className: "min-h-screen text-white font-sans selection:bg-cream-100 selection:text-rust-900 relative" },
-    // Spline 3D Background
+    // Spline 3D Background (scaled up so watermark is cropped off by overflow:hidden)
     h('div', { style: { position: 'fixed', inset: 0, zIndex: -1, overflow: 'hidden' } },
       h('iframe', {
         src: 'https://my.spline.design/dunes-Eg8W4XwLhNxC7F62n6SDsvks/',
         frameBorder: '0',
-        width: '100%',
-        height: '100%',
-        style: { border: 'none', display: 'block' }
-      }),
-      // Cover the "Built with Spline" watermark
-      h('div', { style: { position: 'absolute', bottom: 0, right: 0, width: '200px', height: '40px', background: '#1a1510' } })
+        style: {
+          border: 'none',
+          display: 'block',
+          position: 'absolute',
+          top: '-5%',
+          left: '-5%',
+          width: '110%',
+          height: '110%'
+        }
+      })
     ),
     h('nav', { className: "px-6 py-6 glass-header sticky top-0 z-50" },
       h('div', { className: "max-w-7xl mx-auto flex justify-between items-center" },
