@@ -1439,6 +1439,7 @@ app.post('/api/contact-lists/:id/import', authenticateUser, async (req, res) => 
       first_name: c.first_name || '',
       last_name: c.last_name || '',
       company: c.company || '',
+      linkedin_url: c.linkedin_url || null,
       custom_fields: c.custom_fields || {},
       status: 'active'
     }));
@@ -1555,7 +1556,7 @@ app.delete('/api/contacts/lists/:listId', authenticateUser, async (req, res) => 
 app.put('/api/contacts/:contactId', authenticateUser, async (req, res) => {
   try {
     const { contactId } = req.params;
-    const { email, first_name, last_name, company, custom_fields, status } = req.body;
+    const { email, first_name, last_name, company, linkedin_url, custom_fields, status } = req.body;
 
     // Verify contact belongs to user's list
     const { data: contact, error: fetchError } = await supabase
@@ -1578,6 +1579,7 @@ app.put('/api/contacts/:contactId', authenticateUser, async (req, res) => {
     if (first_name !== undefined) updates.first_name = first_name;
     if (last_name !== undefined) updates.last_name = last_name;
     if (company !== undefined) updates.company = company;
+    if (linkedin_url !== undefined) updates.linkedin_url = linkedin_url;
     if (custom_fields !== undefined) updates.custom_fields = custom_fields;
     if (status !== undefined) updates.status = status;
 

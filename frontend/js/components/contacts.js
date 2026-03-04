@@ -19,10 +19,10 @@ const Contacts = () => {
       const listData = Array.isArray(data) ? data : [];
       console.log('Loaded contact lists:', listData);
       setContactLists(listData);
-      
+
       if (listData.length > 0) {
         // If we have a selected list, keep it selected, otherwise select first
-        const listToSelect = selectedList 
+        const listToSelect = selectedList
           ? listData.find(l => l.id === selectedList.id) || listData[0]
           : listData[0];
         setSelectedList(listToSelect);
@@ -46,7 +46,7 @@ const Contacts = () => {
       console.log('Raw contacts response:', response);
       console.log('Response type:', typeof response);
       console.log('Response keys:', Object.keys(response || {}));
-      
+
       // The backend returns { contacts: [...], total: N, limit: N, offset: N }
       let contactData = [];
       if (Array.isArray(response)) {
@@ -58,7 +58,7 @@ const Contacts = () => {
       } else {
         console.warn('Unexpected response format:', response);
       }
-      
+
       console.log('Final parsed contacts:', contactData);
       console.log('Number of contacts:', contactData.length);
       setContacts(contactData);
@@ -92,11 +92,11 @@ const Contacts = () => {
       console.log('Deleting list:', listId);
       // FIXED: Correct backend endpoint is /api/contacts/lists/:listId
       await api.delete(`/api/contacts/lists/${listId}`);
-      
+
       const updatedLists = contactLists.filter(l => l.id !== listId);
       console.log('Updated lists after delete:', updatedLists);
       setContactLists(updatedLists);
-      
+
       // If we deleted the selected list, select another one
       if (selectedList?.id === listId) {
         if (updatedLists.length > 0) {
@@ -117,7 +117,7 @@ const Contacts = () => {
     try {
       console.log('Updating contact:', contactId, updates);
       const updated = await api.put(`/api/contacts/${contactId}`, updates);
-      
+
       // Update the contact in the list
       setContacts(contacts.map(c => c.id === contactId ? updated : c));
       setEditingContact(null);
@@ -200,7 +200,7 @@ const Contacts = () => {
         )
       )
     ),
-    
+
     // Tab Navigation for Lists
     h('div', { className: "flex gap-2 overflow-x-auto pb-2" },
       ...contactLists.map((list) =>
@@ -211,17 +211,15 @@ const Contacts = () => {
               setSelectedList(list);
               loadContacts(list.id);
             },
-            className: `px-4 py-2 rounded-xl font-medium whitespace-nowrap transition-all flex items-center gap-2 ${
-              selectedList?.id === list.id
-                ? 'bg-cream-100 text-rust-900 shadow-lg'
-                : 'glass-card text-white hover:bg-white/15'
-            }`
+            className: `px-4 py-2 rounded-xl font-medium whitespace-nowrap transition-all flex items-center gap-2 ${selectedList?.id === list.id
+              ? 'bg-cream-100 text-rust-900 shadow-lg'
+              : 'glass-card text-white hover:bg-white/15'
+              }`
           },
             h('span', null, list.name),
             h('span', {
-              className: `ml-2 text-xs px-1.5 py-0.5 rounded-full ${
-                selectedList?.id === list.id ? 'bg-rust-900/20 text-rust-900' : 'bg-white/20 text-white/70'
-              }`
+              className: `ml-2 text-xs px-1.5 py-0.5 rounded-full ${selectedList?.id === list.id ? 'bg-rust-900/20 text-rust-900' : 'bg-white/20 text-white/70'
+                }`
             }, list.total_contacts || 0)
           ),
           // Delete button (shown on hover)
@@ -241,83 +239,97 @@ const Contacts = () => {
     h('div', { className: "glass-card overflow-hidden min-h-[400px]" },
       contacts.length === 0
         ? h('div', { className: "flex flex-col items-center justify-center py-20 text-center h-full" },
-            h(Icons.Users, { size: 48, className: "text-white/30 mb-3" }),
-            h('h3', { className: "font-medium text-white mb-2" }, 'No Contacts Yet'),
-            h('p', { className: "text-white/60 text-sm mb-4" }, 'Import contacts to get started'),
-            h('button', {
-              onClick: () => setShowImportModal(true),
-              className: "px-4 py-2 bg-cream-100 text-rust-900 rounded-full hover:bg-cream-200 flex items-center gap-2 transition-colors font-medium"
-            },
-              h(Icons.Upload, { size: 16 }),
-              ' Import Contacts'
-            )
+          h(Icons.Users, { size: 48, className: "text-white/30 mb-3" }),
+          h('h3', { className: "font-medium text-white mb-2" }, 'No Contacts Yet'),
+          h('p', { className: "text-white/60 text-sm mb-4" }, 'Import contacts to get started'),
+          h('button', {
+            onClick: () => setShowImportModal(true),
+            className: "px-4 py-2 bg-cream-100 text-rust-900 rounded-full hover:bg-cream-200 flex items-center gap-2 transition-colors font-medium"
+          },
+            h(Icons.Upload, { size: 16 }),
+            ' Import Contacts'
           )
+        )
         : h('div', { className: "overflow-x-auto" },
-            h('table', { className: "w-full" },
-              h('thead', { className: "bg-white/5 border-b border-white/10" },
-                h('tr', null,
-                  h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Name'),
-                  h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Email'),
-                  h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Company'),
-                  h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Status'),
-                  h('th', { className: "px-6 py-3 text-right text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Actions')
-                )
-              ),
-              h('tbody', { className: "divide-y divide-white/5" },
-                ...contacts.map((contact) =>
-                  h('tr', {
-                    key: contact.id,
-                    className: "hover:bg-white/5 transition-colors cursor-pointer",
-                    onClick: () => setEditingContact(contact)
-                  },
-                    h('td', { className: "px-6 py-4 whitespace-nowrap" },
-                      h('div', { className: "flex items-center" },
-                        h('div', { className: "w-8 h-8 rounded-full bg-cream-100 text-rust-900 flex items-center justify-center text-sm font-medium mr-3" },
-                          (contact.first_name?.[0]?.toUpperCase() || contact.email?.[0]?.toUpperCase() || '?')
-                        ),
-                        h('div', { className: "font-medium text-white" },
-                          `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown'
-                        )
+          h('table', { className: "w-full" },
+            h('thead', { className: "bg-white/5 border-b border-white/10" },
+              h('tr', null,
+                h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Name'),
+                h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Email'),
+                h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Company'),
+                h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'LinkedIn'),
+                h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Status'),
+                h('th', { className: "px-6 py-3 text-right text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Actions')
+              )
+            ),
+            h('tbody', { className: "divide-y divide-white/5" },
+              ...contacts.map((contact) =>
+                h('tr', {
+                  key: contact.id,
+                  className: "hover:bg-white/5 transition-colors cursor-pointer",
+                  onClick: () => setEditingContact(contact)
+                },
+                  h('td', { className: "px-6 py-4 whitespace-nowrap" },
+                    h('div', { className: "flex items-center" },
+                      h('div', { className: "w-8 h-8 rounded-full bg-cream-100 text-rust-900 flex items-center justify-center text-sm font-medium mr-3" },
+                        (contact.first_name?.[0]?.toUpperCase() || contact.email?.[0]?.toUpperCase() || '?')
+                      ),
+                      h('div', { className: "font-medium text-white" },
+                        `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown'
                       )
-                    ),
-                    h('td', { className: "px-6 py-4 whitespace-nowrap text-sm text-white/70" }, contact.email),
-                    h('td', { className: "px-6 py-4 whitespace-nowrap text-sm text-white/70" }, contact.company || '-'),
-                    h('td', { className: "px-6 py-4 whitespace-nowrap" },
-                      h('span', {
-                        className: `px-2 py-1 text-xs font-medium rounded-full ${
-                          contact.status === 'active'
-                            ? 'badge-active'
-                            : contact.status === 'bounced'
-                            ? 'badge-error'
-                            : 'badge-neutral'
+                    )
+                  ),
+                  h('td', { className: "px-6 py-4 whitespace-nowrap text-sm text-white/70" }, contact.email),
+                  h('td', { className: "px-6 py-4 whitespace-nowrap text-sm text-white/70" }, contact.company || '-'),
+                  h('td', { className: "px-6 py-4 whitespace-nowrap text-sm" },
+                    contact.linkedin_url
+                      ? h('a', {
+                        href: contact.linkedin_url,
+                        target: '_blank',
+                        rel: 'noopener noreferrer',
+                        className: 'text-[#0a66c2] hover:text-[#0a66c2]/80 flex items-center gap-1 transition-colors',
+                        onClick: (e) => e.stopPropagation()
+                      },
+                        h(Icons.ExternalLink, { size: 14 }),
+                        ' Profile'
+                      )
+                      : h('span', { className: 'text-white/30' }, '-')
+                  ),
+                  h('td', { className: "px-6 py-4 whitespace-nowrap" },
+                    h('span', {
+                      className: `px-2 py-1 text-xs font-medium rounded-full ${contact.status === 'active'
+                        ? 'badge-active'
+                        : contact.status === 'bounced'
+                          ? 'badge-error'
+                          : 'badge-neutral'
                         }`
-                      }, contact.status || 'active')
-                    ),
-                    h('td', { className: "px-6 py-4 whitespace-nowrap text-right text-sm" },
-                      h('div', { className: "flex gap-2 justify-end" },
-                        h('button', {
-                          onClick: (e) => {
-                            e.stopPropagation();
-                            setEditingContact(contact);
-                          },
-                          className: "text-white/40 hover:text-white transition-colors",
-                          title: "Edit contact"
-                        }, h(Icons.Edit3, { size: 16 })),
-                        h('button', {
-                          onClick: (e) => {
-                            e.stopPropagation();
-                            handleDeleteContact(contact.id);
-                          },
-                          className: "text-white/40 hover:text-red-400 transition-colors",
-                          title: "Delete contact"
-                        }, h(Icons.Trash2, { size: 16 }))
-                      )
+                    }, contact.status || 'active')
+                  ),
+                  h('td', { className: "px-6 py-4 whitespace-nowrap text-right text-sm" },
+                    h('div', { className: "flex gap-2 justify-end" },
+                      h('button', {
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          setEditingContact(contact);
+                        },
+                        className: "text-white/40 hover:text-white transition-colors",
+                        title: "Edit contact"
+                      }, h(Icons.Edit3, { size: 16 })),
+                      h('button', {
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          handleDeleteContact(contact.id);
+                        },
+                        className: "text-white/40 hover:text-red-400 transition-colors",
+                        title: "Delete contact"
+                      }, h(Icons.Trash2, { size: 16 }))
                     )
                   )
                 )
               )
             )
           )
+        )
     ),
 
     // Stats Dashboard
@@ -345,7 +357,7 @@ const Contacts = () => {
         )
       )
     ),
-    
+
     // Modals
     showNewListModal && h(NewListModal, {
       onClose: () => setShowNewListModal(false),
@@ -390,7 +402,7 @@ const NewListModal = ({ onClose, onCreate }) => {
             type: "text",
             required: true,
             value: formData.name,
-            onChange: (e) => setFormData({...formData, name: e.target.value}),
+            onChange: (e) => setFormData({ ...formData, name: e.target.value }),
             className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
             placeholder: "Enterprise Prospects"
           })
@@ -399,7 +411,7 @@ const NewListModal = ({ onClose, onCreate }) => {
           h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'Description (Optional)'),
           h('textarea', {
             value: formData.description,
-            onChange: (e) => setFormData({...formData, description: e.target.value}),
+            onChange: (e) => setFormData({ ...formData, description: e.target.value }),
             className: "w-full px-4 py-3 glass-input rounded-xl transition-all resize-none",
             rows: 3,
             placeholder: "Describe this contact list..."
@@ -427,6 +439,7 @@ const EditContactModal = ({ contact, onClose, onSave }) => {
     last_name: contact.last_name || '',
     email: contact.email || '',
     company: contact.company || '',
+    linkedin_url: contact.linkedin_url || '',
     status: contact.status || 'active'
   });
 
@@ -451,7 +464,7 @@ const EditContactModal = ({ contact, onClose, onSave }) => {
             h('input', {
               type: "text",
               value: formData.first_name,
-              onChange: (e) => setFormData({...formData, first_name: e.target.value}),
+              onChange: (e) => setFormData({ ...formData, first_name: e.target.value }),
               className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
               placeholder: "John"
             })
@@ -461,7 +474,7 @@ const EditContactModal = ({ contact, onClose, onSave }) => {
             h('input', {
               type: "text",
               value: formData.last_name,
-              onChange: (e) => setFormData({...formData, last_name: e.target.value}),
+              onChange: (e) => setFormData({ ...formData, last_name: e.target.value }),
               className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
               placeholder: "Doe"
             })
@@ -473,7 +486,7 @@ const EditContactModal = ({ contact, onClose, onSave }) => {
             type: "email",
             required: true,
             value: formData.email,
-            onChange: (e) => setFormData({...formData, email: e.target.value}),
+            onChange: (e) => setFormData({ ...formData, email: e.target.value }),
             className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
             placeholder: "john@company.com"
           })
@@ -483,16 +496,26 @@ const EditContactModal = ({ contact, onClose, onSave }) => {
           h('input', {
             type: "text",
             value: formData.company,
-            onChange: (e) => setFormData({...formData, company: e.target.value}),
+            onChange: (e) => setFormData({ ...formData, company: e.target.value }),
             className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
             placeholder: "Acme Corp"
+          })
+        ),
+        h('div', null,
+          h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'LinkedIn URL'),
+          h('input', {
+            type: "url",
+            value: formData.linkedin_url,
+            onChange: (e) => setFormData({ ...formData, linkedin_url: e.target.value }),
+            className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
+            placeholder: "https://linkedin.com/in/johndoe"
           })
         ),
         h('div', null,
           h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'Status'),
           h('select', {
             value: formData.status,
-            onChange: (e) => setFormData({...formData, status: e.target.value}),
+            onChange: (e) => setFormData({ ...formData, status: e.target.value }),
             className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
           },
             h('option', { value: "active" }, 'Active'),
@@ -527,13 +550,14 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
     last_name: '',
     email: '',
     company: '',
+    linkedin_url: '',
     title: '',
     phone: ''
   });
   const [dragActive, setDragActive] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
   const [consentConfirmed, setConsentConfirmed] = React.useState(false);
-  
+
   const fileInputRef = React.useRef(null);
 
   const handleDrag = (e) => {
@@ -596,20 +620,23 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
         const lowerHeaders = headers.map(h => String(h).toLowerCase());
 
         const findHeader = (terms) => {
-             const idx = lowerHeaders.findIndex(h => terms.some(t => h === t || h.includes(t)));
-             return idx !== -1 ? headers[idx] : null;
+          const idx = lowerHeaders.findIndex(h => terms.some(t => h === t || h.includes(t)));
+          return idx !== -1 ? headers[idx] : null;
         };
 
         if (lowerHeaders.includes('email')) autoMapping.email = headers[lowerHeaders.indexOf('email')];
-        
+
         const firstName = findHeader(['first name', 'firstname', 'first']);
-        if(firstName) autoMapping.first_name = firstName;
+        if (firstName) autoMapping.first_name = firstName;
 
         const lastName = findHeader(['last name', 'lastname', 'last']);
-        if(lastName) autoMapping.last_name = lastName;
+        if (lastName) autoMapping.last_name = lastName;
 
         const company = findHeader(['company', 'organization', 'business']);
-        if(company) autoMapping.company = company;
+        if (company) autoMapping.company = company;
+
+        const linkedinUrl = findHeader(['linkedin', 'linkedin url', 'linkedin_url', 'linkedin profile', 'profile url', 'li url']);
+        if (linkedinUrl) autoMapping.linkedin_url = linkedinUrl;
 
         setMapping({ ...mapping, ...autoMapping });
         setStep('mapping');
@@ -683,11 +710,10 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
           onDragLeave: handleDrag,
           onDragOver: handleDrag,
           onDrop: handleDrop,
-          className: `border-2 border-dashed rounded-2xl p-12 text-center transition-all ${
-            dragActive
-              ? 'border-cream-100 bg-cream-100/10'
-              : 'border-white/20 hover:border-white/40'
-          }`
+          className: `border-2 border-dashed rounded-2xl p-12 text-center transition-all ${dragActive
+            ? 'border-cream-100 bg-cream-100/10'
+            : 'border-white/20 hover:border-white/40'
+            }`
         },
           h(Icons.Upload, { size: 48, className: "text-white/30 mx-auto mb-4" }),
           h('h4', { className: "font-medium text-white mb-2" }, 'Drop your file here'),

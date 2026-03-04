@@ -1446,6 +1446,7 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
     { var: '{{last_name}}', label: 'Last Name' },
     { var: '{{email}}', label: 'Email' },
     { var: '{{company}}', label: 'Company' },
+    { var: '{{linkedin_url}}', label: 'LinkedIn' },
     { var: '{{unsubscribe_link}}', label: 'Unsubscribe' }
   ];
 

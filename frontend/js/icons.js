@@ -424,5 +424,22 @@ const Icons = {
       h('path', { key: 2, d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" }),
       h('line', { key: 3, x1: "12", x2: "12.01", y1: "17", y2: "17" })
     ]
+  }),
+
+  UserPlus: (p) => Icon({
+    ...p, path: [
+      h('path', { key: 1, d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" }),
+      h('circle', { key: 2, cx: "9", cy: "7", r: "4" }),
+      h('line', { key: 3, x1: "19", x2: "19", y1: "8", y2: "14" }),
+      h('line', { key: 4, x1: "22", x2: "16", y1: "11", y2: "11" })
+    ]
+  }),
+
+  ExternalLink: (p) => Icon({
+    ...p, path: [
+      h('path', { key: 1, d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }),
+      h('polyline', { key: 2, points: "15 3 21 3 21 9" }),
+      h('line', { key: 3, x1: "10", x2: "21", y1: "14", y2: "3" })
+    ]
   })
 };

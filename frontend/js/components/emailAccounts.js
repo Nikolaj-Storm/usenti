@@ -136,8 +136,8 @@ const ExtensionSetupCard = () => {
         )
       ),
       h('div', { className: "flex-1" },
-        h('h3', { className: "text-lg font-medium text-white mb-1" }, 'Install Developer Extension (MVP)'),
-        h('p', { className: "text-sm text-white/60" }, "Currently, the Usenti extension is in developer preview. Follow these steps to install it locally and link it to this browser.")
+        h('h3', { className: "text-lg font-medium text-white mb-1" }, 'Install Usenti LinkedIn Extension'),
+        h('p', { className: "text-sm text-white/60" }, "Install the Usenti Chrome Extension to automate LinkedIn DMs and connection requests as part of your multichannel campaigns.")
       )
     ),
 
@@ -145,9 +145,9 @@ const ExtensionSetupCard = () => {
       h('ol', { className: "list-decimal list-inside space-y-3" },
         h('li', null, "Open Chrome extensions page: ", h('code', { className: "bg-white/10 px-2 py-0.5 rounded ml-1" }, "chrome://extensions")),
         h('li', null, "Enable ", h('strong', { className: "text-white" }, "Developer mode"), " toggle in the top right."),
-        h('li', null, "Click ", h('strong', { className: "text-white" }, "Load unpacked"), " and select the ", h('code', { className: "bg-white/10 px-2 py-0.5 rounded ml-1" }, "/extension"), " folder from this project."),
+        h('li', null, "Click ", h('strong', { className: "text-white" }, "Load unpacked"), " and select the ", h('code', { className: "bg-white/10 px-2 py-0.5 rounded ml-1" }, "/extension"), " folder."),
         h('li', null, "Click the Usenti icon in your browser toolbar to open the popup."),
-        h('li', null, "Click the ", h('strong', { className: "text-[#0a66c2]" }, "Link Account"), " button inside the extension.")
+        h('li', null, "Click ", h('strong', { className: "text-[#0a66c2]" }, "Link to Usenti Account"), " to connect.")
       ),
 
       h('div', { className: "mt-6 p-4 bg-[#0a66c2]/10 border border-[#0a66c2]/20 rounded-xl" },
@@ -155,7 +155,7 @@ const ExtensionSetupCard = () => {
           h(Icons.Info, { size: 16 }), "How it works"
         ),
         h('p', { className: "text-white/60 text-xs leading-relaxed" },
-          "Because LinkedIn is very strict about automated API usage and scraping, Usenti runs these tasks securely in your local browser using the Chrome extension. As long as you have Chrome open and the extension is authenticated, your queued LinkedIn messages and connection requests will automatically fire in the background through normal DOM simulation. It is almost completely undetectable from LinkedIn's perspective."
+          "LinkedIn restricts automated API access, so Usenti runs tasks securely in your local browser using this extension. Keep Chrome open and the extension linked — your queued LinkedIn messages and connection requests will fire automatically in the background through human-like DOM interaction."
         )
       )
     )

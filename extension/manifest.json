@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "Usenti LinkedIn Integration",
-    "version": "1.0.0",
-    "description": "Seamlessly integrates LinkedIn with your Usenti Outreach Automation campaigns.",
+    "name": "Usenti LinkedIn Outreach",
+    "version": "1.1.0",
+    "description": "Automate LinkedIn outreach — DMs and connection requests — as part of your Usenti multichannel campaigns.",
     "action": {
         "default_popup": "popup.html",
         "default_icon": {
@@ -12,8 +12,7 @@
         }
     },
     "background": {
-        "service_worker": "background.js",
-        "type": "module"
+        "service_worker": "background.js"
     },
     "content_scripts": [
         {
@@ -30,7 +29,9 @@
         "*://*.linkedin.com/*",
         "http://localhost:3000/*",
         "https://*.onrender.com/*",
-        "https://nikolaj-storm.github.io/*"
+        "https://nikolaj-storm.github.io/*",
+        "https://*.usenti.com/*",
+        "https://usenti.com/*"
     ],
     "permissions": [
         "storage",
