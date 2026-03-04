@@ -11,10 +11,10 @@ const LandingPage = ({ onNavigate }) => {
           border: 'none',
           display: 'block',
           position: 'absolute',
-          top: '-5%',
-          left: '-5%',
-          width: '110%',
-          height: '110%'
+          top: '-10%',
+          left: '-10%',
+          width: '125%',
+          height: '125%'
         }
       })
     ),
