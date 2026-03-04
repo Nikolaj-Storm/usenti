@@ -36,7 +36,7 @@ async function getAuth() {
 }
 
 // In a real app, API_URL should be configurable or point to Prod
-const API_URL = 'https://usenti-2-0.onrender.com/api';
+const API_URL = 'https://snowman-2-0.onrender.com/api';
 
 async function registerExtension() {
     const { usentiToken } = await getAuth();
