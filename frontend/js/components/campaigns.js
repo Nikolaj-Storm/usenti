@@ -49,8 +49,6 @@ const NODE_TYPES = {
   email: { icon: 'Mail', color: '#3b82f6', label: 'Email', bgClass: 'email' },
   wait: { icon: 'Clock', color: '#8b5cf6', label: 'Wait', bgClass: 'wait' },
   condition: { icon: 'Split', color: '#f59e0b', label: 'Condition', bgClass: 'condition' },
-  linkedin_dm: { icon: 'MessageSquare', color: '#0a66c2', label: 'LinkedIn DM', bgClass: 'linkedin_dm' },
-  linkedin_connection_request: { icon: 'UserPlus', color: '#0a66c2', label: 'LinkedIn Connect', bgClass: 'linkedin_connection_request' },
   end: { icon: 'Check', color: '#ef4444', label: 'End', bgClass: 'end' }
 };
 
@@ -1396,8 +1394,6 @@ const BlockToolbar = ({ onAddStep, trackOpens = true }) => {
   const blocks = [
     { type: 'email', icon: 'Mail', label: 'Email', color: '#3b82f6', desc: 'Send an email' },
     { type: 'wait', icon: 'Clock', label: 'Wait', color: '#8b5cf6', desc: 'Add a delay' },
-    { type: 'linkedin_dm', icon: 'MessageSquare', label: 'LI Message', color: '#0a66c2', desc: 'Send a LinkedIn message' },
-    { type: 'linkedin_connection_request', icon: 'UserPlus', label: 'LI Connect', color: '#0a66c2', desc: 'Send a LinkedIn connection request' },
   ];
 
   if (trackOpens) {
@@ -1446,7 +1442,6 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
     { var: '{{last_name}}', label: 'Last Name' },
     { var: '{{email}}', label: 'Email' },
     { var: '{{company}}', label: 'Company' },
-    { var: '{{linkedin_url}}', label: 'LinkedIn' },
     { var: '{{unsubscribe_link}}', label: 'Unsubscribe' }
   ];
 

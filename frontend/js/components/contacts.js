@@ -257,7 +257,6 @@ const Contacts = () => {
                 h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Name'),
                 h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Email'),
                 h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Company'),
-                h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'LinkedIn'),
                 h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Status'),
                 h('th', { className: "px-6 py-3 text-right text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Actions')
               )
@@ -281,20 +280,6 @@ const Contacts = () => {
                   ),
                   h('td', { className: "px-6 py-4 whitespace-nowrap text-sm text-white/70" }, contact.email),
                   h('td', { className: "px-6 py-4 whitespace-nowrap text-sm text-white/70" }, contact.company || '-'),
-                  h('td', { className: "px-6 py-4 whitespace-nowrap text-sm" },
-                    contact.linkedin_url
-                      ? h('a', {
-                        href: contact.linkedin_url,
-                        target: '_blank',
-                        rel: 'noopener noreferrer',
-                        className: 'text-[#0a66c2] hover:text-[#0a66c2]/80 flex items-center gap-1 transition-colors',
-                        onClick: (e) => e.stopPropagation()
-                      },
-                        h(Icons.ExternalLink, { size: 14 }),
-                        ' Profile'
-                      )
-                      : h('span', { className: 'text-white/30' }, '-')
-                  ),
                   h('td', { className: "px-6 py-4 whitespace-nowrap" },
                     h('span', {
                       className: `px-2 py-1 text-xs font-medium rounded-full ${contact.status === 'active'
@@ -439,7 +424,6 @@ const EditContactModal = ({ contact, onClose, onSave }) => {
     last_name: contact.last_name || '',
     email: contact.email || '',
     company: contact.company || '',
-    linkedin_url: contact.linkedin_url || '',
     status: contact.status || 'active'
   });
 
@@ -502,16 +486,6 @@ const EditContactModal = ({ contact, onClose, onSave }) => {
           })
         ),
         h('div', null,
-          h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'LinkedIn URL'),
-          h('input', {
-            type: "url",
-            value: formData.linkedin_url,
-            onChange: (e) => setFormData({ ...formData, linkedin_url: e.target.value }),
-            className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
-            placeholder: "https://linkedin.com/in/johndoe"
-          })
-        ),
-        h('div', null,
           h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'Status'),
           h('select', {
             value: formData.status,
@@ -550,7 +524,6 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
     last_name: '',
     email: '',
     company: '',
-    linkedin_url: '',
     title: '',
     phone: ''
   });
@@ -634,9 +607,6 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
 
         const company = findHeader(['company', 'organization', 'business']);
         if (company) autoMapping.company = company;
-
-        const linkedinUrl = findHeader(['linkedin', 'linkedin url', 'linkedin_url', 'linkedin profile', 'profile url', 'li url']);
-        if (linkedinUrl) autoMapping.linkedin_url = linkedinUrl;
 
         setMapping({ ...mapping, ...autoMapping });
         setStep('mapping');

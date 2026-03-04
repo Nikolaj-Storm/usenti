@@ -98,13 +98,6 @@ const EmailAccounts = () => {
       )
       : h(AccountsTab, { accounts: accounts, onEdit: handleEditAccount, onDelete: handleDeleteAccount }),
 
-    // Add extension info at the bottom
-    h('div', { className: "border-t border-white/10 pt-8 mt-8" },
-      h('h3', { className: "font-serif text-2xl text-white mb-4" }, 'LinkedIn Extension'),
-      h('p', { className: "text-white/60 mb-6 font-light" }, 'Connect your LinkedIn account to Usenti by installing our invisible Chrome extension. This lets you execute LinkedIn campaigns locally, avoiding server proxies and risks.'),
-      h(ExtensionSetupCard, null)
-    ),
-
     showModal && h(AccountModal, {
       account: editingAccount,
       onClose: () => { setShowModal(false); setEditingAccount(null); },
