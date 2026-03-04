@@ -157,9 +157,7 @@ const App = () => {
   if (authState === 'checking') {
     return h('div', { className: "min-h-screen flex items-center justify-center" },
       h('div', { className: "text-center space-y-4" },
-        h('div', { className: "w-16 h-16 bg-cream-100 rounded-xl rotate-45 mx-auto flex items-center justify-center shadow-2xl animate-pulse" },
-          h('div', { className: "w-8 h-8 bg-rust-900 -rotate-45 rounded-lg" })
-        ),
+        h('h1', { className: "font-serif text-3xl tracking-tight text-white animate-pulse" }, 'USENTI'),
         h('p', { className: "text-white/60 font-medium" }, 'Connecting to Usenti...')
       )
     );
@@ -201,12 +199,8 @@ const App = () => {
     h('aside', { className: "w-72 glass-sidebar text-white flex flex-col z-20" },
       h('div', { className: "p-8 pb-10" },
         h('div', { className: "flex items-center gap-3" },
-          h('div', { className: "w-8 h-8 bg-cream-100 rounded-sm rotate-45 flex items-center justify-center shadow-lg" },
-            h('div', { className: "w-4 h-4 bg-rust-900 -rotate-45" })
-          ),
           h('h1', { className: "font-serif text-2xl tracking-tight text-white" },
-            'Mr. ',
-            h('span', { className: "text-cream-100 font-normal" }, 'Usenti')
+            'USENTI'
           )
         )
       ),

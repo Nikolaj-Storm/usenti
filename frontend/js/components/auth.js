@@ -210,12 +210,8 @@ const Auth = ({ view, onAuthenticate, onNavigate, recoveryToken }) => {
         onClick: () => onNavigate('landing'),
         className: "relative z-10 flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
       },
-        h('div', { className: "w-8 h-8 bg-cream-100 rounded-sm rotate-45 flex items-center justify-center shadow-lg" },
-          h('div', { className: "w-4 h-4 bg-rust-900 -rotate-45" })
-        ),
-        h('h1', { className: "font-serif text-2xl tracking-tight font-medium" },
-          'Mr. ',
-          h('span', { className: "text-cream-100 font-normal" }, 'Usenti')
+        h('h1', { className: "font-serif text-2xl tracking-tight font-medium text-white" },
+          'USENTI'
         )
       ),
       h('div', { className: "relative z-10 max-w-lg" },
