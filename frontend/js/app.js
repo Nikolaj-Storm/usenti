@@ -247,7 +247,6 @@ const App = () => {
         h('div', { className: "py-6" }),
         h('p', { className: "px-4 text-xs font-bold text-white/40 uppercase tracking-widest mb-4" }, 'System'),
         h(NavItem, { view: "infrastructure", icon: Icons.Layers, label: "Accounts" }),
-        h(NavItem, { view: "billing", icon: Icons.CreditCard, label: "Billing" }),
         h(NavItem, { view: "settings", icon: Icons.Settings, label: "Settings" })
       ),
       h('div', { className: "p-4 border-t border-white/10" },
@@ -276,7 +275,6 @@ const App = () => {
           privateView === 'dashboard' && 'Dashboard',
           privateView === 'campaigns' && 'Campaign Management',
           privateView === 'infrastructure' && 'Email Accounts',
-          privateView === 'billing' && 'Billing & Usage',
           privateView === 'contacts' && 'Contact Management',
           privateView === 'inbox' && 'Unified Inbox',
           privateView === 'settings' && 'Settings'
@@ -288,10 +286,9 @@ const App = () => {
           privateView === 'dashboard' && h(Dashboard),
           privateView === 'campaigns' && h(CampaignBuilder),
           privateView === 'infrastructure' && h(EmailAccounts),
-          privateView === 'billing' && h(Billing),
           privateView === 'contacts' && h(Contacts),
           privateView === 'inbox' && h(Inbox, { onUnansweredCountChange: fetchUnansweredCount }),
-          privateView === 'settings' && h(Billing)
+          privateView === 'settings' && h(Settings)
         )
       )
     )

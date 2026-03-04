@@ -87,8 +87,8 @@ router.post('/create-checkout-session', authenticateUser, async (req, res) => {
                     quantity: 1,
                 },
             ],
-            success_url: `${frontendUrl}/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${frontendUrl}/billing?canceled=true`,
+            success_url: `${frontendUrl}/?success=true&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${frontendUrl}/?canceled=true`,
             client_reference_id: req.user.id, // Critical for knowing who paid in the webhook
             customer_email: customerId ? undefined : req.user.email,
         };
@@ -125,7 +125,7 @@ router.post('/customer-portal', authenticateUser, async (req, res) => {
         const frontendUrl = getFrontendUrlFromRequest(req);
         const session = await stripe.billingPortal.sessions.create({
             customer: subscription.stripe_customer_id,
-            return_url: `${frontendUrl}/billing`,
+            return_url: `${frontendUrl}/`,
         });
 
         res.json({ url: session.url });
