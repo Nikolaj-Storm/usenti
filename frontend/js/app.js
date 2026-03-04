@@ -10,8 +10,9 @@ const App = () => {
 
   // 1. Check for password recovery token in URL hash, then verify session
   React.useEffect(() => {
-    // Supabase redirects with hash params: #access_token=xxx&type=recovery
     const hash = window.location.hash;
+
+    // Case 1: Password recovery token
     if (hash && hash.includes('type=recovery')) {
       const params = new URLSearchParams(hash.substring(1));
       const accessToken = params.get('access_token');
@@ -20,11 +21,40 @@ const App = () => {
         setRecoveryToken(accessToken);
         setPublicView('reset-password');
         setAuthState('unauthenticated');
-        // Clean the URL hash so it doesn't persist
         window.history.replaceState(null, '', window.location.pathname + window.location.search);
         return;
       }
     }
+
+    // Case 2: OAuth callback (Google sign-in) — hash contains access_token
+    if (hash && hash.includes('access_token')) {
+      console.log('🔑 [App] OAuth callback detected in URL hash. Waiting for Supabase to process...');
+      (async () => {
+        try {
+          await api.initSupabase();
+          // Give Supabase a moment to parse the hash and establish the session
+          const { data, error } = await window.usentiSupabase.auth.getSession();
+          if (data?.session) {
+            console.log('✅ [App] OAuth session established! Logging in...');
+            localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, data.session.access_token);
+            localStorage.setItem(APP_CONFIG.STORAGE_KEYS.USER, JSON.stringify(data.session.user));
+            setUser(data.session.user);
+            setAuthState('authenticated');
+            setPrivateView('dashboard');
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+            return;
+          } else {
+            console.warn('⚠️ [App] OAuth hash found but no session yet. Falling back to verifySession.');
+          }
+        } catch (e) {
+          console.warn('⚠️ [App] Error processing OAuth callback:', e);
+        }
+        verifySession();
+      })();
+      return;
+    }
+
+    // Case 3: Normal page load
     verifySession();
   }, []);
 
