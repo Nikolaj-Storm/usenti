@@ -249,13 +249,24 @@ const CampaignBuilder = () => {
   const [loadingStats, setLoadingStats] = React.useState(false);
   const [showEditor, setShowEditor] = React.useState(true);
   const [showStartModal, setShowStartModal] = React.useState(false);
+  const [usage, setUsage] = React.useState(null);
 
   const canvasState = useCanvasState();
   const containerRef = React.useRef(null);
 
   React.useEffect(() => {
     loadCampaigns();
+    loadUsage();
   }, []);
+
+  const loadUsage = async () => {
+    try {
+      const res = await api.get('/api/stripe/status');
+      setUsage(res.usage);
+    } catch (e) {
+      console.error('Failed to load usage status', e);
+    }
+  };
 
   const loadCampaigns = async () => {
     try {
@@ -655,6 +666,7 @@ const CampaignBuilder = () => {
       isDemo,
       stats,
       loadingStats,
+      usage,
       onSelectCampaign: handleSelectCampaign,
       onDeleteCampaign: handleDeleteCampaign,
       onStartCampaign: handleStartCampaign,
@@ -755,17 +767,26 @@ const BuilderHeader = ({ selectedCampaign, campaigns, isDemo, stats, loadingStat
         title: "Delete Campaign"
       }, h(Icons.Trash2, { size: 18 })),
 
-      !isDemo && selectedCampaign && (
-        selectedCampaign.status === 'running'
-          ? h('button', {
+      !isDemo && selectedCampaign && (() => {
+        const isLimited = usage && usage.sent >= usage.limit;
+
+        if (selectedCampaign.status === 'running') {
+          return h('button', {
             onClick: onPauseCampaign,
             className: "px-3 py-2 bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-xl hover:bg-yellow-500/30 flex items-center gap-2 text-sm"
-          }, h(Icons.Pause, { size: 16 }), 'Pause')
-          : h('button', {
-            onClick: onStartCampaign,
-            className: "px-3 py-2 bg-green-500/20 text-green-300 border border-green-500/30 rounded-xl hover:bg-green-500/30 flex items-center gap-2 text-sm"
-          }, h(Icons.Play, { size: 16 }), selectedCampaign.status === 'paused' ? 'Resume' : 'Start')
-      ),
+          }, h(Icons.Pause, { size: 16 }), 'Pause');
+        } else {
+          return h('button', {
+            onClick: isLimited ? null : onStartCampaign,
+            disabled: isLimited,
+            title: isLimited ? 'Email limit reached for this billing cycle.' : '',
+            className: `px-3 py-2 border rounded-xl flex items-center gap-2 text-sm transition-colors ${isLimited
+                ? 'bg-gray-500/10 text-gray-500 border-gray-500/20 cursor-not-allowed'
+                : 'bg-green-500/20 text-green-300 border-green-500/30 hover:bg-green-500/30'
+              }`
+          }, h(Icons.Play, { size: 16 }), selectedCampaign.status === 'paused' ? 'Resume' : 'Start');
+        }
+      })(),
 
       !isDemo && h('select', {
         className: "glass-input px-3 py-2 rounded-xl text-sm",

@@ -30,11 +30,11 @@ const { isOriginAllowed, getFrontendUrlFromRequest } = require('./config/urls');
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (isOriginAllowed(origin)) {
+    if (!origin || isOriginAllowed(origin)) {
       callback(null, true);
     } else {
       console.warn(`CORS blocked origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      callback(null, false);
     }
   },
   credentials: true
