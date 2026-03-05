@@ -29,9 +29,9 @@ const supabase = createClient(
 
 class MicrosoftService {
   constructor() {
-    this.clientId = process.env.MICROSOFT_OAUTH_CLIENT_ID;
-    this.clientSecret = process.env.MICROSOFT_OAUTH_CLIENT_SECRET;
-    this.redirectUri = process.env.MICROSOFT_OAUTH_REDIRECT_URI || 'http://localhost:3000/api/oauth/microsoft/callback';
+    this.clientId = process.env.MICROSOFT_OAUTH_CLIENT_ID ? process.env.MICROSOFT_OAUTH_CLIENT_ID.trim() : null;
+    this.clientSecret = process.env.MICROSOFT_OAUTH_CLIENT_SECRET ? process.env.MICROSOFT_OAUTH_CLIENT_SECRET.trim() : null;
+    this.redirectUri = (process.env.MICROSOFT_OAUTH_REDIRECT_URI || 'http://localhost:3000/api/oauth/microsoft/callback').trim();
     this.authority = 'https://login.microsoftonline.com/common';
     this.tokenEndpoint = `${this.authority}/oauth2/v2.0/token`;
     this.authorizeEndpoint = `${this.authority}/oauth2/v2.0/authorize`;

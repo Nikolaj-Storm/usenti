@@ -22,8 +22,9 @@ const supabase = createClient(
 
 class GmailService {
   constructor() {
-    this.clientId = process.env.GMAIL_OAUTH_CLIENT_ID;
-    this.clientSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET;
+    // Use environment variables for client ID and secret
+    this.clientId = process.env.GMAIL_OAUTH_CLIENT_ID ? process.env.GMAIL_OAUTH_CLIENT_ID.trim() : null;
+    this.clientSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET ? process.env.GMAIL_OAUTH_CLIENT_SECRET.trim() : null;
     this.redirectUri = (process.env.GMAIL_OAUTH_REDIRECT_URI || 'http://localhost:3000/api/oauth/gmail/callback').trim();
   }
 
