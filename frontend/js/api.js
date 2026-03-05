@@ -301,8 +301,8 @@ const api = {
   },
 
   // Inbox
-  async getInbox(accountId = 'all', limit = 50, offset = 0) {
-    return this.get(`/api/inbox?account_id=${accountId}&limit=${limit}&offset=${offset}`);
+  async getInbox(accountId = 'all', limit = 50, offset = 0, filter = 'all', campaignId = 'all', sortOrder = 'newest') {
+    return this.get(`/api/inbox?account_id=${accountId}&limit=${limit}&offset=${offset}&filter=${filter}&campaign_id=${campaignId}&sort_order=${sortOrder}`);
   },
 
   async markInboxAsRead(messageId, isRead = true) {

@@ -704,6 +704,10 @@ class ImapMonitor {
               // Save messages to inbox_messages table
               for (const msg of messages) {
                 try {
+                  // Clamp date to prevent future-dated emails from breaking sorting
+                  let receivedAtMs = msg.date ? new Date(msg.date).getTime() : Date.now();
+                  if (receivedAtMs > Date.now()) receivedAtMs = Date.now();
+
                   await supabase.from('inbox_messages').upsert({
                     email_account_id: account.id,
                     message_id: msg.messageId || `sync-${msg.seqno}-${Date.now()}`,
@@ -716,7 +720,7 @@ class ImapMonitor {
                     body_html: msg.bodyHtml || null,
                     body_text: msg.bodyText || null,
                     attachments_meta: JSON.stringify(msg.attachmentsMeta || []),
-                    received_at: msg.date || new Date().toISOString(),
+                    received_at: new Date(receivedAtMs).toISOString(),
                     is_read: msg.flags?.includes('\\Seen') || false
                   }, {
                     onConflict: 'email_account_id, message_id',
@@ -1228,6 +1232,10 @@ class ImapMonitor {
         size: a.size || 0
       }));
 
+      // Clamp date to prevent future-dated emails from breaking sorting
+      let receivedAtMs = message.date ? new Date(message.date).getTime() : Date.now();
+      if (receivedAtMs > Date.now()) receivedAtMs = Date.now();
+
       await supabase.from('inbox_messages').upsert({
         email_account_id: account.id,
         message_id: message.messageId,
@@ -1240,7 +1248,7 @@ class ImapMonitor {
         body_html: message.html || message.textAsHtml || null,
         body_text: simpleBody || null,
         attachments_meta: JSON.stringify(attachmentMeta),
-        received_at: message.date || new Date().toISOString()
+        received_at: new Date(receivedAtMs).toISOString()
       }, {
         onConflict: 'email_account_id, message_id'
       });

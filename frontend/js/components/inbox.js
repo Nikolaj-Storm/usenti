@@ -4,6 +4,10 @@ const Inbox = ({ onUnansweredCountChange }) => {
   const [accounts, setAccounts] = React.useState([]);
   const [messages, setMessages] = React.useState([]);
   const [selectedAccount, setSelectedAccount] = React.useState('all');
+  const [filterStatus, setFilterStatus] = React.useState('all');
+  const [filterCampaign, setFilterCampaign] = React.useState('all');
+  const [sortOrder, setSortOrder] = React.useState('newest');
+  const [campaigns, setCampaigns] = React.useState([]);
   const [selectedMessage, setSelectedMessage] = React.useState(null);
   const [emailContent, setEmailContent] = React.useState(null);
   const [loadingContent, setLoadingContent] = React.useState(false);
@@ -19,18 +23,22 @@ const Inbox = ({ onUnansweredCountChange }) => {
 
   React.useEffect(() => {
     loadData();
-  }, [selectedAccount]);
+  }, [selectedAccount, filterStatus, filterCampaign, sortOrder]);
 
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [accs, msgs] = await Promise.all([
+      const [accs, msgs, camps] = await Promise.all([
         api.getEmailAccounts(),
-        api.getInbox(selectedAccount)
+        api.getInbox(selectedAccount, 50, 0, filterStatus, filterCampaign, sortOrder),
+        campaigns.length === 0 ? api.getCampaigns() : Promise.resolve(campaigns)
       ]);
       setAccounts(Array.isArray(accs) ? accs : []);
       setMessages(Array.isArray(msgs) ? msgs : []);
+      if (camps && camps !== campaigns) {
+        setCampaigns(Array.isArray(camps) ? camps : []);
+      }
     } catch (error) {
       console.error('Failed to load inbox:', error);
       setError(error.message || 'Failed to load inbox data');
@@ -260,7 +268,26 @@ const Inbox = ({ onUnansweredCountChange }) => {
         ),
         h('div', { className: "flex gap-3" },
           h('select', {
-            className: "px-4 py-3 glass-input rounded-xl min-w-[200px] transition-all",
+            className: "px-4 py-3 glass-input rounded-xl min-w-[150px] transition-all",
+            value: filterStatus,
+            onChange: (e) => setFilterStatus(e.target.value)
+          },
+            h('option', { value: "all" }, "All Status"),
+            h('option', { value: "answered" }, "Answered"),
+            h('option', { value: "unanswered" }, "Unanswered")
+          ),
+          h('select', {
+            className: "px-4 py-3 glass-input rounded-xl min-w-[150px] max-w-[200px] truncate transition-all",
+            value: filterCampaign,
+            onChange: (e) => setFilterCampaign(e.target.value)
+          },
+            h('option', { value: "all" }, "All Campaigns"),
+            campaigns.map(camp =>
+              h('option', { key: camp.id, value: camp.id }, camp.name)
+            )
+          ),
+          h('select', {
+            className: "px-4 py-3 glass-input rounded-xl min-w-[200px] max-w-[250px] truncate transition-all",
             value: selectedAccount,
             onChange: (e) => handleAccountChange(e.target.value)
           },
@@ -269,6 +296,14 @@ const Inbox = ({ onUnansweredCountChange }) => {
               h('option', { key: acc.id, value: acc.id }, acc.email_address)
             )
           ),
+          h('select', {
+            className: "px-4 py-3 glass-input rounded-xl min-w-[150px] transition-all",
+            value: sortOrder,
+            onChange: (e) => setSortOrder(e.target.value)
+          },
+            h('option', { value: "newest" }, "Newest First"),
+            h('option', { value: "oldest" }, "Oldest First")
+          ),
           h('button', {
             onClick: handleSyncInbox,
             disabled: syncing || loading,
@@ -276,7 +311,7 @@ const Inbox = ({ onUnansweredCountChange }) => {
             title: "Sync from mail server"
           },
             h(Icons.Download, { size: 16, className: syncing ? "animate-bounce" : "" }),
-            h('span', null, syncing ? 'Syncing...' : 'Sync Inbox')
+            h('span', null, syncing ? 'Syncing...' : 'Sync')
           )
         )
       ),

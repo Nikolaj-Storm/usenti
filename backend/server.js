@@ -816,7 +816,7 @@ app.get('/api/inbox', authenticateUser, async (req, res) => {
   const requestId = `INBOX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   try {
-    const { account_id, limit = 50, offset = 0 } = req.query;
+    const { account_id, limit = 50, offset = 0, filter, campaign_id, sort_order } = req.query;
 
     // First, get all email accounts that belong to the user
     const { data: userAccounts, error: accountsError } = await supabase
@@ -834,6 +834,8 @@ app.get('/api/inbox', authenticateUser, async (req, res) => {
       return res.json([]);
     }
 
+    const ascending = sort_order === 'oldest';
+
     // Build the inbox query
     let query = supabase
       .from('inbox_messages')
@@ -841,8 +843,36 @@ app.get('/api/inbox', authenticateUser, async (req, res) => {
         *,
         email_accounts!inner(email_address, id)
       `)
-      .order('received_at', { ascending: false })
+      .order('received_at', { ascending })
+      .order('created_at', { ascending })
       .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+
+    if (filter === 'answered') {
+      query = query.eq('is_answered', true);
+    } else if (filter === 'unanswered') {
+      query = query.eq('is_answered', false);
+    }
+
+    if (campaign_id && campaign_id !== 'all') {
+      // Find all contacts for this campaign
+      const { data: campaignContacts } = await supabase
+        .from('campaign_contacts')
+        .select('contacts!inner(email)')
+        .eq('campaign_id', campaign_id);
+
+      if (campaignContacts && campaignContacts.length > 0) {
+        const campaignEmails = campaignContacts.map(cc => cc.contacts?.email).filter(Boolean);
+        if (campaignEmails.length > 0) {
+          query = query.in('from_address', campaignEmails);
+        } else {
+          // No emails found, return empty result
+          query = query.in('from_address', ['__none__']);
+        }
+      } else {
+        // No contacts found, return empty result
+        query = query.in('from_address', ['__none__']);
+      }
+    }
 
     // Filter by specific account if requested
     if (account_id && account_id !== 'all') {
