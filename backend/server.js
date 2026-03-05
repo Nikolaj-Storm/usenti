@@ -239,11 +239,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
 const oauthRoutes = require('./routes/oauth');
 app.use('/api/oauth', oauthRoutes);
 
-// ============================================================================
-// EXTENSION ROUTES
-// ============================================================================
-const extensionRoutes = require('./routes/extension');
-app.use('/api/extension', extensionRoutes);
+
 
 // ============================================================================
 // EMAIL ACCOUNTS ROUTES
@@ -1466,10 +1462,9 @@ app.post('/api/contact-lists/:id/import', authenticateUser, async (req, res) => 
     const contactsToInsert = newContacts.map(c => ({
       list_id: req.params.id,
       email: c.email.toLowerCase().trim(),
-      first_name: c.first_name || '',
-      last_name: c.last_name || '',
-      company: c.company || '',
-      linkedin_url: c.linkedin_url || null,
+      first_name: c.first_name,
+      last_name: c.last_name || null,
+      company: c.company || null,
       custom_fields: c.custom_fields || {},
       status: 'active'
     }));
@@ -1586,7 +1581,7 @@ app.delete('/api/contacts/lists/:listId', authenticateUser, async (req, res) => 
 app.put('/api/contacts/:contactId', authenticateUser, async (req, res) => {
   try {
     const { contactId } = req.params;
-    const { email, first_name, last_name, company, linkedin_url, custom_fields, status } = req.body;
+    const { email, first_name, last_name, company, custom_fields, status } = req.body;
 
     // Verify contact belongs to user's list
     const { data: contact, error: fetchError } = await supabase
@@ -1609,7 +1604,7 @@ app.put('/api/contacts/:contactId', authenticateUser, async (req, res) => {
     if (first_name !== undefined) updates.first_name = first_name;
     if (last_name !== undefined) updates.last_name = last_name;
     if (company !== undefined) updates.company = company;
-    if (linkedin_url !== undefined) updates.linkedin_url = linkedin_url;
+
     if (custom_fields !== undefined) updates.custom_fields = custom_fields;
     if (status !== undefined) updates.status = status;
 
@@ -1978,11 +1973,11 @@ app.post('/api/campaigns/:id/steps', authenticateUser, async (req, res) => {
       y
     } = req.body;
 
-    if (!['email', 'wait', 'condition', 'linkedin_dm', 'linkedin_connection_request'].includes(step_type)) {
+    if (!['email', 'wait', 'condition'].includes(step_type)) {
       return res.status(400).json({ error: 'Invalid step type.' });
     }
 
-    const isMessageStep = ['email', 'linkedin_dm', 'linkedin_connection_request'].includes(step_type);
+    const isMessageStep = ['email'].includes(step_type);
 
     const { data, error } = await supabase
       .from('campaign_steps')

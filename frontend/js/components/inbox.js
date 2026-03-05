@@ -265,15 +265,10 @@ const Inbox = ({ onUnansweredCountChange }) => {
     h('div', { className: "h-[calc(100vh-120px)] flex flex-col animate-fade-in" },
       // Header and Controls
       // Header and Controls
-      h('div', { className: "mb-6 pb-4 border-b border-white/10 flex flex-col lg:flex-row justify-between lg:items-end gap-4" },
+      h('div', { className: "mb-6 pb-4 border-b border-white/10 flex flex-col gap-4" },
         // Title Area
         h('div', null,
-          h('h1', { className: "font-serif text-3xl text-white" }, "Unified Inbox"),
-          h('p', { className: "text-white/60 mt-1 text-sm font-light" },
-            messages.length === 0
-              ? "No messages yet"
-              : `${messages.length} recent message${messages.length !== 1 ? 's' : ''} (max 200 per account, 30-day retention)`
-          )
+          h('h1', { className: "font-serif text-3xl text-white" }, "Unified Inbox")
         ),
         // Controls Area (Filters & Sync)
         h('div', { className: "flex flex-wrap gap-2 items-center" },

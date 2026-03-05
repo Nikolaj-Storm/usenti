@@ -329,8 +329,7 @@ html {
 .node-header.condition { background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%); }
 .node-header.start { background: linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%); }
 .node-header.end { background: linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%); }
-.node-header.linkedin_dm { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-bottom: 2px solid #0a66c2; }
-.node-header.linkedin_connection_request { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-bottom: 2px solid #0a66c2; }
+
 
 /* Node icon badge */
 .node-icon {
@@ -348,8 +347,7 @@ html {
 .node-icon.condition { background: #f59e0b; color: white; }
 .node-icon.start { background: #10b981; color: white; }
 .node-icon.end { background: #ef4444; color: white; }
-.node-icon.linkedin_dm { background: #0a66c2; color: white; }
-.node-icon.linkedin_connection_request { background: #0a66c2; color: white; }
+
 
 /* Node content */
 .node-content {

@@ -1,0 +1,46 @@
+# Usenti Project - AI Agent Rules & Architecture Guide
+
+Welcome to the Usenti codebase! This document provides context and architectural guidelines for AI tools (like Cursor, Copilot, etc.) to safely and effectively edit this project.
+
+## Repository Structure
+
+The project is split into three main parts:
+1. **`backend/`**: Node.js + Express + Supabase
+2. **`frontend/`**: React (via CDN) + Tailwind CSS mapping to a single `/frontend` folder.
+3. **`extension/`**: Chrome Extension for Usenti (excluding the separate LinkedIn extension).
+
+### 1. Backend Architecture
+- **Entry point:** `backend/server.js`
+  - *Note: `server.js` is currently monolithic (~3k lines) and handles many routes (Auth, Email Accounts, Campaigns, Contacts, etc.). When editing, be precise, or suggest moving specific routes to `backend/routes/`.*
+- **Routes:** `backend/routes/` currently only handles `oauth.js`, `stripe.js`, and `extension.js`.
+- **Services:** `backend/services/` handles core logic:
+  - `campaignExecutor.js`: Manages sending email campaigns.
+  - `emailService.js`: Core email sending logic (SMTP parsing).
+  - `gmailService.js` / `microsoftService.js`: OAuth providers for email sending.
+  - `imapMonitor.js`: Monitors IMAP for replies to update campaign statistics.
+- **Config & DB:** `backend/config/` for Supabase/Stripe init. `backend/database/` contains Supabase SQL schemas and migrations.
+- **Warning:** Before adding big features, consider breaking out the related endpoints from `server.js` into a new router in `backend/routes/`!
+
+### 2. Frontend Architecture
+- **Tech Stack:** React 18 (loaded via CDN, no bundling build step like Webpack/Vite), Tailwind CSS (CDN config embedded in `index.html`), and vanilla JS for state/routing.
+- **Entry points:** 
+  - `frontend/index.html`: Contains global Tailwind config and loads all script tags.
+  - `frontend/js/app.js`: Main React application, router, and state manager.
+  - `frontend/js/api.js`: All API calls to the backend should be defined here.
+- **Components:** `frontend/js/components/` contains massive React components (e.g., `campaigns.js`, `contacts.js`). Be careful with state changes across these unbundled files.
+- **CSS:** Custom overrides are in `frontend/css/styles.css`. Most styling is done via Tailwind utility classes.
+- **Warning:** Avoid introducing NPM/Node.js module imports (`require` or `import x from 'y'`) in the frontend files unless a bundler is introduced. Use the global variables available (e.g., `React.createElement` aliased to `h()`).
+
+### 3. Extension Architecture
+- standard Chrome extension format (`manifest.json` v3, `background.js`, `content.js`).
+
+## AI Development Guidelines
+- **Lean Codebase:** We aggressively remove unused code. Do not leave commented-out blocks of old code behind unless specified.
+- **No Build Steps (Frontend):** Do not write JSX. The frontend uses `React.createElement` heavily (usually aliased as `h`). Always write React components using this structure in `frontend/js/components/`.
+- **Database:** Supabase is the primary database. Always refer to `backend/database/schema.sql` or `complete_schema.sql` when writing queries. 
+- **Dependencies:** Keep dependencies sparse. Do not install new backend dependencies (`pnpm/npm/yarn add`) unless absolutely necessary.
+
+## Suggested Architectural Iterations
+When working on new tasks, consider these ongoing refactoring goals:
+1. **Decoupling `server.js`:** Extract route handlers (e.g., `/api/campaigns`, `/api/contacts`) into modular routers inside `backend/routes/`.
+2. **Frontend Component Splitting:** Some UI files (like `campaigns.js` and `emailAccounts.js`) are becoming large monolithic files. Extracting smaller pure functional components within the same files can help readability.

@@ -1308,8 +1308,7 @@ const CanvasNode = ({ step, steps, isSelected, isActive, isDragging, onMouseDown
   // Get node title
   const getNodeTitle = () => {
     if (step.step_type === 'email') return step.subject || 'New Email';
-    if (step.step_type === 'linkedin_dm') return 'LinkedIn Message';
-    if (step.step_type === 'linkedin_connection_request') return 'Connection Request';
+
     if (step.step_type === 'wait') return `Wait ${formatWaitDuration(step)}`;
     if (step.step_type === 'condition') return getConditionLabel(step.condition_type);
     return 'Step';
@@ -1338,10 +1337,6 @@ const CanvasNode = ({ step, steps, isSelected, isActive, isDragging, onMouseDown
       // Content
       h('div', { className: "node-content" },
         step.step_type === 'email' && h('p', { className: "text-xs text-stone-500 truncate" },
-          (step.body || 'No content yet...').substring(0, 50) + (step.body?.length > 50 ? '...' : '')
-        ),
-
-        (step.step_type === 'linkedin_dm' || step.step_type === 'linkedin_connection_request') && h('p', { className: "text-xs text-stone-500 truncate" },
           (step.body || 'No content yet...').substring(0, 50) + (step.body?.length > 50 ? '...' : '')
         ),
 
@@ -1563,7 +1558,7 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
 
     // Content
     h('div', { className: "flex-1 overflow-y-auto p-4" },
-      (step.step_type === 'email' || step.step_type === 'linkedin_dm' || step.step_type === 'linkedin_connection_request') && h('div', { className: "space-y-4" },
+      step.step_type === 'email' && h('div', { className: "space-y-4" },
         step.step_type === 'email' && h('div', null,
           h('label', { className: "block text-sm font-medium text-white mb-1" }, "Subject"),
           h('input', {
@@ -1576,7 +1571,7 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
         ),
         h('div', null,
           h('div', { className: "flex justify-between items-center mb-1" },
-            h('label', { className: "block text-sm font-medium text-white" }, step.step_type === 'email' ? "Body" : "Message Note"),
+            h('label', { className: "block text-sm font-medium text-white" }, "Body"),
             h('div', { className: "flex flex-wrap gap-1" },
               personalizationVars.slice(0, 4).map(v => h('button', {
                 key: v.var,
@@ -1592,25 +1587,11 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
               value: data.body,
               onChange: e => handleChange('body', e.target.value),
               onBlur: handleBlur,
-              placeholder: step.step_type === 'email' ? "Write your email here..." : "Write your personalized linkedin message/note here..."
-            }),
-            step.step_type === 'linkedin_connection_request' && h('div', {
-              className: `absolute bottom-3 right-3 text-xs font-mono font-medium px-2 py-1 rounded bg-black/40 backdrop-blur ${data.body?.length > 300 ? 'text-red-400' : 'text-white/60'}`
-            },
-              `${data.body?.length || 0} / 300 max`
-            )
-          ),
-
-          step.step_type !== 'email' && h('div', { className: "space-y-2 mt-2" },
-            step.step_type === 'linkedin_connection_request' && data.body?.length > 300 && h('p', { className: "text-xs text-red-400 flex items-start gap-1 p-2 bg-red-500/10 rounded-lg border border-red-500/20" },
-              h(Icons.AlertCircle, { size: 14, className: "shrink-0 mt-0.5" }),
-              "LinkedIn restricts connection request notes to 300 characters. Your message will be truncated."
-            ),
-            h('p', { className: "text-xs text-white/40 italic flex items-start gap-1 p-2 bg-white/5 rounded-lg border border-white/10" },
-              h(Icons.Info, { size: 14, className: "shrink-0 mt-0.5" }),
-              "LinkedIn tasks rely on the Usenti Chrome extension. Users must have their browser open to execute these tasks."
-            )
+              placeholder: "Write your email here..."
+            })
           )
+
+
         )
       ),
 
