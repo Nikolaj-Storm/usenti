@@ -21,9 +21,33 @@ const EmailAccounts = () => {
   const [editingAccount, setEditingAccount] = React.useState(null);
   const [accountToDelete, setAccountToDelete] = React.useState(null);
   const [deleting, setDeleting] = React.useState(false);
+  const [oauthMessage, setOauthMessage] = React.useState(null);
 
   React.useEffect(() => {
     loadAccounts();
+
+    // Handle OAuth callback query params
+    const params = new URLSearchParams(window.location.search);
+    const success = params.get('success');
+    const error = params.get('error');
+    const email = params.get('email');
+
+    if (success === 'gmail_connected' || success === 'microsoft_connected') {
+      const provider = success === 'gmail_connected' ? 'Gmail' : 'Microsoft';
+      setOauthMessage({ type: 'success', text: `${provider} account${email ? ` (${email})` : ''} connected successfully!` });
+      window.history.replaceState(null, '', window.location.pathname);
+      // Reload accounts to show the newly connected one
+      setTimeout(() => loadAccounts(), 500);
+    } else if (error) {
+      const messages = {
+        oauth_denied: 'Authorization was cancelled. Please try again.',
+        no_refresh_token: 'Could not get full access. Please try again and make sure to grant all permissions.',
+        invalid_callback: 'Something went wrong with the sign-in. Please try again.',
+        processing_failed: 'Failed to connect the account. Please try again.'
+      };
+      setOauthMessage({ type: 'error', text: messages[error] || 'An error occurred during sign-in.' });
+      window.history.replaceState(null, '', window.location.pathname);
+    }
   }, []);
 
   const loadAccounts = async () => {
@@ -86,6 +110,24 @@ const EmailAccounts = () => {
   };
 
   return h('div', { className: "space-y-6 animate-fade-in" },
+    // OAuth callback message
+    oauthMessage && h('div', {
+      className: `p-4 rounded-xl flex items-center justify-between animate-fade-in ${
+        oauthMessage.type === 'success'
+          ? 'bg-green-500/20 border border-green-500/30 text-green-300'
+          : 'bg-red-500/20 border border-red-500/30 text-red-300'
+      }`
+    },
+      h('div', { className: "flex items-center gap-2" },
+        oauthMessage.type === 'success' ? h(Icons.Check, { size: 20 }) : h(Icons.AlertCircle, { size: 20 }),
+        h('span', null, oauthMessage.text)
+      ),
+      h('button', {
+        onClick: () => setOauthMessage(null),
+        className: "text-white/40 hover:text-white transition-colors"
+      }, h(Icons.X, { size: 16 }))
+    ),
+
     h('div', { className: "flex justify-between items-end" },
       h('div', null,
         h('h2', { className: "font-serif text-3xl text-white" }, 'Infrastructure'),
@@ -278,13 +320,34 @@ const AccountCard = ({ account, onEdit, onDelete }) => {
   );
 };
 
+// Providers where we know all server details - user only needs email + password
+const SIMPLE_PROVIDERS = ['gmail', 'outlook', 'zoho'];
+
+const PROVIDER_DEFAULTS = {
+  gmail: { smtp_host: 'smtp.gmail.com', smtp_port: '587', imap_host: 'imap.gmail.com', imap_port: '993', daily_send_limit: '500' },
+  outlook: { smtp_host: 'smtp.office365.com', smtp_port: '587', imap_host: 'outlook.office365.com', imap_port: '993', daily_send_limit: '500' },
+  zoho: { smtp_host: 'smtp.zoho.com', smtp_port: '587', imap_host: 'imap.zoho.com', imap_port: '993', daily_send_limit: '500' },
+  stalwart: { smtp_port: '587', imap_port: '993', daily_send_limit: '500' },
+  aws_workmail: { smtp_port: '587', imap_port: '993', daily_send_limit: '500' }
+};
+
+const PROVIDER_PASSWORD_LABELS = {
+  gmail: 'App Password',
+  outlook: 'App Password',
+  zoho: 'App Password (or regular password)',
+  stalwart: 'Password',
+  aws_workmail: 'SMTP Password'
+};
+
 const AccountModal = ({ account, onClose, onSave }) => {
   const isEditing = !!account;
   const [step, setStep] = React.useState(isEditing ? 'details' : 'type');
   const [accountType, setAccountType] = React.useState(account?.account_type || '');
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
   const [formData, setFormData] = React.useState({
     email_address: account?.email_address || '',
     sender_name: account?.sender_name || '',
+    password: '', // single password field for simple providers
     smtp_host: account?.smtp_host || '',
     smtp_port: account?.smtp_port || '587',
     smtp_username: account?.smtp_username || '',
@@ -298,69 +361,69 @@ const AccountModal = ({ account, onClose, onSave }) => {
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState(null);
 
+  const isSimpleProvider = SIMPLE_PROVIDERS.includes(accountType);
+
   const handleTypeSelect = (type) => {
     setAccountType(type);
 
     if (!isEditing) {
-      if (type === 'stalwart') {
-        setFormData(prev => ({
-          ...prev,
-          smtp_port: '587',
-          imap_port: '993'
-        }));
-      } else if (type === 'zoho') {
-        setFormData(prev => ({
-          ...prev,
-          smtp_host: 'smtp.zoho.com',
-          smtp_port: '587',
-          imap_host: 'imap.zoho.com',
-          imap_port: '993'
-        }));
-      } else if (type === 'gmail') {
-        setFormData(prev => ({
-          ...prev,
-          smtp_host: 'smtp.gmail.com',
-          smtp_port: '587',
-          imap_host: 'imap.gmail.com',
-          imap_port: '993'
-        }));
-      } else if (type === 'outlook') {
-        setFormData(prev => ({
-          ...prev,
-          smtp_host: 'smtp.office365.com',
-          smtp_port: '587',
-          imap_host: 'outlook.office365.com',
-          imap_port: '993'
-        }));
-      }
+      const defaults = PROVIDER_DEFAULTS[type] || {};
+      setFormData(prev => ({ ...prev, ...defaults }));
     }
 
     setStep('details');
   };
 
+  // Build the full payload from simplified or advanced form data
+  const buildPayload = () => {
+    if (isSimpleProvider && !showAdvanced) {
+      // For simple providers, auto-fill technical fields from email + single password
+      const defaults = PROVIDER_DEFAULTS[accountType];
+      return {
+        email_address: formData.email_address,
+        sender_name: formData.sender_name,
+        account_type: accountType,
+        smtp_host: formData.smtp_host || defaults.smtp_host,
+        smtp_port: formData.smtp_port || defaults.smtp_port,
+        smtp_username: formData.smtp_username || formData.email_address,
+        smtp_password: formData.password || formData.smtp_password,
+        imap_host: formData.imap_host || defaults.imap_host,
+        imap_port: formData.imap_port || defaults.imap_port,
+        imap_username: formData.imap_username || formData.email_address,
+        imap_password: formData.password || formData.imap_password,
+        daily_send_limit: formData.daily_send_limit
+      };
+    }
+    return {
+      ...formData,
+      account_type: accountType
+    };
+  };
+
   const handleTest = async () => {
-    // Validation
+    const payload = buildPayload();
+
     const errors = [];
-    if (!formData.email_address) errors.push('Email address is required');
-    if (!formData.smtp_host) errors.push('SMTP Host is required');
-    if (!formData.smtp_username) errors.push('SMTP Username is required');
+    if (!payload.email_address) errors.push('Email address is required');
 
-    // Check if password is required (only if not editing or if user started typing)
-    if (!isEditing && !formData.smtp_password) errors.push('SMTP Password is required');
-
-    if (!formData.imap_host) errors.push('IMAP Host is required');
-    if (!formData.imap_username) errors.push('IMAP Username is required');
-
-    // Check if password is required
-    if (!isEditing && !formData.imap_password) errors.push('IMAP Password is required');
+    if (isSimpleProvider && !showAdvanced) {
+      if (!isEditing && !formData.password) errors.push('Password is required');
+    } else {
+      if (!payload.smtp_host) errors.push('SMTP Host is required');
+      if (!payload.smtp_username) errors.push('SMTP Username is required');
+      if (!isEditing && !payload.smtp_password) errors.push('SMTP Password is required');
+      if (!payload.imap_host) errors.push('IMAP Host is required');
+      if (!payload.imap_username) errors.push('IMAP Username is required');
+      if (!isEditing && !payload.imap_password) errors.push('IMAP Password is required');
+    }
 
     if (errors.length > 0) {
       setTestResult({
         success: false,
         message: 'Please fill in all required fields',
         results: {
-          smtp: { success: false, message: 'Missing required fields' },
-          imap: { success: false, message: 'Missing required fields' }
+          smtp: { success: false, message: errors.join(', ') },
+          imap: { success: false, message: errors.join(', ') }
         }
       });
       return;
@@ -370,12 +433,7 @@ const AccountModal = ({ account, onClose, onSave }) => {
     setTestResult(null);
 
     try {
-      const testData = {
-        ...formData,
-        account_type: accountType,
-        id: account?.id
-      };
-
+      const testData = { ...payload, id: account?.id };
       const result = await api.testEmailAccount(testData);
       setTestResult(result);
     } catch (error) {
@@ -388,10 +446,7 @@ const AccountModal = ({ account, onClose, onSave }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const payload = {
-      ...formData,
-      account_type: accountType
-    };
+    const payload = buildPayload();
 
     // Remove empty password fields when editing (to keep existing passwords)
     if (isEditing) {
@@ -404,6 +459,88 @@ const AccountModal = ({ account, onClose, onSave }) => {
     } catch (err) {
       alert('Failed to save account: ' + err.message);
     }
+  };
+
+  // Provider help banners
+  const providerHelp = {
+    gmail: h('div', { className: "p-4 glass-card border-red-500/30" },
+      h('div', { className: "flex gap-3" },
+        h(Icons.AlertCircle, { size: 20, className: "text-red-400 shrink-0 mt-0.5" }),
+        h('div', null,
+          h('h4', { className: "font-medium text-red-300 mb-1" }, 'How to get your Gmail App Password'),
+          h('ol', { className: "text-sm text-red-200/80 list-decimal list-inside space-y-1" },
+            h('li', { key: 1 }, 'Enable 2-Step Verification on your Google account'),
+            h('li', { key: 2 }, 'Visit ', h('a', { href: "https://myaccount.google.com/apppasswords", target: "_blank", className: "underline text-red-300" }, 'myaccount.google.com/apppasswords')),
+            h('li', { key: 3 }, 'Generate an app password for "Mail"'),
+            h('li', { key: 4 }, 'Paste it below')
+          )
+        )
+      )
+    ),
+    outlook: h('div', { className: "p-4 glass-card border-blue-500/30" },
+      h('div', { className: "flex gap-3" },
+        h(Icons.AlertCircle, { size: 20, className: "text-blue-400 shrink-0 mt-0.5" }),
+        h('div', null,
+          h('h4', { className: "font-medium text-blue-300 mb-1" }, 'How to get your Outlook App Password'),
+          h('ol', { className: "text-sm text-blue-200/80 list-decimal list-inside space-y-1" },
+            h('li', { key: 1 }, 'Visit ', h('a', { href: "https://account.microsoft.com/security", target: "_blank", className: "underline text-blue-300" }, 'account.microsoft.com/security')),
+            h('li', { key: 2 }, 'Go to "Advanced security options"'),
+            h('li', { key: 3 }, 'Create a new app password'),
+            h('li', { key: 4 }, 'Paste it below')
+          )
+        )
+      )
+    ),
+    zoho: h('div', { className: "p-4 glass-card border-purple-500/30" },
+      h('div', { className: "flex gap-3" },
+        h(Icons.Info, { size: 20, className: "text-purple-400 shrink-0 mt-0.5" }),
+        h('div', null,
+          h('h4', { className: "font-medium text-purple-300 mb-1" }, 'Zoho Password'),
+          h('p', { className: "text-sm text-purple-200/80 mb-2" },
+            'Use your regular password, or if you have Two-Factor Authentication enabled:'
+          ),
+          h('ol', { className: "text-sm text-purple-200/80 list-decimal list-inside space-y-1" },
+            h('li', { key: 1 }, 'Log in to ', h('a', { href: "https://accounts.zoho.com/home#security/app_password", target: "_blank", className: "underline text-purple-300" }, 'accounts.zoho.com')),
+            h('li', { key: 2 }, 'Go to Security > App Passwords'),
+            h('li', { key: 3 }, 'Generate a new password'),
+            h('li', { key: 4 }, 'Paste it below')
+          )
+        )
+      )
+    ),
+    stalwart: h('div', { className: "p-4 glass-card border-indigo-500/30" },
+      h('div', { className: "flex gap-3" },
+        h(Icons.Server, { size: 20, className: "text-indigo-400 shrink-0 mt-0.5" }),
+        h('div', null,
+          h('h4', { className: "font-medium text-indigo-300 mb-1" }, 'Stalwart Mail Server Setup'),
+          h('p', { className: "text-sm text-indigo-200/80 mb-2" },
+            'Connect your self-hosted Stalwart mail server. Uses STARTTLS on port 587 for SMTP and TLS on port 993 for IMAP.'
+          ),
+          h('ul', { className: "text-sm text-indigo-200/80 list-disc list-inside space-y-1" },
+            h('li', { key: 1 }, 'SMTP/IMAP Host: Your server hostname (e.g., mail.yourdomain.com)'),
+            h('li', { key: 2 }, 'Username: Your Stalwart account username (usually just the local part, e.g., "storm")'),
+            h('li', { key: 3 }, 'Password: The password set in Stalwart for your account')
+          )
+        )
+      )
+    ),
+    aws_workmail: h('div', { className: "p-4 glass-card border-orange-500/30" },
+      h('div', { className: "flex gap-3" },
+        h(Icons.Server, { size: 20, className: "text-orange-400 shrink-0 mt-0.5" }),
+        h('div', null,
+          h('h4', { className: "font-medium text-orange-300 mb-1" }, 'AWS SMTP Credentials'),
+          h('p', { className: "text-sm text-orange-200/80 mb-2" },
+            'For AWS SES/WorkMail, ensure you use SMTP credentials, not IAM user credentials:'
+          ),
+          h('ol', { className: "text-sm text-orange-200/80 list-decimal list-inside space-y-1" },
+            h('li', { key: 1 }, 'Go to the AWS SES Console -> SMTP Settings'),
+            h('li', { key: 2 }, 'Click "Create My SMTP Credentials"'),
+            h('li', { key: 3 }, 'Use the generated SMTP Username and Password below'),
+            h('li', { key: 4 }, 'Note: These are different from your AWS console login!')
+          )
+        )
+      )
+    )
   };
 
   return h('div', {
@@ -422,148 +559,107 @@ const AccountModal = ({ account, onClose, onSave }) => {
         }, h(Icons.X, { size: 24 }))
       ),
       step === 'type' && h('div', { className: "space-y-4" },
-        h('p', { className: "text-white/70 mb-6" }, 'Choose your email provider:'),
+        h('p', { className: "text-white/70 mb-2" }, 'Connect your email account:'),
+
+        // OAuth sign-in buttons (easiest path)
         h('button', {
-          onClick: () => handleTypeSelect('stalwart'),
-          className: "w-full p-6 glass-card hover:bg-white/15 hover:border-cream-100/30 transition-all text-left group"
+          onClick: () => {
+            const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+            window.location.href = APP_CONFIG.API_BASE_URL + '/api/oauth/gmail/authorize?token=' + encodeURIComponent(token);
+          },
+          className: "w-full p-6 glass-card hover:bg-white/15 hover:border-cream-100/30 transition-all text-left group flex items-center gap-4"
         },
-          h('div', { className: "flex items-center gap-4" },
-            h('div', { className: "w-12 h-12 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-300 font-bold text-xl group-hover:scale-110 transition-transform" }, 'ST'),
-            h('div', null,
-              h('h4', { className: "font-medium text-white mb-1" }, 'Stalwart')
-            )
-          )
+          h('div', { className: "w-12 h-12 rounded-lg bg-red-500/20 flex items-center justify-center text-red-300 font-bold text-xl group-hover:scale-110 transition-transform shrink-0" }, 'G'),
+          h('div', { className: "flex-1" },
+            h('h4', { className: "font-medium text-white mb-1" }, 'Sign in with Google'),
+            h('p', { className: "text-sm text-white/50" }, 'Gmail & Google Workspace — one click, no passwords to copy')
+          ),
+          h(Icons.ExternalLink, { size: 16, className: "text-white/30 shrink-0" })
         ),
         h('button', {
-          onClick: () => handleTypeSelect('aws_workmail'),
-          className: "w-full p-6 glass-card hover:bg-white/15 hover:border-cream-100/30 transition-all text-left group"
+          onClick: () => {
+            const token = localStorage.getItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+            window.location.href = APP_CONFIG.API_BASE_URL + '/api/oauth/microsoft/authorize?token=' + encodeURIComponent(token);
+          },
+          className: "w-full p-6 glass-card hover:bg-white/15 hover:border-cream-100/30 transition-all text-left group flex items-center gap-4"
         },
-          h('div', { className: "flex items-center gap-4" },
-            h('div', { className: "w-12 h-12 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-300 font-bold text-xl group-hover:scale-110 transition-transform" }, 'AWS'),
-            h('div', null,
-              h('h4', { className: "font-medium text-white mb-1" }, 'AWS')
-            )
-          )
+          h('div', { className: "w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-300 font-bold text-xl group-hover:scale-110 transition-transform shrink-0" }, 'M'),
+          h('div', { className: "flex-1" },
+            h('h4', { className: "font-medium text-white mb-1" }, 'Sign in with Microsoft'),
+            h('p', { className: "text-sm text-white/50" }, 'Outlook & Office 365 — one click, no passwords to copy')
+          ),
+          h(Icons.ExternalLink, { size: 16, className: "text-white/30 shrink-0" })
         ),
-        h('button', {
-          onClick: () => handleTypeSelect('zoho'),
-          className: "w-full p-6 glass-card hover:bg-white/15 hover:border-cream-100/30 transition-all text-left group"
-        },
-          h('div', { className: "flex items-center gap-4" },
-            h('div', { className: "w-12 h-12 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-300 font-bold text-xl group-hover:scale-110 transition-transform" }, 'Z'),
-            h('div', null,
-              h('h4', { className: "font-medium text-white mb-1" }, 'Zoho Mail')
-            )
-          )
+
+        // Divider
+        h('div', { className: "flex items-center gap-4 py-2" },
+          h('div', { className: "flex-1 border-t border-white/10" }),
+          h('span', { className: "text-xs text-white/30 uppercase tracking-wider" }, 'or connect manually'),
+          h('div', { className: "flex-1 border-t border-white/10" })
         ),
+
+        // Manual connection options
         h('button', {
           onClick: () => handleTypeSelect('gmail'),
-          className: "w-full p-6 glass-card hover:bg-white/15 hover:border-cream-100/30 transition-all text-left group"
+          className: "w-full p-4 glass-card hover:bg-white/15 hover:border-cream-100/30 transition-all text-left group"
         },
           h('div', { className: "flex items-center gap-4" },
-            h('div', { className: "w-12 h-12 rounded-lg bg-red-500/20 flex items-center justify-center text-red-300 font-bold text-xl group-hover:scale-110 transition-transform" }, 'G'),
+            h('div', { className: "w-10 h-10 rounded-lg bg-red-500/20 flex items-center justify-center text-red-300 font-bold text-sm group-hover:scale-110 transition-transform" }, 'G'),
             h('div', null,
-              h('h4', { className: "font-medium text-white mb-1" }, 'Gmail / Google Workspace')
+              h('h4', { className: "font-medium text-white text-sm" }, 'Gmail with App Password')
             )
           )
         ),
         h('button', {
           onClick: () => handleTypeSelect('outlook'),
-          className: "w-full p-6 glass-card hover:bg-white/15 hover:border-cream-100/30 transition-all text-left group"
+          className: "w-full p-4 glass-card hover:bg-white/15 hover:border-cream-100/30 transition-all text-left group"
         },
           h('div', { className: "flex items-center gap-4" },
-            h('div', { className: "w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-300 font-bold text-xl group-hover:scale-110 transition-transform" }, 'M'),
+            h('div', { className: "w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-300 font-bold text-sm group-hover:scale-110 transition-transform" }, 'M'),
             h('div', null,
-              h('h4', { className: "font-medium text-white mb-1" }, 'Microsoft Outlook / Office 365')
+              h('h4', { className: "font-medium text-white text-sm" }, 'Outlook with App Password')
+            )
+          )
+        ),
+        h('button', {
+          onClick: () => handleTypeSelect('zoho'),
+          className: "w-full p-4 glass-card hover:bg-white/15 hover:border-cream-100/30 transition-all text-left group"
+        },
+          h('div', { className: "flex items-center gap-4" },
+            h('div', { className: "w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-300 font-bold text-sm group-hover:scale-110 transition-transform" }, 'Z'),
+            h('div', null,
+              h('h4', { className: "font-medium text-white text-sm" }, 'Zoho Mail')
+            )
+          )
+        ),
+        h('button', {
+          onClick: () => handleTypeSelect('stalwart'),
+          className: "w-full p-4 glass-card hover:bg-white/15 hover:border-cream-100/30 transition-all text-left group"
+        },
+          h('div', { className: "flex items-center gap-4" },
+            h('div', { className: "w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-300 font-bold text-sm group-hover:scale-110 transition-transform" }, 'ST'),
+            h('div', null,
+              h('h4', { className: "font-medium text-white text-sm" }, 'Stalwart')
+            )
+          )
+        ),
+        h('button', {
+          onClick: () => handleTypeSelect('aws_workmail'),
+          className: "w-full p-4 glass-card hover:bg-white/15 hover:border-cream-100/30 transition-all text-left group"
+        },
+          h('div', { className: "flex items-center gap-4" },
+            h('div', { className: "w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-300 font-bold text-sm group-hover:scale-110 transition-transform" }, 'AWS'),
+            h('div', null,
+              h('h4', { className: "font-medium text-white text-sm" }, 'AWS SES / WorkMail')
             )
           )
         )
       ),
       step === 'details' && h('form', { onSubmit: handleSubmit, className: "space-y-6" },
-        accountType === 'stalwart' && h('div', { className: "p-4 glass-card border-indigo-500/30" },
-          h('div', { className: "flex gap-3" },
-            h(Icons.Server, { size: 20, className: "text-indigo-400 shrink-0 mt-0.5" }),
-            h('div', null,
-              h('h4', { className: "font-medium text-indigo-300 mb-1" }, 'Stalwart Mail Server Setup'),
-              h('p', { className: "text-sm text-indigo-200/80 mb-2" },
-                'Connect your self-hosted Stalwart mail server. Uses STARTTLS on port 587 for SMTP and TLS on port 993 for IMAP.'
-              ),
-              h('ul', { className: "text-sm text-indigo-200/80 list-disc list-inside space-y-1" },
-                h('li', { key: 1 }, 'SMTP/IMAP Host: Your server hostname (e.g., mail.yourdomain.com)'),
-                h('li', { key: 2 }, 'Username: Your Stalwart account username (usually just the local part, e.g., "storm")'),
-                h('li', { key: 3 }, 'Password: The password set in Stalwart for your account')
-              )
-            )
-          )
-        ),
-        accountType === 'gmail' && h('div', { className: "p-4 glass-card border-red-500/30" },
-          h('div', { className: "flex gap-3" },
-            h(Icons.AlertCircle, { size: 20, className: "text-red-400 shrink-0 mt-0.5" }),
-            h('div', null,
-              h('h4', { className: "font-medium text-red-300 mb-1" }, 'Gmail App Password Required'),
-              h('p', { className: "text-sm text-red-200/80 mb-2" },
-                'Gmail requires App Passwords for third-party applications. You must use an App Password instead of your regular login:'
-              ),
-              h('ol', { className: "text-sm text-red-200/80 list-decimal list-inside space-y-1" },
-                h('li', { key: 1 }, 'Enable 2-Step Verification on your Google account'),
-                h('li', { key: 2 }, 'Visit ', h('a', { href: "https://myaccount.google.com/apppasswords", target: "_blank", className: "underline text-red-300" }, 'myaccount.google.com/apppasswords')),
-                h('li', { key: 3 }, 'Generate an app password for "Mail"'),
-                h('li', { key: 4 }, 'Use that password in the IMAP/SMTP password fields below')
-              )
-            )
-          )
-        ),
-        accountType === 'outlook' && h('div', { className: "p-4 glass-card border-blue-500/30" },
-          h('div', { className: "flex gap-3" },
-            h(Icons.AlertCircle, { size: 20, className: "text-blue-400 shrink-0 mt-0.5" }),
-            h('div', null,
-              h('h4', { className: "font-medium text-blue-300 mb-1" }, 'Outlook App Password Required'),
-              h('p', { className: "text-sm text-blue-200/80 mb-2" },
-                'Microsoft disabled basic authentication. You must use an App Password:'
-              ),
-              h('ol', { className: "text-sm text-blue-200/80 list-decimal list-inside space-y-1" },
-                h('li', { key: 1 }, 'Visit ', h('a', { href: "https://account.microsoft.com/security", target: "_blank", className: "underline text-blue-300" }, 'account.microsoft.com/security')),
-                h('li', { key: 2 }, 'Go to "Advanced security options"'),
-                h('li', { key: 3 }, 'Create a new app password'),
-                h('li', { key: 4 }, 'Use that password in the IMAP/SMTP password fields below')
-              )
-            )
-          )
-        ),
-        accountType === 'zoho' && h('div', { className: "p-4 glass-card border-purple-500/30" },
-          h('div', { className: "flex gap-3" },
-            h(Icons.Info, { size: 20, className: "text-purple-400 shrink-0 mt-0.5" }),
-            h('div', null,
-              h('h4', { className: "font-medium text-purple-300 mb-1" }, 'Zoho App Password Setup'),
-              h('p', { className: "text-sm text-purple-200/80 mb-2" },
-                'If you have Two-Factor Authentication (TFA) enabled, you must use an Application Specific Password:'
-              ),
-              h('ol', { className: "text-sm text-purple-200/80 list-decimal list-inside space-y-1" },
-                h('li', { key: 1 }, 'Log in to ', h('a', { href: "https://accounts.zoho.com/home#security/app_password", target: "_blank", className: "underline text-purple-300" }, 'accounts.zoho.com')),
-                h('li', { key: 2 }, 'Go to Security > App Passwords'),
-                h('li', { key: 3 }, 'Generate a new password (e.g. name it "MrUsenti")'),
-                h('li', { key: 4 }, 'Use that password in the IMAP/SMTP password fields below')
-              )
-            )
-          )
-        ),
-        accountType === 'aws_workmail' && h('div', { className: "p-4 glass-card border-orange-500/30" },
-          h('div', { className: "flex gap-3" },
-            h(Icons.Server, { size: 20, className: "text-orange-400 shrink-0 mt-0.5" }),
-            h('div', null,
-              h('h4', { className: "font-medium text-orange-300 mb-1" }, 'AWS SMTP Credentials'),
-              h('p', { className: "text-sm text-orange-200/80 mb-2" },
-                'For AWS SES/WorkMail, ensure you use SMTP credentials, not IAM user credentials:'
-              ),
-              h('ol', { className: "text-sm text-orange-200/80 list-decimal list-inside space-y-1" },
-                h('li', { key: 1 }, 'Go to the AWS SES Console -> SMTP Settings'),
-                h('li', { key: 2 }, 'Click "Create My SMTP Credentials"'),
-                h('li', { key: 3 }, 'Use the generated SMTP Username and Password below'),
-                h('li', { key: 4 }, 'Note: These are different from your AWS console login!')
-              )
-            )
-          )
-        ),
+        // Provider help banner
+        providerHelp[accountType],
+
+        // Email address (always shown)
         h('div', null,
           h(LabelWithTooltip, {
             label: 'Email Address',
@@ -587,6 +683,8 @@ const AccountModal = ({ account, onClose, onSave }) => {
             placeholder: "john@company.com"
           })
         ),
+
+        // Sender Display Name (always shown)
         h('div', null,
           h(LabelWithTooltip, {
             label: 'Sender Display Name',
@@ -601,128 +699,150 @@ const AccountModal = ({ account, onClose, onSave }) => {
           }),
           h('p', { className: "text-xs text-white/50 mt-1" }, 'How your name appears in the From field.')
         ),
-        h('div', { className: "p-4 glass-card space-y-4" },
-          h('h4', { className: "font-medium text-white" }, 'SMTP Settings (Outgoing)'),
-          h('div', { className: "grid grid-cols-2 gap-4" },
-            h('div', null,
-              h(LabelWithTooltip, {
-                label: 'SMTP Host',
-                helpText: 'The server address for sending emails (e.g. smtp.gmail.com, smtp.office365.com).'
-              }),
-              h('input', {
-                type: "text",
-                required: true,
-                value: formData.smtp_host,
-                onChange: (e) => setFormData({ ...formData, smtp_host: e.target.value }),
-                className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
-                placeholder: "smtp.example.com"
-              })
+
+        // Simple mode: single password field for known providers
+        isSimpleProvider && !showAdvanced && h('div', null,
+          h(LabelWithTooltip, {
+            label: PROVIDER_PASSWORD_LABELS[accountType] || 'Password',
+            helpText: 'Your app password or email password. This is used for both sending and receiving emails.'
+          }),
+          h('input', {
+            type: "password",
+            required: !isEditing,
+            placeholder: isEditing ? '(Leave blank to keep unchanged)' : '',
+            value: formData.password,
+            onChange: (e) => setFormData({ ...formData, password: e.target.value }),
+            className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
+          })
+        ),
+
+        // Full SMTP/IMAP fields for non-simple providers OR when advanced is toggled
+        (!isSimpleProvider || showAdvanced) && h(React.Fragment, null,
+          h('div', { className: "p-4 glass-card space-y-4" },
+            h('h4', { className: "font-medium text-white" }, 'SMTP Settings (Outgoing)'),
+            h('div', { className: "grid grid-cols-2 gap-4" },
+              h('div', null,
+                h(LabelWithTooltip, {
+                  label: 'SMTP Host',
+                  helpText: 'The server address for sending emails (e.g. smtp.gmail.com, smtp.office365.com).'
+                }),
+                h('input', {
+                  type: "text",
+                  required: true,
+                  value: formData.smtp_host,
+                  onChange: (e) => setFormData({ ...formData, smtp_host: e.target.value }),
+                  className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
+                  placeholder: "smtp.example.com"
+                })
+              ),
+              h('div', null,
+                h(LabelWithTooltip, {
+                  label: 'SMTP Port',
+                  helpText: 'Usually 587 (STARTTLS) or 465 (SSL/TLS). Port 25 is not recommended.'
+                }),
+                h('input', {
+                  type: "number",
+                  required: true,
+                  value: formData.smtp_port,
+                  onChange: (e) => setFormData({ ...formData, smtp_port: e.target.value }),
+                  className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
+                })
+              )
             ),
-            h('div', null,
-              h(LabelWithTooltip, {
-                label: 'SMTP Port',
-                helpText: 'Usually 587 (STARTTLS) or 465 (SSL/TLS). Port 25 is not recommended.'
-              }),
-              h('input', {
-                type: "number",
-                required: true,
-                value: formData.smtp_port,
-                onChange: (e) => setFormData({ ...formData, smtp_port: e.target.value }),
-                className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
-              })
+            h('div', { className: "grid grid-cols-2 gap-4" },
+              h('div', null,
+                h(LabelWithTooltip, {
+                  label: 'SMTP Username',
+                  helpText: 'Usually your full email address. Some providers use a different username.'
+                }),
+                h('input', {
+                  type: "text",
+                  required: true,
+                  value: formData.smtp_username,
+                  onChange: (e) => setFormData({ ...formData, smtp_username: e.target.value }),
+                  className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
+                })
+              ),
+              h('div', null,
+                h(LabelWithTooltip, {
+                  label: 'SMTP Password',
+                  helpText: 'Your email password or App Password. If editing, leave blank to keep the existing password.'
+                }),
+                h('input', {
+                  type: "password",
+                  required: !isEditing,
+                  placeholder: isEditing ? '(Leave blank to keep unchanged)' : '',
+                  value: formData.smtp_password,
+                  onChange: (e) => setFormData({ ...formData, smtp_password: e.target.value }),
+                  className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
+                })
+              )
             )
           ),
-          h('div', { className: "grid grid-cols-2 gap-4" },
-            h('div', null,
-              h(LabelWithTooltip, {
-                label: 'SMTP Username',
-                helpText: 'Usually your full email address. Some providers use a different username.'
-              }),
-              h('input', {
-                type: "text",
-                required: true,
-                value: formData.smtp_username,
-                onChange: (e) => setFormData({ ...formData, smtp_username: e.target.value }),
-                className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
-              })
+          h('div', { className: "p-4 glass-card space-y-4" },
+            h('h4', { className: "font-medium text-white" }, 'IMAP Settings (Incoming)'),
+            h('div', { className: "grid grid-cols-2 gap-4" },
+              h('div', null,
+                h(LabelWithTooltip, {
+                  label: 'IMAP Host',
+                  helpText: 'The server address for receiving emails (e.g. imap.gmail.com).'
+                }),
+                h('input', {
+                  type: "text",
+                  required: true,
+                  value: formData.imap_host,
+                  onChange: (e) => setFormData({ ...formData, imap_host: e.target.value }),
+                  className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
+                  placeholder: "imap.example.com"
+                })
+              ),
+              h('div', null,
+                h(LabelWithTooltip, {
+                  label: 'IMAP Port',
+                  helpText: 'Usually 993 (SSL/TLS) or 143 (STARTTLS).'
+                }),
+                h('input', {
+                  type: "number",
+                  required: true,
+                  value: formData.imap_port,
+                  onChange: (e) => setFormData({ ...formData, imap_port: e.target.value }),
+                  className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
+                })
+              )
             ),
-            h('div', null,
-              h(LabelWithTooltip, {
-                label: 'SMTP Password',
-                helpText: 'Your email password or App Password. If editing, leave blank to keep the existing password.'
-              }),
-              h('input', {
-                type: "password",
-                required: !isEditing,
-                placeholder: isEditing ? '(Leave blank to keep unchanged)' : '',
-                value: formData.smtp_password,
-                onChange: (e) => setFormData({ ...formData, smtp_password: e.target.value }),
-                className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
-              })
+            h('div', { className: "grid grid-cols-2 gap-4" },
+              h('div', null,
+                h(LabelWithTooltip, {
+                  label: 'IMAP Username',
+                  helpText: 'Usually your full email address.'
+                }),
+                h('input', {
+                  type: "text",
+                  required: true,
+                  value: formData.imap_username,
+                  onChange: (e) => setFormData({ ...formData, imap_username: e.target.value }),
+                  className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
+                })
+              ),
+              h('div', null,
+                h(LabelWithTooltip, {
+                  label: 'IMAP Password',
+                  helpText: 'Your email password or App Password (same as SMTP). If editing, leave blank to keep existing.'
+                }),
+                h('input', {
+                  type: "password",
+                  required: !isEditing,
+                  placeholder: isEditing ? '(Leave blank to keep unchanged)' : '',
+                  value: formData.imap_password,
+                  onChange: (e) => setFormData({ ...formData, imap_password: e.target.value }),
+                  className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
+                })
+              )
             )
           )
         ),
-        h('div', { className: "p-4 glass-card space-y-4" },
-          h('h4', { className: "font-medium text-white" }, 'IMAP Settings (Incoming)'),
-          h('div', { className: "grid grid-cols-2 gap-4" },
-            h('div', null,
-              h(LabelWithTooltip, {
-                label: 'IMAP Host',
-                helpText: 'The server address for receiving emails (e.g. imap.gmail.com).'
-              }),
-              h('input', {
-                type: "text",
-                required: true,
-                value: formData.imap_host,
-                onChange: (e) => setFormData({ ...formData, imap_host: e.target.value }),
-                className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
-                placeholder: "imap.example.com"
-              })
-            ),
-            h('div', null,
-              h(LabelWithTooltip, {
-                label: 'IMAP Port',
-                helpText: 'Usually 993 (SSL/TLS) or 143 (STARTTLS).'
-              }),
-              h('input', {
-                type: "number",
-                required: true,
-                value: formData.imap_port,
-                onChange: (e) => setFormData({ ...formData, imap_port: e.target.value }),
-                className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
-              })
-            )
-          ),
-          h('div', { className: "grid grid-cols-2 gap-4" },
-            h('div', null,
-              h(LabelWithTooltip, {
-                label: 'IMAP Username',
-                helpText: 'Usually your full email address.'
-              }),
-              h('input', {
-                type: "text",
-                required: true,
-                value: formData.imap_username,
-                onChange: (e) => setFormData({ ...formData, imap_username: e.target.value }),
-                className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
-              })
-            ),
-            h('div', null,
-              h(LabelWithTooltip, {
-                label: 'IMAP Password',
-                helpText: 'Your email password or App Password (same as SMTP). If editing, leave blank to keep existing.'
-              }),
-              h('input', {
-                type: "password",
-                required: !isEditing,
-                placeholder: isEditing ? '(Leave blank to keep unchanged)' : '',
-                value: formData.imap_password,
-                onChange: (e) => setFormData({ ...formData, imap_password: e.target.value }),
-                className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
-              })
-            )
-          )
-        ),
+
+        // Daily send limit
         h('div', null,
           h(LabelWithTooltip, {
             label: 'Daily Send Limit',
@@ -736,6 +856,18 @@ const AccountModal = ({ account, onClose, onSave }) => {
             className: "w-full px-4 py-3 glass-input rounded-xl transition-all"
           })
         ),
+
+        // Advanced settings toggle for simple providers
+        isSimpleProvider && h('button', {
+          type: "button",
+          onClick: () => setShowAdvanced(!showAdvanced),
+          className: "flex items-center gap-2 text-sm text-white/40 hover:text-white/70 transition-colors"
+        },
+          h(showAdvanced ? Icons.ChevronUp : Icons.ChevronDown, { size: 16 }),
+          showAdvanced ? 'Hide advanced settings' : 'Show advanced settings (SMTP/IMAP)'
+        ),
+
+        // Test result
         testResult && h('div', {
           className: `p-4 rounded-xl space-y-2 ${testResult.success
             ? 'bg-green-500/20 border border-green-500/30 text-green-300'
@@ -766,10 +898,12 @@ const AccountModal = ({ account, onClose, onSave }) => {
             h('p', { className: "text-xs opacity-80 pl-2 border-l-2 border-white/20 ml-1" }, testResult.results.imap.message)
           ),
           testResult.success && h('div', { className: "mt-3 pt-3 border-t border-green-500/30 text-sm animate-fade-in" },
-            h('p', { className: "font-medium mb-1" }, "✅ System checked: Ready for campaigns"),
-            h('p', { className: "opacity-80" }, "Your SMTP (sending) and IMAP (receiving) connections are both working correctly. You can safely add this account.")
+            h('p', { className: "font-medium mb-1" }, "Ready for campaigns"),
+            h('p', { className: "opacity-80" }, "Your sending and receiving connections are both working correctly. You can safely add this account.")
           )
         ),
+
+        // Action buttons
         h('div', { className: "flex gap-3" },
           !isEditing && h('button', {
             type: "button",

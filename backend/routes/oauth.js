@@ -7,6 +7,18 @@ const { authenticateUser } = require('../middleware/auth');
 const { getFrontendUrlFromRequest } = require('../config/urls');
 
 /**
+ * Auth middleware that also accepts token as a query parameter.
+ * Needed for OAuth authorize endpoints since browser redirects can't send headers.
+ */
+async function authenticateUserOrQueryToken(req, res, next) {
+  // If token is in query param, move it to the Authorization header so the standard middleware works
+  if (!req.headers.authorization && req.query.token) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  return authenticateUser(req, res, next);
+}
+
+/**
  * OAuth Routes for Email Provider Authentication
  *
  * Supported Providers:
@@ -19,7 +31,7 @@ const { getFrontendUrlFromRequest } = require('../config/urls');
  * Initiates Gmail OAuth flow
  * Redirects user to Google consent screen
  */
-router.get('/gmail/authorize', authenticateUser, (req, res) => {
+router.get('/gmail/authorize', authenticateUserOrQueryToken, (req, res) => {
   console.log(`[OAUTH] 🚀 Initiating Gmail OAuth flow for user ${req.user.id}...`);
 
   try {
@@ -273,7 +285,7 @@ router.get('/gmail/test/:accountId', authenticateUser, async (req, res) => {
  * Initiates Microsoft OAuth flow
  * Redirects user to Microsoft consent screen
  */
-router.get('/microsoft/authorize', authenticateUser, (req, res) => {
+router.get('/microsoft/authorize', authenticateUserOrQueryToken, (req, res) => {
   console.log(`[OAUTH] 🚀 Initiating Microsoft OAuth flow for user ${req.user.id}...`);
 
   try {

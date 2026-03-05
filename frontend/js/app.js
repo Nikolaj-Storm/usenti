@@ -121,6 +121,11 @@ const App = () => {
         console.log('✅ [App] Loaded user from localStorage:', parsedUser.email);
         setUser(parsedUser);
         setAuthState('authenticated');
+        // Check if returning from email OAuth flow
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('success')?.includes('_connected') || params.get('error')) {
+          setPrivateView('infrastructure');
+        }
       } catch (e) {
         console.error("❌ [App] Error parsing stored user", e);
       }
@@ -158,7 +163,13 @@ const App = () => {
       console.log('📍 [App] Setting auth state to authenticated and navigating to dashboard');
       setUser(userData);
       setAuthState('authenticated');
-      setPrivateView('dashboard');
+      // Check if returning from email OAuth flow
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('success')?.includes('_connected') || params.get('error')) {
+        setPrivateView('infrastructure');
+      } else {
+        setPrivateView('dashboard');
+      }
     } else {
       console.error('❌ [App] handleLogin called with no userData!');
     }
