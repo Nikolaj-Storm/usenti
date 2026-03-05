@@ -24,7 +24,7 @@ class GmailService {
   constructor() {
     this.clientId = process.env.GMAIL_OAUTH_CLIENT_ID;
     this.clientSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET;
-    this.redirectUri = process.env.GMAIL_OAUTH_REDIRECT_URI || 'http://localhost:3000/api/oauth/gmail/callback';
+    this.redirectUri = (process.env.GMAIL_OAUTH_REDIRECT_URI || 'http://localhost:3000/api/oauth/gmail/callback').trim();
   }
 
   /**
