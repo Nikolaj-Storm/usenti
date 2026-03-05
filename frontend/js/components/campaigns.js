@@ -248,6 +248,10 @@ const CampaignBuilder = () => {
   const [showEditor, setShowEditor] = React.useState(true);
   const [showStartModal, setShowStartModal] = React.useState(false);
   const [usage, setUsage] = React.useState(null);
+  const [campaignToDelete, setCampaignToDelete] = React.useState(null);
+  const [deletingCampaign, setDeletingCampaign] = React.useState(false);
+  const [stepToDelete, setStepToDelete] = React.useState(null);
+  const [deletingStep, setDeletingStep] = React.useState(false);
 
   const canvasState = useCanvasState();
   const containerRef = React.useRef(null);
@@ -323,12 +327,17 @@ const CampaignBuilder = () => {
     }
   };
 
-  const handleDeleteCampaign = async () => {
+  const handleDeleteCampaign = () => {
     if (isDemo || !selectedCampaign) return;
-    if (!confirm(`Delete campaign "${selectedCampaign.name}"? This action cannot be undone.`)) return;
+    setCampaignToDelete(selectedCampaign);
+  };
+
+  const confirmDeleteCampaign = async () => {
+    if (!campaignToDelete) return;
+    setDeletingCampaign(true);
     try {
-      await api.deleteCampaign(selectedCampaign.id);
-      const remaining = campaigns.filter(c => c.id !== selectedCampaign.id);
+      await api.deleteCampaign(campaignToDelete.id);
+      const remaining = campaigns.filter(c => c.id !== campaignToDelete.id);
       setCampaigns(remaining);
       if (remaining.length > 0) {
         handleSelectCampaign(remaining[0]);
@@ -339,6 +348,9 @@ const CampaignBuilder = () => {
       }
     } catch (error) {
       alert('Error deleting campaign: ' + error.message);
+    } finally {
+      setDeletingCampaign(false);
+      setCampaignToDelete(null);
     }
   };
 
@@ -582,16 +594,20 @@ const CampaignBuilder = () => {
     return ids;
   };
 
-  const handleDeleteStep = async (stepId) => {
+  const handleDeleteStep = (stepId) => {
+    setStepToDelete(stepId);
+  };
+
+  const confirmDeleteStep = async () => {
+    if (!stepToDelete) return;
+
+    const stepId = stepToDelete;
     const step = steps.find(s => s.id === stepId);
     const isCondition = step && step.step_type === 'condition';
     const descendantIds = isCondition ? getDescendantIds(stepId) : [];
     const allIdsToDelete = [stepId, ...descendantIds];
 
-    if (!isDemo && !confirm(isCondition && descendantIds.length > 0
-      ? `Delete this condition and its ${descendantIds.length} branch step(s)?`
-      : 'Delete this step?'
-    )) return;
+    setDeletingStep(true);
 
     if (isDemo) {
       const remaining = steps.filter(s => !allIdsToDelete.includes(s.id));
@@ -600,6 +616,8 @@ const CampaignBuilder = () => {
       if (allIdsToDelete.includes(activeStep)) {
         setActiveStep(remaining.length > 0 ? remaining[0].id : null);
       }
+      setDeletingStep(false);
+      setStepToDelete(null);
       return;
     }
 
@@ -618,6 +636,9 @@ const CampaignBuilder = () => {
       if (allIdsToDelete.includes(activeStep)) setActiveStep(remaining.length > 0 ? remaining[0].id : null);
     } catch (err) {
       alert(err.message);
+    } finally {
+      setDeletingStep(false);
+      setStepToDelete(null);
     }
   };
 
@@ -726,7 +747,63 @@ const CampaignBuilder = () => {
       campaignName: selectedCampaign?.name || 'Campaign',
       onClose: () => setShowStartModal(false),
       onConfirm: confirmStartCampaign
-    })
+    }),
+
+    // Campaign Delete Modal
+    campaignToDelete && h('div', { className: 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in' },
+      h('div', { className: 'glass-panel p-8 rounded-2xl max-w-md w-full mx-4 space-y-6 shadow-2xl relative border border-white/10' },
+        h('div', { className: 'flex items-center gap-4' },
+          h('div', { className: 'w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center shrink-0' },
+            h(Icons.Trash2, { size: 24, className: 'text-red-400' })
+          ),
+          h('div', null,
+            h('h3', { className: 'text-xl font-serif text-white' }, 'Delete Campaign?'),
+            h('p', { className: 'text-white/60 text-sm mt-1 break-words' }, `Are you sure you want to delete "${campaignToDelete.name}"? This action cannot be undone.`)
+          )
+        ),
+        h('div', { className: 'flex gap-3 pt-4' },
+          h('button', {
+            onClick: () => setCampaignToDelete(null),
+            className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-white/10 hover:bg-white/20 text-white transition-all shadow-sm'
+          }, 'Cancel'),
+          h('button', {
+            onClick: confirmDeleteCampaign,
+            className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-all shadow-sm',
+            disabled: deletingCampaign
+          }, deletingCampaign ? 'Deleting...' : 'Delete')
+        )
+      )
+    ),
+
+    // Step Delete Modal
+    stepToDelete && h('div', { className: 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in' },
+      h('div', { className: 'glass-panel p-8 rounded-2xl max-w-md w-full mx-4 space-y-6 shadow-2xl relative border border-white/10' },
+        h('div', { className: 'flex items-center gap-4' },
+          h('div', { className: 'w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center shrink-0' },
+            h(Icons.Trash2, { size: 24, className: 'text-red-400' })
+          ),
+          h('div', null,
+            h('h3', { className: 'text-xl font-serif text-white' }, 'Delete Step?'),
+            h('p', { className: 'text-white/60 text-sm mt-1 break-words' },
+              steps.find(s => s.id === stepToDelete)?.step_type === 'condition' && getDescendantIds(stepToDelete).length > 0
+                ? `Delete this condition and its ${getDescendantIds(stepToDelete).length} branch step(s)?`
+                : 'Are you sure you want to delete this step?'
+            )
+          )
+        ),
+        h('div', { className: 'flex gap-3 pt-4' },
+          h('button', {
+            onClick: () => setStepToDelete(null),
+            className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-white/10 hover:bg-white/20 text-white transition-all shadow-sm'
+          }, 'Cancel'),
+          h('button', {
+            onClick: confirmDeleteStep,
+            className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-all shadow-sm',
+            disabled: deletingStep
+          }, deletingStep ? 'Deleting...' : 'Delete')
+        )
+      )
+    )
   );
 };
 

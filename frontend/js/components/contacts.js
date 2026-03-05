@@ -8,6 +8,10 @@ const Contacts = () => {
   const [showNewListModal, setShowNewListModal] = React.useState(false);
   const [showImportModal, setShowImportModal] = React.useState(false);
   const [editingContact, setEditingContact] = React.useState(null);
+  const [listToDelete, setListToDelete] = React.useState(null);
+  const [contactToDelete, setContactToDelete] = React.useState(null);
+  const [deletingList, setDeletingList] = React.useState(false);
+  const [deletingContact, setDeletingContact] = React.useState(false);
 
   React.useEffect(() => {
     loadContactLists();
@@ -83,12 +87,15 @@ const Contacts = () => {
     }
   };
 
-  const handleDeleteList = async (listId) => {
-    if (!confirm('Are you sure you want to delete this list? All contacts in this list will be removed.')) {
-      return;
-    }
+  const handleDeleteList = (listId) => {
+    setListToDelete(listId);
+  };
 
+  const confirmDeleteList = async () => {
+    if (!listToDelete) return;
+    setDeletingList(true);
     try {
+      const listId = listToDelete;
       console.log('Deleting list:', listId);
       // FIXED: Correct backend endpoint is /api/contacts/lists/:listId
       await api.delete(`/api/contacts/lists/${listId}`);
@@ -110,6 +117,9 @@ const Contacts = () => {
     } catch (error) {
       console.error('Failed to delete list:', error);
       alert('Failed to delete list: ' + error.message);
+    } finally {
+      setDeletingList(false);
+      setListToDelete(null);
     }
   };
 
@@ -128,12 +138,15 @@ const Contacts = () => {
     }
   };
 
-  const handleDeleteContact = async (contactId) => {
-    if (!confirm('Are you sure you want to delete this contact?')) {
-      return;
-    }
+  const handleDeleteContact = (contactId) => {
+    setContactToDelete(contactId);
+  };
 
+  const confirmDeleteContact = async () => {
+    if (!contactToDelete) return;
+    setDeletingContact(true);
     try {
+      const contactId = contactToDelete;
       await api.delete(`/api/contacts/${contactId}`);
       setContacts(contacts.filter(c => c.id !== contactId));
       // Refresh list counts
@@ -141,6 +154,9 @@ const Contacts = () => {
     } catch (error) {
       console.error('Failed to delete contact:', error);
       alert('Failed to delete contact: ' + error.message);
+    } finally {
+      setDeletingContact(false);
+      setContactToDelete(null);
     }
   };
 
@@ -357,7 +373,59 @@ const Contacts = () => {
       contact: editingContact,
       onClose: () => setEditingContact(null),
       onSave: handleUpdateContact
-    })
+    }),
+
+    // List Delete Modal
+    listToDelete && h('div', { className: 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in' },
+      h('div', { className: 'glass-panel p-8 rounded-2xl max-w-md w-full mx-4 space-y-6 shadow-2xl relative border border-white/10' },
+        h('div', { className: 'flex items-center gap-4' },
+          h('div', { className: 'w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center shrink-0' },
+            h(Icons.Trash2, { size: 24, className: 'text-red-400' })
+          ),
+          h('div', null,
+            h('h3', { className: 'text-xl font-serif text-white' }, 'Delete List?'),
+            h('p', { className: 'text-white/60 text-sm mt-1 break-words' }, 'Are you sure you want to delete this list? All contacts in this list will be removed.')
+          )
+        ),
+        h('div', { className: 'flex gap-3 pt-4' },
+          h('button', {
+            onClick: () => setListToDelete(null),
+            className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-white/10 hover:bg-white/20 text-white transition-all shadow-sm'
+          }, 'Cancel'),
+          h('button', {
+            onClick: confirmDeleteList,
+            className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-all shadow-sm',
+            disabled: deletingList
+          }, deletingList ? 'Deleting...' : 'Delete')
+        )
+      )
+    ),
+
+    // Contact Delete Modal
+    contactToDelete && h('div', { className: 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in' },
+      h('div', { className: 'glass-panel p-8 rounded-2xl max-w-md w-full mx-4 space-y-6 shadow-2xl relative border border-white/10' },
+        h('div', { className: 'flex items-center gap-4' },
+          h('div', { className: 'w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center shrink-0' },
+            h(Icons.Trash2, { size: 24, className: 'text-red-400' })
+          ),
+          h('div', null,
+            h('h3', { className: 'text-xl font-serif text-white' }, 'Delete Contact?'),
+            h('p', { className: 'text-white/60 text-sm mt-1 break-words' }, 'Are you sure you want to delete this contact?')
+          )
+        ),
+        h('div', { className: 'flex gap-3 pt-4' },
+          h('button', {
+            onClick: () => setContactToDelete(null),
+            className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-white/10 hover:bg-white/20 text-white transition-all shadow-sm'
+          }, 'Cancel'),
+          h('button', {
+            onClick: confirmDeleteContact,
+            className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-all shadow-sm',
+            disabled: deletingContact
+          }, deletingContact ? 'Deleting...' : 'Delete')
+        )
+      )
+    )
   );
 };
 

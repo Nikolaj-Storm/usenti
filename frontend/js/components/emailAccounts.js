@@ -19,6 +19,8 @@ const EmailAccounts = () => {
   const [loading, setLoading] = React.useState(true);
   const [showModal, setShowModal] = React.useState(false);
   const [editingAccount, setEditingAccount] = React.useState(null);
+  const [accountToDelete, setAccountToDelete] = React.useState(null);
+  const [deleting, setDeleting] = React.useState(false);
 
   React.useEffect(() => {
     loadAccounts();
@@ -63,17 +65,23 @@ const EmailAccounts = () => {
     }
   };
 
-  const handleDeleteAccount = async (account) => {
-    if (!confirm(`Are you sure you want to delete ${account.email_address}?\n\nThis will permanently remove the account and all related data.`)) {
-      return;
-    }
+  const handleDeleteAccount = (account) => {
+    setAccountToDelete(account);
+  };
 
+  const confirmDeleteAccount = async () => {
+    if (!accountToDelete) return;
+
+    setDeleting(true);
     try {
-      await api.deleteEmailAccount(account.id);
+      await api.deleteEmailAccount(accountToDelete.id);
       loadAccounts(); // Refresh the list
     } catch (error) {
       console.error('Failed to delete account:', error);
       alert('Failed to delete account: ' + (error.message || 'Unknown error'));
+    } finally {
+      setDeleting(false);
+      setAccountToDelete(null);
     }
   };
 
@@ -102,7 +110,33 @@ const EmailAccounts = () => {
       account: editingAccount,
       onClose: () => { setShowModal(false); setEditingAccount(null); },
       onSave: handleSaveAccount
-    })
+    }),
+
+    // Confirmation Modal for Delete
+    accountToDelete && h('div', { className: 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in' },
+      h('div', { className: 'glass-panel p-8 rounded-2xl max-w-md w-full mx-4 space-y-6 shadow-2xl relative border border-white/10' },
+        h('div', { className: 'flex items-center gap-4' },
+          h('div', { className: 'w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center shrink-0' },
+            h(Icons.Trash2, { size: 24, className: 'text-red-400' })
+          ),
+          h('div', null,
+            h('h3', { className: 'text-xl font-serif text-white' }, 'Delete Account?'),
+            h('p', { className: 'text-white/60 text-sm mt-1 break-words' }, `Are you sure you want to delete ${accountToDelete.email_address}? This will permanently remove the account and all related data.`)
+          )
+        ),
+        h('div', { className: 'flex gap-3 pt-4' },
+          h('button', {
+            onClick: () => setAccountToDelete(null),
+            className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-white/10 hover:bg-white/20 text-white transition-all shadow-sm'
+          }, 'Cancel'),
+          h('button', {
+            onClick: confirmDeleteAccount,
+            className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-all shadow-sm',
+            disabled: deleting
+          }, deleting ? 'Deleting...' : 'Delete')
+        )
+      )
+    )
   );
 };
 

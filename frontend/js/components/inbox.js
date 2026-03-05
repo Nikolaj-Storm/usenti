@@ -19,6 +19,7 @@ const Inbox = ({ onUnansweredCountChange }) => {
   const [sendingReply, setSendingReply] = React.useState(false);
   const [attachments, setAttachments] = React.useState([]);
   const [deleting, setDeleting] = React.useState(null);
+  const [messageToDelete, setMessageToDelete] = React.useState(null);
   const fileInputRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -110,11 +111,17 @@ const Inbox = ({ onUnansweredCountChange }) => {
     setAttachments([]);
   };
 
-  const handleDeleteMessage = async (msgId, e) => {
+  const handleDeleteMessage = (msgId, e) => {
     if (e) e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this email?')) return;
+    setMessageToDelete(msgId);
+  };
+
+  const confirmDeleteMessage = async () => {
+    if (!messageToDelete) return;
+    const msgId = messageToDelete;
 
     setDeleting(msgId);
+    setMessageToDelete(null); // Close modal
     try {
       await api.deleteInboxMessage(msgId);
       setMessages(prev => prev.filter(m => m.id !== msgId));
@@ -257,62 +264,88 @@ const Inbox = ({ onUnansweredCountChange }) => {
   return h(React.Fragment, null,
     h('div', { className: "h-[calc(100vh-120px)] flex flex-col animate-fade-in" },
       // Header and Controls
-      h('div', { className: "mb-6 pb-6 border-b border-white/10" },
+      // Header and Controls
+      h('div', { className: "mb-6 pb-4 border-b border-white/10 flex flex-col lg:flex-row justify-between lg:items-end gap-4" },
         // Title Area
-        h('div', { className: "mb-4" },
+        h('div', null,
           h('h1', { className: "font-serif text-3xl text-white" }, "Unified Inbox"),
-          h('p', { className: "text-white/60 mt-1" },
+          h('p', { className: "text-white/60 mt-1 text-sm font-light" },
             messages.length === 0
               ? "No messages yet"
               : `${messages.length} recent message${messages.length !== 1 ? 's' : ''} (max 200 per account, 30-day retention)`
           )
         ),
-        // Controls Area
-        h('div', { className: "flex flex-wrap gap-3 items-center" },
-          h('select', {
-            className: "px-3 py-1.5 text-sm glass-input rounded-lg min-w-[130px] transition-all",
-            value: filterStatus,
-            onChange: (e) => setFilterStatus(e.target.value)
-          },
-            h('option', { value: "all" }, "All Status"),
-            h('option', { value: "answered" }, "Answered"),
-            h('option', { value: "unanswered" }, "Unanswered")
-          ),
-          h('select', {
-            className: "px-3 py-1.5 text-sm glass-input rounded-lg min-w-[130px] max-w-[180px] truncate transition-all",
-            value: filterCampaign,
-            onChange: (e) => setFilterCampaign(e.target.value)
-          },
-            h('option', { value: "all" }, "All Campaigns"),
-            campaigns.map(camp =>
-              h('option', { key: camp.id, value: camp.id }, camp.name)
+        // Controls Area (Filters & Sync)
+        h('div', { className: "flex flex-wrap gap-2 items-center" },
+          // Status Filter
+          h('div', { className: "relative group" },
+            h(Icons.Filter, { size: 12, className: "absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none group-focus-within:text-cream-100 transition-colors z-10" }),
+            h('select', {
+              className: "h-8 pl-7 pr-8 py-0 text-xs bg-white/5 border border-white/10 text-white/80 rounded-md focus:outline-none focus:border-cream-100/50 focus:bg-white/10 transition-all appearance-none cursor-pointer w-full text-ellipsis line-clamp-1",
+              style: { backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22rgba(255,255,255,0.4)%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem top 50%', backgroundSize: '0.5rem auto' },
+              value: filterStatus,
+              onChange: (e) => setFilterStatus(e.target.value)
+            },
+              h('option', { value: "all", className: "bg-gray-900" }, "All Status"),
+              h('option', { value: "answered", className: "bg-gray-900" }, "Answered"),
+              h('option', { value: "unanswered", className: "bg-gray-900" }, "Unanswered")
             )
           ),
-          h('select', {
-            className: "px-3 py-1.5 text-sm glass-input rounded-lg min-w-[160px] max-w-[200px] truncate transition-all",
-            value: selectedAccount,
-            onChange: (e) => handleAccountChange(e.target.value)
-          },
-            h('option', { value: "all" }, "All Inboxes"),
-            accounts.map(acc =>
-              h('option', { key: acc.id, value: acc.id }, acc.email_address)
+
+          // Campaign Filter
+          h('div', { className: "relative group" },
+            h(Icons.Briefcase, { size: 12, className: "absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none group-focus-within:text-cream-100 transition-colors z-10" }),
+            h('select', {
+              className: "h-8 pl-7 pr-8 py-0 text-xs bg-white/5 border border-white/10 text-white/80 rounded-md focus:outline-none focus:border-cream-100/50 focus:bg-white/10 transition-all appearance-none cursor-pointer max-w-[140px] text-ellipsis line-clamp-1",
+              style: { backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22rgba(255,255,255,0.4)%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem top 50%', backgroundSize: '0.5rem auto' },
+              value: filterCampaign,
+              onChange: (e) => setFilterCampaign(e.target.value)
+            },
+              h('option', { value: "all", className: "bg-gray-900" }, "All Campaigns"),
+              campaigns.map(camp =>
+                h('option', { key: camp.id, value: camp.id, className: "bg-gray-900" }, camp.name)
+              )
             )
           ),
-          h('select', {
-            className: "px-3 py-1.5 text-sm glass-input rounded-lg min-w-[130px] transition-all",
-            value: sortOrder,
-            onChange: (e) => setSortOrder(e.target.value)
-          },
-            h('option', { value: "newest" }, "Newest First"),
-            h('option', { value: "oldest" }, "Oldest First")
+
+          // Inbox Filter
+          h('div', { className: "relative group" },
+            h(Icons.Mail, { size: 12, className: "absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none group-focus-within:text-cream-100 transition-colors z-10" }),
+            h('select', {
+              className: "h-8 pl-7 pr-8 py-0 text-xs bg-white/5 border border-white/10 text-white/80 rounded-md focus:outline-none focus:border-cream-100/50 focus:bg-white/10 transition-all appearance-none cursor-pointer max-w-[160px] text-ellipsis line-clamp-1",
+              style: { backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22rgba(255,255,255,0.4)%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem top 50%', backgroundSize: '0.5rem auto' },
+              value: selectedAccount,
+              onChange: (e) => handleAccountChange(e.target.value)
+            },
+              h('option', { value: "all", className: "bg-gray-900" }, "All Inboxes"),
+              accounts.map(acc =>
+                h('option', { key: acc.id, value: acc.id, className: "bg-gray-900" }, acc.email_address)
+              )
+            )
           ),
+
+          // Sorting
+          h('div', { className: "relative group" },
+            h(Icons.ArrowDownCircle, { size: 12, className: "absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none group-focus-within:text-cream-100 transition-colors z-10" }),
+            h('select', {
+              className: "h-8 pl-7 pr-8 py-0 text-xs bg-white/5 border border-white/10 text-white/80 rounded-md focus:outline-none focus:border-cream-100/50 focus:bg-white/10 transition-all appearance-none cursor-pointer w-full text-ellipsis line-clamp-1",
+              style: { backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22rgba(255,255,255,0.4)%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem top 50%', backgroundSize: '0.5rem auto' },
+              value: sortOrder,
+              onChange: (e) => setSortOrder(e.target.value)
+            },
+              h('option', { value: "newest", className: "bg-gray-900" }, "Newest First"),
+              h('option', { value: "oldest", className: "bg-gray-900" }, "Oldest First")
+            )
+          ),
+
+          // Sync Button
           h('button', {
             onClick: handleSyncInbox,
             disabled: syncing || loading,
-            className: "px-4 py-1.5 text-sm bg-cream-100 text-rust-900 rounded-lg hover:bg-cream-200 transition-colors disabled:opacity-50 flex items-center gap-2 font-medium",
+            className: "h-8 px-3 ml-1 text-xs bg-cream-100 text-rust-900 rounded-md hover:bg-cream-200 transition-all font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50 min-w-[70px] shadow-sm",
             title: "Sync from mail server"
           },
-            h(Icons.Download, { size: 14, className: syncing ? "animate-bounce" : "" }),
+            h(Icons.RefreshCw, { size: 12, className: syncing ? "animate-spin" : "" }),
             h('span', null, syncing ? 'Syncing...' : 'Sync')
           )
         )
@@ -643,6 +676,32 @@ const Inbox = ({ onUnansweredCountChange }) => {
               h('span', null, sendingReply ? 'Sending...' : 'Send Reply')
             )
           )
+        )
+      )
+    ),
+
+    // Confirmation Modal for Delete
+    messageToDelete && h('div', { className: 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in' },
+      h('div', { className: 'glass-panel p-8 rounded-2xl max-w-md w-full mx-4 space-y-6 shadow-2xl relative border border-white/10' },
+        h('div', { className: 'flex items-center gap-4' },
+          h('div', { className: 'w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center' },
+            h(Icons.Trash2, { size: 24, className: 'text-red-400' })
+          ),
+          h('div', null,
+            h('h3', { className: 'text-xl font-serif text-white' }, 'Delete Message?'),
+            h('p', { className: 'text-white/60 text-sm mt-1' }, 'Are you sure you want to delete this email?')
+          )
+        ),
+        h('div', { className: 'flex gap-3 pt-4' },
+          h('button', {
+            onClick: () => setMessageToDelete(null),
+            className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-white/10 hover:bg-white/20 text-white transition-all shadow-sm'
+          }, 'Cancel'),
+          h('button', {
+            onClick: confirmDeleteMessage,
+            className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-all shadow-sm',
+            disabled: deleting !== null
+          }, deleting === messageToDelete ? 'Deleting...' : 'Delete')
         )
       )
     )
