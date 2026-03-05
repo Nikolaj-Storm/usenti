@@ -256,9 +256,10 @@ const Inbox = ({ onUnansweredCountChange }) => {
 
   return h(React.Fragment, null,
     h('div', { className: "h-[calc(100vh-120px)] flex flex-col animate-fade-in" },
-      // Header
-      h('div', { className: "flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6 pb-6 border-b border-white/10" },
-        h('div', { className: "flex-shrink-0" },
+      // Header and Controls
+      h('div', { className: "mb-6 pb-6 border-b border-white/10" },
+        // Title Area
+        h('div', { className: "mb-4" },
           h('h1', { className: "font-serif text-3xl text-white" }, "Unified Inbox"),
           h('p', { className: "text-white/60 mt-1" },
             messages.length === 0
@@ -266,9 +267,10 @@ const Inbox = ({ onUnansweredCountChange }) => {
               : `${messages.length} recent message${messages.length !== 1 ? 's' : ''} (max 200 per account, 30-day retention)`
           )
         ),
+        // Controls Area
         h('div', { className: "flex flex-wrap gap-3 items-center" },
           h('select', {
-            className: "px-4 py-3 glass-input rounded-xl min-w-[150px] transition-all",
+            className: "px-3 py-1.5 text-sm glass-input rounded-lg min-w-[130px] transition-all",
             value: filterStatus,
             onChange: (e) => setFilterStatus(e.target.value)
           },
@@ -277,7 +279,7 @@ const Inbox = ({ onUnansweredCountChange }) => {
             h('option', { value: "unanswered" }, "Unanswered")
           ),
           h('select', {
-            className: "px-4 py-3 glass-input rounded-xl min-w-[150px] max-w-[200px] truncate transition-all",
+            className: "px-3 py-1.5 text-sm glass-input rounded-lg min-w-[130px] max-w-[180px] truncate transition-all",
             value: filterCampaign,
             onChange: (e) => setFilterCampaign(e.target.value)
           },
@@ -287,7 +289,7 @@ const Inbox = ({ onUnansweredCountChange }) => {
             )
           ),
           h('select', {
-            className: "px-4 py-3 glass-input rounded-xl min-w-[200px] max-w-[250px] truncate transition-all",
+            className: "px-3 py-1.5 text-sm glass-input rounded-lg min-w-[160px] max-w-[200px] truncate transition-all",
             value: selectedAccount,
             onChange: (e) => handleAccountChange(e.target.value)
           },
@@ -297,7 +299,7 @@ const Inbox = ({ onUnansweredCountChange }) => {
             )
           ),
           h('select', {
-            className: "px-4 py-3 glass-input rounded-xl min-w-[150px] transition-all",
+            className: "px-3 py-1.5 text-sm glass-input rounded-lg min-w-[130px] transition-all",
             value: sortOrder,
             onChange: (e) => setSortOrder(e.target.value)
           },
@@ -307,10 +309,10 @@ const Inbox = ({ onUnansweredCountChange }) => {
           h('button', {
             onClick: handleSyncInbox,
             disabled: syncing || loading,
-            className: "px-4 py-3 bg-cream-100 text-rust-900 rounded-full hover:bg-cream-200 transition-colors disabled:opacity-50 flex items-center gap-2 font-medium",
+            className: "px-4 py-1.5 text-sm bg-cream-100 text-rust-900 rounded-lg hover:bg-cream-200 transition-colors disabled:opacity-50 flex items-center gap-2 font-medium",
             title: "Sync from mail server"
           },
-            h(Icons.Download, { size: 16, className: syncing ? "animate-bounce" : "" }),
+            h(Icons.Download, { size: 14, className: syncing ? "animate-bounce" : "" }),
             h('span', null, syncing ? 'Syncing...' : 'Sync')
           )
         )
