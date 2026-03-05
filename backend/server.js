@@ -21,6 +21,7 @@ const upload = multer({
 // Import services
 const imapMonitor = require('./services/imapMonitor');
 const campaignExecutor = require('./services/campaignExecutor');
+const subscriptionService = require('./services/subscriptionService');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -1441,7 +1442,7 @@ app.post('/api/contact-lists/:id/import', authenticateUser, async (req, res) => 
     }
 
     // --- ENFORCE CONTACT LIMITS ---
-    const { data: sub } = await supabase.from('subscriptions').select('plan_tier').eq('user_id', req.user.id).single();
+    const sub = await subscriptionService.ensureValidSubscription(req.user.id);
     const planTier = sub?.plan_tier || 'free';
     const contactLimit = (planTier === 'rebel_plan') ? 25000 : 1000;
 
@@ -3027,6 +3028,65 @@ console.log('✓ Campaign executor scheduled (every 5 minutes)');
 // ============================================================================
 // ERROR HANDLING
 // ============================================================================
+
+// ============================================================================
+// INVITE CODES ROUTE
+// ============================================================================
+
+app.post('/api/invite/redeem', authenticateUser, async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ error: 'Invite code is required' });
+    }
+
+    const { data: invite, error: inviteError } = await supabase
+      .from('invite_codes')
+      .select('*')
+      .eq('code', code.toUpperCase().trim())
+      .single();
+
+    if (inviteError || !invite) {
+      return res.status(404).json({ error: 'Invalid or missing invite code' });
+    }
+
+    if (invite.is_used) {
+      return res.status(400).json({ error: 'This invite code has already been used' });
+    }
+
+    // Mark code as used
+    const { error: updateCodeError } = await supabase
+      .from('invite_codes')
+      .update({
+        is_used: true,
+        used_by: req.user.id,
+        used_at: new Date().toISOString()
+      })
+      .eq('id', invite.id);
+
+    if (updateCodeError) throw updateCodeError;
+
+    // Give 3 months of Rebel plan
+    const expiresAt = new Date();
+    expiresAt.setMonth(expiresAt.getMonth() + 3);
+
+    const { error: updateSubError } = await supabase
+      .from('subscriptions')
+      .upsert({
+        user_id: req.user.id,
+        plan_tier: 'rebel_plan',
+        plan_expires_at: expiresAt.toISOString(),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+
+    if (updateSubError) throw updateSubError;
+
+    res.json({ success: true, message: 'Successfully redeemed! You now have 3 months of the Rebel plan.', expires_at: expiresAt.toISOString() });
+  } catch (error) {
+    console.error('[INVITE] Error redeeming code:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);

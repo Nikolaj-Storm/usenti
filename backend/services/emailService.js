@@ -5,6 +5,7 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const supabase = require('../config/supabase');
 const { decrypt } = require('../utils/encryption');
+const subscriptionService = require('./subscriptionService');
 
 /**
  * Check if current time is within the campaign's send schedule
@@ -76,11 +77,7 @@ async function checkDailyLimit(emailAccountId, campaignId) {
   }
 
   // 2. Get the user's subscription tier and usage
-  const { data: subscription, error: subError } = await supabase
-    .from('subscriptions')
-    .select('plan_tier, emails_sent_this_cycle, cycle_start_date')
-    .eq('user_id', account.user_id)
-    .single();
+  const subscription = await subscriptionService.ensureValidSubscription(account.user_id);
 
   // Default to free if no subscription record is found (e.g. legacy users before backfill)
   const planTier = subscription?.plan_tier || 'free';

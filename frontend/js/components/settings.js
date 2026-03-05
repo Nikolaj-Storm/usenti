@@ -9,6 +9,8 @@ const Settings = () => {
     const [successMsg, setSuccessMsg] = React.useState(null);
     const [showCancelModal, setShowCancelModal] = React.useState(false);
     const [showDowngradeModal, setShowDowngradeModal] = React.useState(false);
+    const [inviteCode, setInviteCode] = React.useState('');
+    const [redeeming, setRedeeming] = React.useState(false);
 
     // Fetch subscription on mount + handle Stripe redirect params
     React.useEffect(() => {
@@ -98,6 +100,26 @@ const Settings = () => {
         } catch (err) {
             setError(err.message || 'Could not open billing portal. Please try again.');
             setLoading(false);
+        }
+    };
+
+    const handleRedeemInvite = async (e) => {
+        e.preventDefault();
+        if (!inviteCode.trim()) return;
+
+        try {
+            setRedeeming(true);
+            setError(null);
+            setSuccessMsg(null);
+
+            const data = await api.post('/api/invite/redeem', { code: inviteCode });
+            setSuccessMsg(data.message);
+            setInviteCode('');
+            fetchSubscription(); // Refresh plan status
+        } catch (err) {
+            setError(err.message || 'Failed to redeem invite code');
+        } finally {
+            setRedeeming(false);
         }
     };
 
@@ -349,6 +371,32 @@ const Settings = () => {
                     },
                         h(Icons.ArrowUpRight, { size: 16 }),
                         'Manage Billing'
+                    )
+                )
+            ),
+
+            // --- Redeem Invite Code ---
+            currentTier === 'free' && h('div', { className: 'glass-panel p-6 rounded-2xl flex flex-col sm:flex-row gap-6 items-start sm:items-center justify-between' },
+                h('div', { className: 'flex-1' },
+                    h('h3', { className: 'text-lg font-medium text-white' }, 'Redeem Invite Code'),
+                    h('p', { className: 'text-white/50 text-sm mt-1' }, 'Have an invite code? Redeem it here to get 3 months of the Rebel Plan for free.')
+                ),
+                h('form', { onSubmit: handleRedeemInvite, className: 'flex w-full sm:max-w-xs items-center gap-2' },
+                    h('input', {
+                        type: 'text',
+                        value: inviteCode,
+                        onChange: (e) => setInviteCode(e.target.value.toUpperCase()),
+                        placeholder: 'Enter Code',
+                        disabled: redeeming,
+                        className: 'w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-cream-100/50 transition-colors uppercase'
+                    }),
+                    h('button', {
+                        type: 'submit',
+                        disabled: redeeming || !inviteCode.trim(),
+                        className: 'px-5 py-2.5 bg-cream-100/10 hover:bg-cream-100/20 text-cream-100 rounded-xl transition-all font-medium whitespace-nowrap border border-cream-100/20 disabled:opacity-50 flex items-center gap-2'
+                    },
+                        redeeming ? h(Icons.Loader2, { size: 16, className: 'animate-spin' }) : null,
+                        redeeming ? 'Redeeming' : 'Redeem'
                     )
                 )
             )

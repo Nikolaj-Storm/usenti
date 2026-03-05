@@ -4,6 +4,7 @@ const stripe = require('../config/stripe');
 const supabase = require('../config/supabase');
 const { authenticateUser } = require('../middleware/auth');
 const { getFrontendUrlFromRequest } = require('../config/urls');
+const subscriptionService = require('../services/subscriptionService');
 
 // The Rebel Plan product price ID (set via dashboard and .env)
 const STRIPE_PRICES = {
@@ -16,11 +17,7 @@ const STRIPE_PRICES = {
  */
 router.get('/status', authenticateUser, async (req, res) => {
     try {
-        const { data: sub } = await supabase
-            .from('subscriptions')
-            .select('plan_tier, emails_sent_this_cycle')
-            .eq('user_id', req.user.id)
-            .single();
+        const sub = await subscriptionService.ensureValidSubscription(req.user.id);
 
         if (!sub) {
             return res.json({
