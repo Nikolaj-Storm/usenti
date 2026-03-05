@@ -257,8 +257,8 @@ const Inbox = ({ onUnansweredCountChange }) => {
   return h(React.Fragment, null,
     h('div', { className: "h-[calc(100vh-120px)] flex flex-col animate-fade-in" },
       // Header
-      h('div', { className: "flex justify-between items-center mb-6 pb-6 border-b border-white/10" },
-        h('div', null,
+      h('div', { className: "flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6 pb-6 border-b border-white/10" },
+        h('div', { className: "flex-shrink-0" },
           h('h1', { className: "font-serif text-3xl text-white" }, "Unified Inbox"),
           h('p', { className: "text-white/60 mt-1" },
             messages.length === 0
@@ -266,7 +266,7 @@ const Inbox = ({ onUnansweredCountChange }) => {
               : `${messages.length} recent message${messages.length !== 1 ? 's' : ''} (max 200 per account, 30-day retention)`
           )
         ),
-        h('div', { className: "flex gap-3" },
+        h('div', { className: "flex flex-wrap gap-3 items-center" },
           h('select', {
             className: "px-4 py-3 glass-input rounded-xl min-w-[150px] transition-all",
             value: filterStatus,

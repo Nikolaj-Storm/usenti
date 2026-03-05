@@ -7,6 +7,7 @@ const App = () => {
   const [user, setUser] = React.useState(null);
   const [recoveryToken, setRecoveryToken] = React.useState(null);
   const [unansweredCount, setUnansweredCount] = React.useState(0);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
 
   // 1. Check for password recovery token in URL hash, then verify session
   React.useEffect(() => {
@@ -210,56 +211,74 @@ const App = () => {
   const NavItem = ({ view, icon: IconComponent, label, badge }) =>
     h('button', {
       onClick: () => setPrivateView(view),
-      className: `w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${privateView === view
+      title: isSidebarCollapsed ? label : undefined,
+      className: `w-full flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-4'} py-3 rounded-xl transition-all duration-200 group relative ${privateView === view
         ? 'bg-cream-100 text-rust-900 shadow-lg'
         : 'text-white/60 hover:text-white hover:bg-white/10'
         }`
     },
-      h('div', { className: `${privateView === view ? 'text-rust-800' : 'group-hover:text-cream-100 transition-colors'}` },
+      h('div', { className: `${privateView === view ? 'text-rust-800' : 'group-hover:text-cream-100 transition-colors'} ${isSidebarCollapsed ? 'mx-auto' : ''}` },
         h(IconComponent, { size: 20 })
       ),
-      h('span', { className: "font-medium tracking-wide flex-1 text-left" }, label),
-      badge > 0 && h('span', {
+      !isSidebarCollapsed && h('span', { className: "font-medium tracking-wide flex-1 text-left whitespace-nowrap overflow-hidden transition-all duration-200" }, label),
+      !isSidebarCollapsed && badge > 0 && h('span', {
         className: `min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[11px] font-bold rounded-full ${privateView === view
           ? 'bg-red-500 text-white'
           : 'bg-red-500 text-white'
           }`
-      }, badge > 99 ? '99+' : badge)
+      }, badge > 99 ? '99+' : badge),
+      isSidebarCollapsed && badge > 0 && h('div', {
+        className: "absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-red-500"
+      })
     );
 
   return h('div', { className: "flex h-screen font-sans text-white overflow-hidden animate-fade-in" },
     // Sidebar - Glassmorphism
-    h('aside', { className: "w-72 glass-sidebar text-white flex flex-col z-20" },
-      h('div', { className: "p-8 pb-10" },
-        h('div', { className: "flex items-center gap-3" },
-          h('img', { src: 'visuals/logo_white.png', alt: 'Usenti Logo', style: { height: '28px', width: 'auto' } }),
-          h('h1', { className: "font-serif text-2xl tracking-tight text-white" },
+    h('aside', { className: `glass-sidebar h-full text-white flex flex-col z-20 transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'w-24' : 'w-72'}` },
+      h('div', { className: `p-6 pb-8 flex items-center shrink-0 ${isSidebarCollapsed ? 'flex-col justify-center gap-4' : 'justify-between'}` },
+        !isSidebarCollapsed && h('div', { className: "flex items-center gap-3 overflow-hidden ml-2" },
+          h('img', { src: 'visuals/logo_white.png', alt: 'Usenti Logo', style: { height: '28px', width: 'auto', flexShrink: 0 } }),
+          h('h1', { className: "font-serif text-2xl tracking-tight text-white whitespace-nowrap" },
             'USENTI'
           )
-        )
+        ),
+        isSidebarCollapsed && h('img', { src: 'visuals/logo_white.png', alt: 'Usenti Logo', style: { height: '24px', width: 'auto', flexShrink: 0 } }),
+        h('button', {
+          onClick: () => setIsSidebarCollapsed(!isSidebarCollapsed),
+          className: "text-white/40 hover:text-white transition-colors p-1 flex-shrink-0"
+        }, h(Icons.ChevronRight, { size: 20, className: `transition-transform duration-300 ${isSidebarCollapsed ? '' : 'rotate-180'}` }))
       ),
-      h('nav', { className: "flex-1 px-4 space-y-2" },
-        h('p', { className: "px-4 text-xs font-bold text-white/40 uppercase tracking-widest mb-4" }, 'Main Menu'),
+      h('nav', { className: `flex-1 px-4 space-y-2 overflow-y-auto min-h-0 ${isSidebarCollapsed ? 'overflow-x-hidden' : ''}` },
+        !isSidebarCollapsed && h('p', { className: "px-4 text-xs font-bold text-white/40 uppercase tracking-widest mb-4 transition-all" }, 'Main Menu'),
+        isSidebarCollapsed && h('div', { className: "w-full border-t border-white/10 mb-4" }),
         h(NavItem, { view: "dashboard", icon: Icons.LayoutDashboard, label: "Overview" }),
         h(NavItem, { view: "campaigns", icon: Icons.Send, label: "Campaigns" }),
         h(NavItem, { view: "contacts", icon: Icons.Users, label: "Contacts" }),
         h(NavItem, { view: "inbox", icon: Icons.Inbox, label: "Inbox", badge: unansweredCount }),
-        h('div', { className: "py-6" }),
-        h('p', { className: "px-4 text-xs font-bold text-white/40 uppercase tracking-widest mb-4" }, 'System'),
+        h('div', { className: "py-4" }),
+        !isSidebarCollapsed && h('p', { className: "px-4 text-xs font-bold text-white/40 uppercase tracking-widest mb-4 transition-all" }, 'System'),
+        isSidebarCollapsed && h('div', { className: "w-full border-t border-white/10 mb-4" }),
         h(NavItem, { view: "infrastructure", icon: Icons.Layers, label: "Accounts" }),
         h(NavItem, { view: "settings", icon: Icons.Settings, label: "Settings" })
       ),
-      h('div', { className: "p-4 border-t border-white/10" },
-        h('div', { className: "flex items-center gap-3 px-4 py-3 group" },
-          h('div', { className: "w-10 h-10 rounded-full bg-cream-100 text-rust-900 flex items-center justify-center font-serif font-bold" },
+      h('div', { className: "p-4 border-t border-white/10 shrink-0" },
+        h('div', { className: `flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 group` },
+          h('div', { className: "w-10 h-10 rounded-full bg-cream-100 text-rust-900 flex items-center justify-center font-serif font-bold flex-shrink-0" },
             (user?.user_metadata?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U')
           ),
-          h('div', { className: "flex-1 min-w-0" },
+          !isSidebarCollapsed && h('div', { className: "flex-1 min-w-0 transition-opacity" },
             h('p', { className: "text-sm font-medium text-white truncate" },
               (user?.user_metadata?.name || user?.email?.split('@')[0] || 'User')
             ),
             h('p', { className: "text-xs text-white/50 truncate" }, (user?.email || 'user@example.com'))
           ),
+          !isSidebarCollapsed && h('button', {
+            onClick: handleLogout,
+            className: "text-white/40 hover:text-white transition-colors p-1 flex-shrink-0",
+            title: "Logout"
+          }, h(Icons.LogOut, { size: 16 }))
+        ),
+        isSidebarCollapsed && h('div', { className: "flex justify-center mt-2 group" },
           h('button', {
             onClick: handleLogout,
             className: "text-white/40 hover:text-white transition-colors p-1",

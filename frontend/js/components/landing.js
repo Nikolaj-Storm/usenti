@@ -1,12 +1,32 @@
 // Usenti - Landing Page Component
 
 const LandingPage = ({ onNavigate }) => {
+  const [isLoaded, setIsLoaded] = React.useState(false);
+
+  const handleIframeLoad = () => {
+    // Add a small delay to allow WebGL to render the first frame after HTML load
+    setTimeout(() => {
+      setIsLoaded(true);
+    }, 500);
+  };
+
   return h('div', { className: "min-h-screen text-white font-sans selection:bg-cream-100 selection:text-rust-900 relative" },
     // Spline 3D Background (scaled up so watermark is cropped off by overflow:hidden)
-    h('div', { style: { position: 'fixed', inset: 0, zIndex: -1, overflow: 'hidden' } },
+    h('div', {
+      style: {
+        position: 'fixed',
+        inset: 0,
+        zIndex: -1,
+        overflow: 'hidden',
+        backgroundColor: '#2D1810', // Fallback color while loading
+        transition: 'opacity 1s ease-in-out',
+        opacity: isLoaded ? 1 : 0
+      }
+    },
       h('iframe', {
         src: 'https://my.spline.design/dunes-Eg8W4XwLhNxC7F62n6SDsvks/',
         frameBorder: '0',
+        onLoad: handleIframeLoad,
         style: {
           border: 'none',
           display: 'block',
