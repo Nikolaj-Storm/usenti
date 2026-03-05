@@ -7,6 +7,18 @@ const { authenticateUser } = require('../middleware/auth');
 const { getFrontendUrlFromRequest } = require('../config/urls');
 
 /**
+ * Auth middleware that also accepts token as a query parameter.
+ * Needed for OAuth authorize endpoints since browser redirects can't send headers.
+ */
+async function authenticateUserOrQueryToken(req, res, next) {
+  // If token is in query param, move it to the Authorization header so the standard middleware works
+  if (!req.headers.authorization && req.query.token) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  return authenticateUser(req, res, next);
+}
+
+/**
  * OAuth Routes for Email Provider Authentication
  *
  * Supported Providers:
@@ -19,7 +31,7 @@ const { getFrontendUrlFromRequest } = require('../config/urls');
  * Initiates Gmail OAuth flow
  * Redirects user to Google consent screen
  */
-router.get('/gmail/authorize', authenticateUser, (req, res) => {
+router.get('/gmail/authorize', authenticateUserOrQueryToken, (req, res) => {
   console.log(`[OAUTH] 🚀 Initiating Gmail OAuth flow for user ${req.user.id}...`);
 
   try {
@@ -69,12 +81,12 @@ router.get('/gmail/callback', async (req, res) => {
   // Check for OAuth errors
   if (error) {
     console.error(`[OAUTH] ❌ OAuth error from Google: ${error}`);
-    return res.redirect(`${frontendUrl}/email-accounts?error=oauth_denied`);
+    return res.redirect(`${frontendUrl}?error=oauth_denied`);
   }
 
   if (!code || !userId) {
     console.error(`[OAUTH] ❌ Missing code or valid state parameter`);
-    return res.redirect(`${frontendUrl}/email-accounts?error=invalid_callback`);
+    return res.redirect(`${frontendUrl}?error=invalid_callback`);
   }
 
   try {
@@ -91,7 +103,7 @@ router.get('/gmail/callback', async (req, res) => {
 
     if (!tokens.refresh_token) {
       console.error(`[OAUTH] ❌ No refresh token received. User may need to revoke access and try again.`);
-      return res.redirect(`${frontendUrl}/email-accounts?error=no_refresh_token`);
+      return res.redirect(`${frontendUrl}?error=no_refresh_token`);
     }
 
     // Get user's email address from Gmail API
@@ -138,12 +150,13 @@ router.get('/gmail/callback', async (req, res) => {
         .insert({
           user_id: userId,
           email_address: emailAddress,
+          account_type: 'gmail',
           provider_type: 'gmail_oauth',
           oauth_refresh_token: tokens.refresh_token,
           oauth_access_token: tokens.access_token,
           oauth_token_expires_at: new Date(tokens.expiry_date).toISOString(),
           oauth_scope: tokens.scope,
-          daily_send_limit: 50, // Conservative initial limit for Gmail
+          daily_send_limit: 500,
           status: 'active',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -163,14 +176,14 @@ router.get('/gmail/callback', async (req, res) => {
     console.log(`[OAUTH] ✅ OAuth flow completed successfully`);
     console.log(`[OAUTH]    Redirecting to frontend...`);
 
-    res.redirect(`${frontendUrl}/email-accounts?success=gmail_connected&email=${encodeURIComponent(emailAddress)}`);
+    res.redirect(`${frontendUrl}?success=gmail_connected&email=${encodeURIComponent(emailAddress)}`);
 
   } catch (error) {
     console.error(`[OAUTH] ❌ Error processing OAuth callback:`, error);
     console.error(`[OAUTH]    Error message: ${error.message}`);
     console.error(`[OAUTH]    Stack trace:`, error.stack);
 
-    res.redirect(`${frontendUrl}/email-accounts?error=processing_failed`);
+    res.redirect(`${frontendUrl}?error=processing_failed`);
   }
 });
 
@@ -273,7 +286,7 @@ router.get('/gmail/test/:accountId', authenticateUser, async (req, res) => {
  * Initiates Microsoft OAuth flow
  * Redirects user to Microsoft consent screen
  */
-router.get('/microsoft/authorize', authenticateUser, (req, res) => {
+router.get('/microsoft/authorize', authenticateUserOrQueryToken, (req, res) => {
   console.log(`[OAUTH] 🚀 Initiating Microsoft OAuth flow for user ${req.user.id}...`);
 
   try {
@@ -323,12 +336,12 @@ router.get('/microsoft/callback', async (req, res) => {
   // Check for OAuth errors
   if (error) {
     console.error(`[OAUTH] ❌ OAuth error from Microsoft: ${error}`);
-    return res.redirect(`${frontendUrl}/email-accounts?error=oauth_denied`);
+    return res.redirect(`${frontendUrl}?error=oauth_denied`);
   }
 
   if (!code || !userId) {
     console.error(`[OAUTH] ❌ Missing code or valid state parameter`);
-    return res.redirect(`${frontendUrl}/email-accounts?error=invalid_callback`);
+    return res.redirect(`${frontendUrl}?error=invalid_callback`);
   }
 
   try {
@@ -344,7 +357,7 @@ router.get('/microsoft/callback', async (req, res) => {
 
     if (!tokens.refresh_token) {
       console.error(`[OAUTH] ❌ No refresh token received.`);
-      return res.redirect(`${frontendUrl}/email-accounts?error=no_refresh_token`);
+      return res.redirect(`${frontendUrl}?error=no_refresh_token`);
     }
 
     // Get user's email address from Microsoft Graph API
@@ -394,12 +407,13 @@ router.get('/microsoft/callback', async (req, res) => {
         .insert({
           user_id: userId,
           email_address: emailAddress,
+          account_type: 'outlook',
           provider_type: 'microsoft_oauth',
           oauth_refresh_token: tokens.refresh_token,
           oauth_access_token: tokens.access_token,
           oauth_token_expires_at: expiresAt,
           oauth_scope: tokens.scope,
-          daily_send_limit: 50, // Conservative initial limit
+          daily_send_limit: 500,
           status: 'active',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -419,14 +433,14 @@ router.get('/microsoft/callback', async (req, res) => {
     console.log(`[OAUTH] ✅ OAuth flow completed successfully`);
     console.log(`[OAUTH]    Redirecting to frontend...`);
 
-    res.redirect(`${frontendUrl}/email-accounts?success=microsoft_connected&email=${encodeURIComponent(emailAddress)}`);
+    res.redirect(`${frontendUrl}?success=microsoft_connected&email=${encodeURIComponent(emailAddress)}`);
 
   } catch (error) {
     console.error(`[OAUTH] ❌ Error processing OAuth callback:`, error);
     console.error(`[OAUTH]    Error message: ${error.message}`);
     console.error(`[OAUTH]    Stack trace:`, error.stack);
 
-    res.redirect(`${frontendUrl}/email-accounts?error=processing_failed`);
+    res.redirect(`${frontendUrl}?error=processing_failed`);
   }
 });
 
