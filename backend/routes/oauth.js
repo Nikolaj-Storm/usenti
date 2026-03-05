@@ -81,12 +81,12 @@ router.get('/gmail/callback', async (req, res) => {
   // Check for OAuth errors
   if (error) {
     console.error(`[OAUTH] ❌ OAuth error from Google: ${error}`);
-    return res.redirect(`${frontendUrl}?error=oauth_denied`);
+    return res.redirect(`${frontendUrl}/?error=oauth_denied`);
   }
 
   if (!code || !userId) {
     console.error(`[OAUTH] ❌ Missing code or valid state parameter`);
-    return res.redirect(`${frontendUrl}?error=invalid_callback`);
+    return res.redirect(`${frontendUrl}/?error=invalid_callback`);
   }
 
   try {
@@ -103,7 +103,7 @@ router.get('/gmail/callback', async (req, res) => {
 
     if (!tokens.refresh_token) {
       console.error(`[OAUTH] ❌ No refresh token received. User may need to revoke access and try again.`);
-      return res.redirect(`${frontendUrl}?error=no_refresh_token`);
+      return res.redirect(`${frontendUrl}/?error=no_refresh_token`);
     }
 
     // Get user's email address from Gmail API
@@ -176,14 +176,14 @@ router.get('/gmail/callback', async (req, res) => {
     console.log(`[OAUTH] ✅ OAuth flow completed successfully`);
     console.log(`[OAUTH]    Redirecting to frontend...`);
 
-    res.redirect(`${frontendUrl}?success=gmail_connected&email=${encodeURIComponent(emailAddress)}`);
+    res.redirect(`${frontendUrl}/?success=gmail_connected&email=${encodeURIComponent(emailAddress)}`);
 
   } catch (error) {
     console.error(`[OAUTH] ❌ Error processing OAuth callback:`, error);
     console.error(`[OAUTH]    Error message: ${error.message}`);
     console.error(`[OAUTH]    Stack trace:`, error.stack);
 
-    res.redirect(`${frontendUrl}?error=processing_failed`);
+    res.redirect(`${frontendUrl}/?error=processing_failed`);
   }
 });
 
@@ -336,12 +336,12 @@ router.get('/microsoft/callback', async (req, res) => {
   // Check for OAuth errors
   if (error) {
     console.error(`[OAUTH] ❌ OAuth error from Microsoft: ${error}`);
-    return res.redirect(`${frontendUrl}?error=oauth_denied`);
+    return res.redirect(`${frontendUrl}/?error=oauth_denied`);
   }
 
   if (!code || !userId) {
     console.error(`[OAUTH] ❌ Missing code or valid state parameter`);
-    return res.redirect(`${frontendUrl}?error=invalid_callback`);
+    return res.redirect(`${frontendUrl}/?error=invalid_callback`);
   }
 
   try {
@@ -357,7 +357,7 @@ router.get('/microsoft/callback', async (req, res) => {
 
     if (!tokens.refresh_token) {
       console.error(`[OAUTH] ❌ No refresh token received.`);
-      return res.redirect(`${frontendUrl}?error=no_refresh_token`);
+      return res.redirect(`${frontendUrl}/?error=no_refresh_token`);
     }
 
     // Get user's email address from Microsoft Graph API
@@ -433,14 +433,14 @@ router.get('/microsoft/callback', async (req, res) => {
     console.log(`[OAUTH] ✅ OAuth flow completed successfully`);
     console.log(`[OAUTH]    Redirecting to frontend...`);
 
-    res.redirect(`${frontendUrl}?success=microsoft_connected&email=${encodeURIComponent(emailAddress)}`);
+    res.redirect(`${frontendUrl}/?success=microsoft_connected&email=${encodeURIComponent(emailAddress)}`);
 
   } catch (error) {
     console.error(`[OAUTH] ❌ Error processing OAuth callback:`, error);
     console.error(`[OAUTH]    Error message: ${error.message}`);
     console.error(`[OAUTH]    Stack trace:`, error.stack);
 
-    res.redirect(`${frontendUrl}?error=processing_failed`);
+    res.redirect(`${frontendUrl}/?error=processing_failed`);
   }
 });
 
