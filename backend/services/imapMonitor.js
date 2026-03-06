@@ -94,7 +94,7 @@ class ImapMonitor {
 
   // Resolve the correct IMAP host for a Zoho account (with regional fallback)
   // Returns the working host, or throws with a helpful error if IMAP is disabled
-  async resolveImapHost(account, decryptedPassword) {
+  async resolveImapHost(account, authParams) {
     if (!this.isZohoAccount(account)) {
       return account.imap_host;
     }
@@ -118,7 +118,7 @@ class ImapMonitor {
 
     for (const host of hostsToTry) {
       console.log(`[IMAP]    🔄 Testing Zoho host: ${host}...`);
-      const result = await this.quickTestHost(host, account, decryptedPassword);
+      const result = await this.quickTestHost(host, account, authParams);
       if (result.success) {
         this.zohoHostCache.set(account.id, host);
         console.log(`[IMAP]    ✅ Zoho host resolved: ${host}`);
@@ -144,7 +144,7 @@ class ImapMonitor {
 
   // Quick IMAP host connectivity test (connect + auth + disconnect)
   // Returns { success: boolean, error?: string }
-  quickTestHost(host, account, decryptedPassword) {
+  quickTestHost(host, account, authParams) {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         console.log(`[IMAP]       ⏱️ Timeout: ${host}`);
@@ -154,7 +154,7 @@ class ImapMonitor {
       try {
         const imap = new Imap({
           user: account.imap_username,
-          password: decryptedPassword,
+          ...authParams,
           host: host,
           port: account.imap_port || 993,
           tls: true,
@@ -289,28 +289,55 @@ class ImapMonitor {
     }
   }
 
+
+  // Helper to fetch credentials or OAuth token for IMAP
+  async getImapAuthParams(account, requestId = '') {
+    if (account.provider_type === 'gmail_oauth' || account.provider_type === 'microsoft_oauth') {
+      try {
+        const service = account.provider_type === 'gmail_oauth'
+          ? require('./gmailService')
+          : require('./microsoftService');
+        const { accessToken } = await service.getValidAccessToken(account.id);
+
+        // Build SASL XOAUTH2 token
+        const xoauth2Token = Buffer.from([
+          `user=${account.email_address}`,
+          `auth=Bearer ${accessToken}`,
+          '',
+          ''
+        ].join('\x01'), 'utf-8').toString('base64');
+
+        console.log(`[IMAP ${requestId}] Using OAuth2 token for ${account.email_address}`);
+        return { xoauth2: xoauth2Token };
+      } catch (err) {
+        console.error(`[IMAP ${requestId}] OAuth token fetch failed: ${err.message}`);
+        throw new Error('Failed to fetch OAuth access token for IMAP');
+      }
+    } else {
+      if (!account.imap_password) {
+        throw new Error('No IMAP password configured');
+      }
+      const decrypted = decrypt(account.imap_password);
+      if (!decrypted) {
+        throw new Error('Password decryption failed');
+      }
+      return { password: decrypted };
+    }
+  }
+
   // Start monitoring a single email account
-  startMonitoring(account) {
+  async startMonitoring(account) {
     // Skip if already monitoring
     if (this.connections.has(account.id)) {
       return;
     }
 
-    // Decrypt password with error handling
-    let decryptedPassword;
+    // Get auth params
+    let authParams;
     try {
-      if (!account.imap_password) {
-        console.error(`[IMAP] ✗ No IMAP password stored for ${account.email_address}`);
-        return;
-      }
-      decryptedPassword = decrypt(account.imap_password);
-      if (!decryptedPassword) {
-        console.error(`[IMAP] ✗ Password decryption returned empty for ${account.email_address}`);
-        return;
-      }
-    } catch (decryptError) {
-      console.error(`[IMAP] ✗ Password decryption failed for ${account.email_address}:`);
-      console.error(`[IMAP]   - Error: ${decryptError.message}`);
+      authParams = await this.getImapAuthParams(account);
+    } catch (err) {
+      console.error(`[IMAP] ✗ Auth setup failed for ${account.email_address}: ${err.message}`);
       return;
     }
 
@@ -319,15 +346,15 @@ class ImapMonitor {
 
     if (isZoho) {
       // Try Zoho hosts with regional fallback
-      this.startMonitoringZoho(account, decryptedPassword);
+      this.startMonitoringZoho(account, authParams);
     } else {
       // Standard single-host connection
-      this.startMonitoringSingleHost(account, account.imap_host, decryptedPassword);
+      this.startMonitoringSingleHost(account, account.imap_host, authParams);
     }
   }
 
   // Start monitoring with Zoho regional host fallback
-  async startMonitoringZoho(account, decryptedPassword) {
+  async startMonitoringZoho(account, authParams) {
     console.log(`[IMAP] 🌐 Zoho account detected for ${account.email_address}`);
 
     // Check cache first
@@ -347,7 +374,7 @@ class ImapMonitor {
     for (const host of hostsToTry) {
       console.log(`[IMAP]    🔄 Trying Zoho host: ${host}...`);
 
-      const success = await this.tryConnectHost(account, host, decryptedPassword);
+      const success = await this.tryConnectHost(account, host, authParams);
 
       if (success) {
         // Cache the working host
@@ -365,7 +392,7 @@ class ImapMonitor {
   }
 
   // Try connecting to a specific host - returns promise that resolves to success boolean
-  tryConnectHost(account, host, decryptedPassword) {
+  tryConnectHost(account, host, authParams) {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         console.log(`[IMAP]       ⏱️ Connection timeout for ${host}`);
@@ -375,7 +402,7 @@ class ImapMonitor {
       try {
         const imap = new Imap({
           user: account.imap_username,
-          password: decryptedPassword,
+          ...authParams,
           host: host,
           port: account.imap_port || 993,
           tls: true,
@@ -416,18 +443,18 @@ class ImapMonitor {
   }
 
   // Start monitoring with a single host (non-Zoho accounts)
-  startMonitoringSingleHost(account, host, decryptedPassword) {
+  startMonitoringSingleHost(account, host, authParams) {
     try {
       console.log(`[IMAP] Attempting connection for ${account.email_address}:`);
       console.log(`[IMAP]   - Host: ${host}`);
       console.log(`[IMAP]   - Port: ${account.imap_port}`);
       console.log(`[IMAP]   - Username: ${account.imap_username}`);
       console.log(`[IMAP]   - TLS: enabled`);
-      console.log(`[IMAP]   - Password: decrypted (${decryptedPassword.length} chars)`);
+      console.log(`[IMAP]   - Auth: ${authParams.xoauth2 ? 'OAuth2' : 'Password'}`);
 
       const imap = new Imap({
         user: account.imap_username,
-        password: decryptedPassword,
+        ...authParams,
         host: host,
         port: account.imap_port,
         tls: true,
@@ -561,32 +588,21 @@ class ImapMonitor {
         console.log(`[${requestId}]   - Username: ${account.imap_username}`);
         console.log(`[${requestId}]   - TLS: ${account.imap_port === 993 ? 'enabled' : 'disabled'}`);
 
-        // Decrypt password with error handling
-        let decryptedPassword;
+        // Get auth params
+        let authParams;
         try {
-          if (!account.imap_password) {
-            console.error(`[${requestId}] ✗ No IMAP password stored for ${account.email_address}`);
-            return reject(new Error('No IMAP password configured'));
-          }
-          decryptedPassword = decrypt(account.imap_password);
-          if (!decryptedPassword) {
-            console.error(`[${requestId}] ✗ Password decryption returned empty`);
-            return reject(new Error('Password decryption failed'));
-          }
-          console.log(`[${requestId}]   - Password: decrypted successfully (${decryptedPassword.length} chars)`);
-        } catch (decryptError) {
-          console.error(`[${requestId}] ✗ Password decryption failed:`);
-          console.error(`[${requestId}]   - Error: ${decryptError.message}`);
-          return reject(new Error(`Password decryption failed: ${decryptError.message}`));
+          authParams = await this.getImapAuthParams(account, requestId);
+        } catch (err) {
+          return reject(err);
         }
 
         // Resolve the correct IMAP host (handles Zoho regional fallback)
-        const imapHost = await this.resolveImapHost(account, decryptedPassword);
+        const imapHost = await this.resolveImapHost(account, authParams);
         console.log(`[${requestId}]   - Resolved host: ${imapHost}`);
 
         const imap = new Imap({
           user: account.imap_username,
-          password: decryptedPassword,
+          ...authParams,
           host: imapHost,
           port: account.imap_port || 993,
           tls: true,
@@ -971,29 +987,19 @@ class ImapMonitor {
         console.log(`[${requestId}]   - Username: ${account.imap_username}`);
 
         // Decrypt password with error handling
-        let decryptedPassword;
+        let authParams;
         try {
-          if (!account.imap_password) {
-            console.error(`[${requestId}] ✗ No IMAP password stored`);
-            return reject(new Error('No IMAP password configured'));
-          }
-          decryptedPassword = decrypt(account.imap_password);
-          if (!decryptedPassword) {
-            console.error(`[${requestId}] ✗ Password decryption returned empty`);
-            return reject(new Error('Password decryption failed'));
-          }
-        } catch (decryptError) {
-          console.error(`[${requestId}] ✗ Password decryption failed: ${decryptError.message}`);
-          return reject(new Error(`Password decryption failed: ${decryptError.message}`));
+          authParams = await this.getImapAuthParams(account, requestId);
+        } catch (err) {
+          return reject(err);
         }
-
         // Resolve the correct IMAP host (handles Zoho regional fallback)
-        const imapHost = await this.resolveImapHost(account, decryptedPassword);
+        const imapHost = await this.resolveImapHost(account, authParams);
         console.log(`[${requestId}]   - Resolved host: ${imapHost}`);
 
         const imap = new Imap({
           user: account.imap_username,
-          password: decryptedPassword,
+          ...authParams,
           host: imapHost,
           port: account.imap_port || 993,
           tls: true,
@@ -1417,19 +1423,19 @@ class ImapMonitor {
       const requestId = `SPAM-RESCUE-${Date.now()}`;
       console.log(`[${requestId}] 🕵️‍♂️ Starting Spam rescue for ${account.email_address} (Tag: ${tag})`);
 
-      let decryptedPassword;
+      let authParams;
       try {
-        decryptedPassword = decrypt(account.imap_password);
-      } catch (e) {
-        return reject(new Error('Password decryption failed'));
+        authParams = await this.getImapAuthParams(account, requestId);
+      } catch (err) {
+        return reject(err);
       }
 
       try {
-        const imapHost = await this.resolveImapHost(account, decryptedPassword);
+        const imapHost = await this.resolveImapHost(account, authParams);
 
         const imap = new Imap({
           user: account.imap_username,
-          password: decryptedPassword,
+          ...authParams,
           host: imapHost,
           port: account.imap_port || 993,
           tls: true,
@@ -1542,19 +1548,19 @@ class ImapMonitor {
       const requestId = `ENGAGE-${Date.now()}`;
       console.log(`[${requestId}] ✨ Applying IMAP engagement to ${messageId} on ${account.email_address}`);
 
-      let decryptedPassword;
+      let authParams;
       try {
-        decryptedPassword = decrypt(account.imap_password);
-      } catch (e) {
-        return reject(new Error('Password decryption failed'));
+        authParams = await this.getImapAuthParams(account, requestId);
+      } catch (err) {
+        return reject(err);
       }
 
       try {
-        const imapHost = await this.resolveImapHost(account, decryptedPassword);
+        const imapHost = await this.resolveImapHost(account, authParams);
 
         const imap = new Imap({
           user: account.imap_username,
-          password: decryptedPassword,
+          ...authParams,
           host: imapHost,
           port: account.imap_port || 993,
           tls: true,
