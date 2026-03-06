@@ -49,9 +49,9 @@ class GmailService {
     const oauth2Client = this.createOAuth2Client();
 
     const scopes = [
-      'https://www.googleapis.com/auth/gmail.send',
-      'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/userinfo.email'
+      'https://mail.google.com/',
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/userinfo.profile'
     ];
 
     const state = Buffer.from(JSON.stringify({ userId, frontendUrl })).toString('base64');

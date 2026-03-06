@@ -48,7 +48,8 @@ class MicrosoftService {
       'offline_access',
       'User.Read',
       'Mail.Send',
-      'Mail.ReadWrite'
+      'Mail.ReadWrite',
+      'IMAP.AccessAsUser.All'
     ].join(' ');
 
     const state = Buffer.from(JSON.stringify({ userId, frontendUrl })).toString('base64');
