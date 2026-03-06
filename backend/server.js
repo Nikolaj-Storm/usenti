@@ -240,7 +240,8 @@ app.post('/api/auth/reset-password', async (req, res) => {
 const oauthRoutes = require('./routes/oauth');
 app.use('/api/oauth', oauthRoutes);
 
-
+const warmupRoutes = require('./routes/warmup');
+app.use('/api/warmup', warmupRoutes);
 
 // ============================================================================
 // EMAIL ACCOUNTS ROUTES
@@ -3100,7 +3101,13 @@ app.use((req, res) => {
 // ============================================================================
 // START SERVER
 // ============================================================================
+// ============================================================================
+// Cron Jobs
+// ============================================================================
+// Initialize the email warmup cron schedule
+require('./utils/warmupCron').initWarmupCron();
 
+// Start Server
 app.listen(PORT, async () => {
   console.log(`
 ╔═══════════════════════════════════════════════════════════╗

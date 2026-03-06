@@ -183,7 +183,18 @@ router.get('/gmail/callback', async (req, res) => {
     console.error(`[OAUTH]    Error message: ${error.message}`);
     console.error(`[OAUTH]    Stack trace:`, error.stack);
 
-    res.redirect(`${frontendUrl}/?error=processing_failed`);
+    // Return detailed HTML error so the user can show us what failed
+    res.status(500).send(`
+      <html>
+        <head><title>OAuth Error</title></head>
+        <body style="font-family: sans-serif; padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #dc2626;">We encountered an error connecting your account</h2>
+          <p>The backend encountered the following error during token exchange. Please take a screenshot of this and show it to the developer.</p>
+          <pre style="background: #111827; color: #f87171; padding: 15px; border-radius: 5px; text-align: left; overflow-x: auto; font-size: 14px;"><code>${error.message}</code></pre>
+          <a href="${frontendUrl}/" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 5px;">Return to Dashboard</a>
+        </body>
+      </html>
+    `);
   }
 });
 
@@ -440,7 +451,18 @@ router.get('/microsoft/callback', async (req, res) => {
     console.error(`[OAUTH]    Error message: ${error.message}`);
     console.error(`[OAUTH]    Stack trace:`, error.stack);
 
-    res.redirect(`${frontendUrl}/?error=processing_failed`);
+    // Return detailed HTML error so the user can show us what failed
+    res.status(500).send(`
+      <html>
+        <head><title>OAuth Error</title></head>
+        <body style="font-family: sans-serif; padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #dc2626;">We encountered an error connecting your Microsoft account</h2>
+          <p>The backend encountered the following error during token exchange. Please take a screenshot of this and show it to the developer.</p>
+          <pre style="background: #111827; color: #f87171; padding: 15px; border-radius: 5px; text-align: left; overflow-x: auto; font-size: 14px;"><code>${error.message}</code></pre>
+          <a href="${frontendUrl}/" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background: #2563eb; color: white; text-decoration: none; border-radius: 5px;">Return to Dashboard</a>
+        </body>
+      </html>
+    `);
   }
 });
 

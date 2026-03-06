@@ -1405,6 +1405,287 @@ class ImapMonitor {
     this.connections.clear();
     this.monitoring = false;
   }
+
+  /**
+   * ADVANCED WARMUP: Search Spam/Junk folders for a specific hidden tag and move found emails to INBOX.
+   * @param {Object} account - The email account object
+   * @param {string} tag - The hidden tag to search for
+   * @returns {Promise<Array>} List of message IDs that were moved
+   */
+  searchSpamAndMoveToInbox(account, tag) {
+    return new Promise(async (resolve, reject) => {
+      const requestId = `SPAM-RESCUE-${Date.now()}`;
+      console.log(`[${requestId}] 🕵️‍♂️ Starting Spam rescue for ${account.email_address} (Tag: ${tag})`);
+
+      let decryptedPassword;
+      try {
+        decryptedPassword = decrypt(account.imap_password);
+      } catch (e) {
+        return reject(new Error('Password decryption failed'));
+      }
+
+      try {
+        const imapHost = await this.resolveImapHost(account, decryptedPassword);
+
+        const imap = new Imap({
+          user: account.imap_username,
+          password: decryptedPassword,
+          host: imapHost,
+          port: account.imap_port || 993,
+          tls: true,
+          tlsOptions: { rejectUnauthorized: false },
+          connTimeout: 10000,
+          authTimeout: 10000
+        });
+
+        imap.once('ready', () => {
+          // First, get all boxes to find the Spam/Junk folder
+          imap.getBoxes((err, boxes) => {
+            if (err) {
+              imap.end();
+              return reject(err);
+            }
+
+            // Try to identify Spam/Junk folders based on common names or attributes
+            let spamBoxName = null;
+
+            // Look for standard attributes first
+            const checkBoxes = (boxTree, prefix = '') => {
+              for (const [name, boxInfo] of Object.entries(boxTree)) {
+                const fullPath = prefix ? prefix + boxInfo.delimiter + name : name;
+
+                // Look for standard \Junk or custom names
+                if (
+                  (boxInfo.attribs && boxInfo.attribs.map(a => a.toLowerCase()).includes('\\junk')) ||
+                  name.toLowerCase() === 'spam' ||
+                  name.toLowerCase() === 'junk' ||
+                  name.toLowerCase() === 'junk email' ||
+                  name.toLowerCase() === 'bulk mail'
+                ) {
+                  spamBoxName = fullPath;
+                  return;
+                }
+
+                if (boxInfo.children) {
+                  checkBoxes(boxInfo.children, fullPath);
+                }
+              }
+            };
+
+            checkBoxes(boxes);
+
+            if (!spamBoxName) {
+              console.log(`[${requestId}] No Spam/Junk folder identified for ${account.email_address}`);
+              imap.end();
+              return resolve([]);
+            }
+
+            console.log(`[${requestId}] Found Spam folder: ${spamBoxName}, opening...`);
+
+            imap.openBox(spamBoxName, false, (err, box) => {
+              if (err) {
+                console.error(`[${requestId}] Failed to open spam box:`, err);
+                imap.end();
+                return resolve([]); // Gracefully exit if we can't open it
+              }
+
+              // Search for the hidden tag in the body
+              imap.search([['TEXT', `[${tag}]`]], (err, results) => {
+                if (err || !results || results.length === 0) {
+                  console.log(`[${requestId}] No warmup emails found in Spam.`);
+                  imap.end();
+                  return resolve([]);
+                }
+
+                console.log(`[${requestId}] Found ${results.length} warmup email(s) in Spam! Rescuing...`);
+
+                // Move to inbox
+                imap.move(results, 'INBOX', (moveErr) => {
+                  if (moveErr) {
+                    console.error(`[${requestId}] Error moving messages from Spam to INBOX:`, moveErr);
+                    imap.end();
+                    return resolve([]); // Might have failed, resolve empty
+                  }
+
+                  console.log(`[${requestId}] ✅ Successfully moved ${results.length} email(s) to INBOX.`);
+
+                  // Optionally, we could fetch their Message-IDs here if needed, 
+                  // but simply resolving the count is fine for logging.
+                  imap.end();
+                  resolve(results);
+                });
+              });
+            });
+          });
+        });
+
+        imap.once('error', (err) => {
+          console.error(`[${requestId}] IMAP Error during spam rescue:`, err);
+          reject(err);
+        });
+
+        imap.connect();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+  /**
+   * ADVANCED WARMUP: Apply IMAP engagement (Read, Important, Archive) to a specific message UID.
+   * @param {Object} account - The email account object
+   * @param {string} messageId - The universal Message-ID of the email to engage with
+   * @param {Object} options - { markRead: boolean, markImportant: boolean, archive: boolean }
+   * @returns {Promise<boolean>} Success status
+   */
+  applyWarmupEngagement(account, messageId, options = { markRead: true, markImportant: true, archive: true }) {
+    return new Promise(async (resolve, reject) => {
+      const requestId = `ENGAGE-${Date.now()}`;
+      console.log(`[${requestId}] ✨ Applying IMAP engagement to ${messageId} on ${account.email_address}`);
+
+      let decryptedPassword;
+      try {
+        decryptedPassword = decrypt(account.imap_password);
+      } catch (e) {
+        return reject(new Error('Password decryption failed'));
+      }
+
+      try {
+        const imapHost = await this.resolveImapHost(account, decryptedPassword);
+
+        const imap = new Imap({
+          user: account.imap_username,
+          password: decryptedPassword,
+          host: imapHost,
+          port: account.imap_port || 993,
+          tls: true,
+          tlsOptions: { rejectUnauthorized: false },
+          connTimeout: 10000,
+          authTimeout: 10000
+        });
+
+        imap.once('ready', () => {
+          imap.openBox('INBOX', false, (err, box) => {
+            if (err) {
+              console.error(`[${requestId}] Failed to open INBOX:`, err);
+              imap.end();
+              return resolve(false);
+            }
+
+            // Search for the specific Message-ID
+            // First try exact match
+            imap.search([['HEADER', 'MESSAGE-ID', messageId]], (searchErr, results) => {
+              if (searchErr || !results || results.length === 0) {
+                // Fallback: Try with brackets
+                const bracketId = messageId.startsWith('<') ? messageId : `<${messageId}>`;
+                imap.search([['HEADER', 'MESSAGE-ID', bracketId]], (searchErr2, results2) => {
+                  if (searchErr2 || !results2 || results2.length === 0) {
+                    console.log(`[${requestId}] Message not found in INBOX for engagement.`);
+                    imap.end();
+                    return resolve(false);
+                  }
+                  processFoundMessages(results2);
+                });
+                return;
+              }
+              processFoundMessages(results);
+            });
+
+            const processFoundMessages = (msgUids) => {
+              const uids = msgUids;
+              let flagsToAdd = [];
+
+              if (options.markRead) flagsToAdd.push('\\Seen');
+              if (options.markImportant) flagsToAdd.push('\\Flagged');
+
+              if (flagsToAdd.length > 0) {
+                imap.addFlags(uids, flagsToAdd, (flagErr) => {
+                  if (flagErr) {
+                    console.error(`[${requestId}] Failed to add flags:`, flagErr);
+                  } else {
+                    console.log(`[${requestId}] Added flags [${flagsToAdd.join(', ')}] to message.`);
+                  }
+
+                  if (options.archive) {
+                    archiveMessages(uids);
+                  } else {
+                    // Done
+                    imap.end();
+                    resolve(true);
+                  }
+                });
+              } else if (options.archive) {
+                archiveMessages(uids);
+              } else {
+                imap.end();
+                resolve(true);
+              }
+            };
+
+            const archiveMessages = (uids) => {
+              // Find a suitable Archive folder. If not found, just leave it in INBOX.
+              imap.getBoxes((boxErr, boxes) => {
+                if (boxErr) {
+                  imap.end();
+                  return resolve(true); // Still resolving true since flags might have succeeded.
+                }
+
+                let archiveBoxName = null;
+                const checkBoxes = (boxTree, prefix = '') => {
+                  for (const [name, boxInfo] of Object.entries(boxTree)) {
+                    const fullPath = prefix ? prefix + boxInfo.delimiter + name : name;
+
+                    // Look for standard \Archive or standard names
+                    if (
+                      (boxInfo.attribs && boxInfo.attribs.map(a => a.toLowerCase()).includes('\\archive')) ||
+                      name.toLowerCase() === 'archive' ||
+                      name.toLowerCase() === 'all mail' // typical Gmail "archive" destination
+                    ) {
+                      archiveBoxName = fullPath;
+                      return; // Prioritize standard Archive
+                    }
+
+                    if (boxInfo.children) {
+                      checkBoxes(boxInfo.children, fullPath);
+                    }
+                  }
+                };
+
+                checkBoxes(boxes);
+
+                if (archiveBoxName) {
+                  console.log(`[${requestId}] Moving message to ${archiveBoxName}...`);
+                  imap.move(uids, archiveBoxName, (moveErr) => {
+                    if (moveErr) {
+                      console.error(`[${requestId}] Failed to move to archive:`, moveErr);
+                    } else {
+                      console.log(`[${requestId}] ✅ Successfully archived message.`);
+                    }
+                    imap.end();
+                    resolve(true);
+                  });
+                } else {
+                  console.log(`[${requestId}] No explicit Archive folder found, leaving in INBOX.`);
+                  imap.end();
+                  resolve(true);
+                }
+              });
+            };
+
+          });
+        });
+
+        imap.once('error', (err) => {
+          console.error(`[${requestId}] IMAP Error during engagement:`, err);
+          reject(err);
+        });
+
+        imap.connect();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
 }
 
 module.exports = new ImapMonitor();
+

@@ -183,7 +183,9 @@ async function sendEmail({
   trackOpens = false,
   trackClicks = false,
   attachments = [],
-  planTier = 'free'
+  planTier = 'free',
+  inReplyTo = null,
+  references = null
 }) {
   console.log(`[EMAIL-SERVICE] 📧 Preparing to send email...`);
   console.log(`[EMAIL-SERVICE]    Account ID: ${emailAccountId}`);
@@ -285,7 +287,9 @@ async function sendEmail({
       subject,
       body: finalBody,
       attachments,
-      unsubscribeHeaders
+      unsubscribeHeaders,
+      inReplyTo,
+      references
     });
   }
 
@@ -329,7 +333,7 @@ async function sendEmail({
  * @param {Object} params - SMTP send parameters
  * @returns {Object} Result with messageId
  */
-async function sendViaSMTP({ account, to, subject, body, attachments = [], unsubscribeHeaders = null }) {
+async function sendViaSMTP({ account, to, subject, body, attachments = [], unsubscribeHeaders = null, inReplyTo = null, references = null }) {
   // Parse port as integer (stored as string in database)
   const smtpPort = parseInt(account.smtp_port, 10) || 587;
   const isSecure = smtpPort === 465;
@@ -398,6 +402,14 @@ async function sendViaSMTP({ account, to, subject, body, attachments = [], unsub
     subject: subject,
     html: body
   };
+
+  if (inReplyTo) {
+    mailOptions.inReplyTo = inReplyTo;
+  }
+
+  if (references) {
+    mailOptions.references = references;
+  }
 
   // Add attachments if provided
   if (attachments && attachments.length > 0) {
