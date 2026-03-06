@@ -157,7 +157,7 @@ router.get('/gmail/callback', async (req, res) => {
           oauth_token_expires_at: new Date(tokens.expiry_date).toISOString(),
           oauth_scope: tokens.scope,
           daily_send_limit: 500,
-          status: 'active',
+          is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -425,7 +425,7 @@ router.get('/microsoft/callback', async (req, res) => {
           oauth_token_expires_at: expiresAt,
           oauth_scope: tokens.scope,
           daily_send_limit: 500,
-          status: 'active',
+          is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
