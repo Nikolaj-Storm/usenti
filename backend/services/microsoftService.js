@@ -249,7 +249,7 @@ class MicrosoftService {
       // Get account details
       const { data: account } = await supabase
         .from('email_accounts')
-        .select('email_address, from_name')
+        .select('email_address, sender_name')
         .eq('id', emailAccountId)
         .single();
 

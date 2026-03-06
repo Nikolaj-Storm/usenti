@@ -239,12 +239,12 @@ class GmailService {
       // Get account details for "from" address
       const { data: account } = await supabase
         .from('email_accounts')
-        .select('email_address, from_name')
+        .select('email_address, sender_name')
         .eq('id', emailAccountId)
         .single();
 
-      const fromAddress = account.from_name
-        ? `${account.from_name} <${account.email_address}>`
+      const fromAddress = account.sender_name
+        ? `${account.sender_name} <${account.email_address}>`
         : account.email_address;
 
       // Create MIME message
