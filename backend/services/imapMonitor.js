@@ -327,6 +327,17 @@ class ImapMonitor {
 
   // Start monitoring a single email account
   async startMonitoring(account) {
+    // Fallback for OAuth accounts missing explicit IMAP settings
+    if (account.provider_type === 'gmail_oauth') {
+      account.imap_host = account.imap_host || 'imap.gmail.com';
+      account.imap_username = account.imap_username || account.email_address;
+      account.imap_port = account.imap_port || 993;
+    } else if (account.provider_type === 'microsoft_oauth') {
+      account.imap_host = account.imap_host || 'outlook.office365.com';
+      account.imap_username = account.imap_username || account.email_address;
+      account.imap_port = account.imap_port || 993;
+    }
+
     // Skip if already monitoring
     if (this.connections.has(account.id)) {
       return;
@@ -577,9 +588,19 @@ class ImapMonitor {
           .single();
 
         if (accountError || !account) {
-          console.error(`[${requestId}] Account not found:`, accountError?.message);
           return reject(new Error('Email account not found'));
         }
+    // Fallback for OAuth accounts missing explicit IMAP settings
+    if (account.provider_type === 'gmail_oauth') {
+      account.imap_host = account.imap_host || 'imap.gmail.com';
+      account.imap_username = account.imap_username || account.email_address;
+      account.imap_port = account.imap_port || 993;
+    } else if (account.provider_type === 'microsoft_oauth') {
+      account.imap_host = account.imap_host || 'outlook.office365.com';
+      account.imap_username = account.imap_username || account.email_address;
+      account.imap_port = account.imap_port || 993;
+    }
+
 
         // Detailed connection logging
         console.log(`[${requestId}] Connection details for ${account.email_address}:`);
@@ -980,6 +1001,17 @@ class ImapMonitor {
         if (accountError || !account) {
           return reject(new Error('Email account not found'));
         }
+    // Fallback for OAuth accounts missing explicit IMAP settings
+    if (account.provider_type === 'gmail_oauth') {
+      account.imap_host = account.imap_host || 'imap.gmail.com';
+      account.imap_username = account.imap_username || account.email_address;
+      account.imap_port = account.imap_port || 993;
+    } else if (account.provider_type === 'microsoft_oauth') {
+      account.imap_host = account.imap_host || 'outlook.office365.com';
+      account.imap_username = account.imap_username || account.email_address;
+      account.imap_port = account.imap_port || 993;
+    }
+
 
         // Detailed connection logging
         console.log(`[${requestId}] Connection details for ${account.email_address}:`);
@@ -1419,6 +1451,17 @@ class ImapMonitor {
    * @returns {Promise<Array>} List of message IDs that were moved
    */
   searchSpamAndMoveToInbox(account, tag) {
+    // Fallback for OAuth accounts missing explicit IMAP settings
+    if (account.provider_type === 'gmail_oauth') {
+      account.imap_host = account.imap_host || 'imap.gmail.com';
+      account.imap_username = account.imap_username || account.email_address;
+      account.imap_port = account.imap_port || 993;
+    } else if (account.provider_type === 'microsoft_oauth') {
+      account.imap_host = account.imap_host || 'outlook.office365.com';
+      account.imap_username = account.imap_username || account.email_address;
+      account.imap_port = account.imap_port || 993;
+    }
+
     return new Promise(async (resolve, reject) => {
       const requestId = `SPAM-RESCUE-${Date.now()}`;
       console.log(`[${requestId}] 🕵️‍♂️ Starting Spam rescue for ${account.email_address} (Tag: ${tag})`);
@@ -1544,6 +1587,17 @@ class ImapMonitor {
    * @returns {Promise<boolean>} Success status
    */
   applyWarmupEngagement(account, messageId, options = { markRead: true, markImportant: true, archive: true }) {
+    // Fallback for OAuth accounts missing explicit IMAP settings
+    if (account.provider_type === 'gmail_oauth') {
+      account.imap_host = account.imap_host || 'imap.gmail.com';
+      account.imap_username = account.imap_username || account.email_address;
+      account.imap_port = account.imap_port || 993;
+    } else if (account.provider_type === 'microsoft_oauth') {
+      account.imap_host = account.imap_host || 'outlook.office365.com';
+      account.imap_username = account.imap_username || account.email_address;
+      account.imap_port = account.imap_port || 993;
+    }
+
     return new Promise(async (resolve, reject) => {
       const requestId = `ENGAGE-${Date.now()}`;
       console.log(`[${requestId}] ✨ Applying IMAP engagement to ${messageId} on ${account.email_address}`);
