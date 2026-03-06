@@ -68,16 +68,16 @@ CREATE TABLE IF NOT EXISTS email_accounts (
   provider_type TEXT DEFAULT 'smtp_direct' CHECK (provider_type IN ('gmail_oauth', 'microsoft_oauth', 'smtp_relay', 'smtp_direct')),
 
   -- IMAP Configuration
-  imap_host TEXT NOT NULL,
-  imap_port INTEGER NOT NULL DEFAULT 993,
-  imap_username TEXT NOT NULL,
-  imap_password TEXT NOT NULL, -- Encrypted with AES-256-CBC
+  imap_host TEXT,
+  imap_port INTEGER DEFAULT 993,
+  imap_username TEXT,
+  imap_password TEXT, -- Encrypted with AES-256-CBC
 
   -- SMTP Configuration
-  smtp_host TEXT NOT NULL,
-  smtp_port INTEGER NOT NULL DEFAULT 587,
-  smtp_username TEXT NOT NULL,
-  smtp_password TEXT NOT NULL, -- Encrypted with AES-256-CBC
+  smtp_host TEXT,
+  smtp_port INTEGER DEFAULT 587,
+  smtp_username TEXT,
+  smtp_password TEXT, -- Encrypted with AES-256-CBC
 
   -- OAuth Tokens (for Gmail/Microsoft OAuth)
   oauth_refresh_token TEXT,

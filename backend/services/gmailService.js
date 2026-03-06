@@ -70,6 +70,18 @@ class GmailService {
    * @returns {Object} Tokens object with access_token, refresh_token, etc.
    */
   async getTokensFromCode(code) {
+    console.log(`[GMAIL] 🔍 Debugging Credentials for Token Exchange:`);
+    console.log(`[GMAIL]    Client ID length: ${this.clientId ? this.clientId.length : 'MISSING'}`);
+    console.log(`[GMAIL]    Client Secret length: ${this.clientSecret ? this.clientSecret.length : 'MISSING'}`);
+    console.log(`[GMAIL]    Redirect URI: ${this.redirectUri}`);
+
+    if (this.clientId) {
+      console.log(`[GMAIL]    Client ID starts with: ${this.clientId.substring(0, 10)}... ends with: ...${this.clientId.substring(this.clientId.length - 5)}`);
+    }
+    if (this.clientSecret) {
+      console.log(`[GMAIL]    Client Secret starts with: ${this.clientSecret.substring(0, 5)}... ends with: ...${this.clientSecret.substring(this.clientSecret.length - 4)}`);
+    }
+
     const oauth2Client = this.createOAuth2Client();
     const { tokens } = await oauth2Client.getToken(code);
     return tokens;
