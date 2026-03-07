@@ -135,10 +135,16 @@ const Settings = () => {
             setError(null);
             await api.deleteAccount();
 
-            // Clear local storage and redirect to landing page
+            // Clear ALL auth state: localStorage, Supabase client session, then redirect
             localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
             localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
-            window.location.href = '/';
+
+            // Sign out the Supabase client so it doesn't restore the session on reload
+            if (window.usentiSupabase) {
+                try { await window.usentiSupabase.auth.signOut(); } catch (_) {}
+            }
+
+            window.location.href = window.location.pathname;
         } catch (err) {
             setError(err.message || 'Failed to delete account. Please try again or contact support.');
             setShowDeleteModal(false);
