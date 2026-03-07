@@ -256,24 +256,33 @@ app.delete('/api/user/account', authenticateUser, async (req, res) => {
       }
     }
 
-    // 2. Manually delete user data from all tables before removing auth user
-    //    This ensures cleanup even if CASCADE constraints fail or are missing
-    const tables = ['inbox_messages', 'email_warmup_logs', 'email_warmup_settings', 'campaign_contacts', 'email_events', 'campaign_steps', 'campaign_email_accounts', 'campaigns', 'contacts', 'contact_lists', 'email_accounts', 'subscriptions', 'user_profiles'];
-    for (const table of tables) {
-      const { error: delErr } = await supabaseAdmin.from(table).delete().eq('user_id', userId);
-      if (delErr) {
-        console.warn(`⚠️ [API] Could not clean ${table}: ${delErr.message}`);
+    // 2. Stop IMAP monitoring for this user's email accounts (releases DB connections)
+    const { data: emailAccounts } = await supabaseAdmin
+      .from('email_accounts')
+      .select('id')
+      .eq('user_id', userId);
+
+    if (emailAccounts && emailAccounts.length > 0) {
+      for (const account of emailAccounts) {
+        try { imapMonitor.stopMonitoring(account.id); } catch (_) {}
       }
+      // Delete child tables that reference email_accounts (avoids cascade timeout from IMAP row locks)
+      const accountIds = emailAccounts.map(a => a.id);
+      await supabaseAdmin.from('inbox_messages').delete().in('email_account_id', accountIds);
+      await supabaseAdmin.from('email_warmup_logs').delete().in('sender_account_id', accountIds);
+      await supabaseAdmin.from('email_warmup_logs').delete().in('recipient_account_id', accountIds);
+      await supabaseAdmin.from('email_warmup_settings').delete().in('email_account_id', accountIds);
     }
 
-    // 3. Invalidate all user sessions before deletion
-    await supabaseAdmin.auth.admin.signOut(userId, 'global').catch(() => {});
+    // 3. Delete user-owned data in dependency order (children before parents)
+    await supabaseAdmin.from('campaigns').delete().eq('user_id', userId);
+    await supabaseAdmin.from('contact_lists').delete().eq('user_id', userId);
+    await supabaseAdmin.from('email_accounts').delete().eq('user_id', userId);
+    await supabaseAdmin.from('subscriptions').delete().eq('user_id', userId);
+    await supabaseAdmin.from('user_profiles').delete().eq('id', userId);
 
-    // 4. Hard-delete user from Supabase Auth
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(
-      userId,
-      false // shouldSoftDelete = false → hard delete
-    );
+    // 4. Hard-delete user from Supabase Auth (should be fast now that all data is gone)
+    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (deleteError) {
       console.error('❌ [API] deleteUser failed:', deleteError);

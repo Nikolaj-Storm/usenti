@@ -130,22 +130,29 @@ const Settings = () => {
             setLoading(true);
             setError(null);
             await api.deleteAccount();
-
-            // Clear ALL auth state: localStorage, Supabase client session, then redirect
-            localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
-            localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
-
-            // Sign out the Supabase client so it doesn't restore the session on reload
-            if (window.usentiSupabase) {
-                try { await window.usentiSupabase.auth.signOut(); } catch (_) {}
-            }
-
-            window.location.href = window.location.pathname;
         } catch (err) {
+            console.error('❌ Delete account failed:', err);
             setError(err.message || 'Failed to delete account. Please try again or contact support.');
             setShowDeleteModal(false);
             setLoading(false);
+            return;
         }
+
+        // Account deleted — clear ALL auth state and redirect to landing page
+        localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+        localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
+
+        // Sign out the Supabase client so it doesn't restore the session on reload
+        if (window.usentiSupabase) {
+            try { await window.usentiSupabase.auth.signOut(); } catch (_) {}
+        }
+
+        // Clear any Supabase-persisted session keys from localStorage directly
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('sb-')) localStorage.removeItem(key);
+        });
+
+        window.location.href = window.location.pathname;
     };
 
     // --- Usage Progress Bar ---
