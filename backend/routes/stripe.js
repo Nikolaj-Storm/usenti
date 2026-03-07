@@ -33,8 +33,13 @@ router.get('/status', authenticateUser, async (req, res) => {
             cycle = 'month';
         }
 
+        // Determine if this is a trial (invite code) subscription — no Stripe customer
+        const isTrial = sub.plan_tier === 'rebel_plan' && !sub.stripe_customer_id && !!sub.plan_expires_at;
+
         res.json({
             planTier: sub.plan_tier,
+            isTrial,
+            trialExpiresAt: isTrial ? sub.plan_expires_at : null,
             usage: {
                 sent: sub.emails_sent_this_cycle || 0,
                 limit,
