@@ -239,7 +239,7 @@ app.delete('/api/user/account', authenticateUser, async (req, res) => {
     const userId = req.user.id;
     console.log(`🗑️ [API] Deleting account for user: ${userId}`);
 
-    // Check if the user has an active Stripe subscription to cancel
+    // 1. Cancel Stripe subscription if one exists
     const { data: subscription } = await supabaseAdmin
       .from('subscriptions')
       .select('stripe_subscription_id')
@@ -248,21 +248,39 @@ app.delete('/api/user/account', authenticateUser, async (req, res) => {
 
     if (subscription && subscription.stripe_subscription_id) {
       console.log(`💳 [API] Cancelling Stripe subscription: ${subscription.stripe_subscription_id}`);
-      const stripe = require('./config/stripe');
       try {
+        const stripe = require('./config/stripe');
         await stripe.subscriptions.cancel(subscription.stripe_subscription_id);
       } catch (stripeErr) {
         console.error('⚠️ [API] Failed to cancel Stripe subscription (may already be cancelled):', stripeErr.message);
       }
     }
 
-    // Delete user from Supabase Auth (this cascades to all other tables due to FKs)
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    // 2. Manually delete user data from all tables before removing auth user
+    //    This ensures cleanup even if CASCADE constraints fail or are missing
+    const tables = ['inbox_messages', 'email_warmup_logs', 'email_warmup_settings', 'campaign_contacts', 'email_events', 'campaign_steps', 'campaign_email_accounts', 'campaigns', 'contacts', 'contact_lists', 'email_accounts', 'subscriptions', 'user_profiles'];
+    for (const table of tables) {
+      const { error: delErr } = await supabaseAdmin.from(table).delete().eq('user_id', userId);
+      if (delErr) {
+        console.warn(`⚠️ [API] Could not clean ${table}: ${delErr.message}`);
+      }
+    }
+
+    // 3. Invalidate all user sessions before deletion
+    await supabaseAdmin.auth.admin.signOut(userId, 'global').catch(() => {});
+
+    // 4. Hard-delete user from Supabase Auth
+    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(
+      userId,
+      false // shouldSoftDelete = false → hard delete
+    );
 
     if (deleteError) {
+      console.error('❌ [API] deleteUser failed:', deleteError);
       throw deleteError;
     }
 
+    console.log(`✅ [API] Account ${userId} deleted successfully`);
     res.json({ success: true, message: 'Account deleted successfully' });
   } catch (error) {
     console.error('❌ [API] Error deleting account:', error);
