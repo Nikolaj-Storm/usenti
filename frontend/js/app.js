@@ -39,7 +39,36 @@ const App = () => {
       }
     }
 
-    // Case 2: OAuth callback (Google sign-in) — hash contains access_token
+    // Case 2a: PKCE OAuth callback — Supabase redirects with ?code= in query params
+    const urlParams = new URLSearchParams(window.location.search);
+    const oauthCode = urlParams.get('code');
+    if (oauthCode) {
+      console.log('🔑 [App] PKCE OAuth code detected. Exchanging for session...');
+      (async () => {
+        try {
+          await api.initSupabase();
+          const { data, error } = await window.usentiSupabase.auth.exchangeCodeForSession(oauthCode);
+          if (data?.session) {
+            console.log('✅ [App] PKCE OAuth session established!');
+            localStorage.setItem(APP_CONFIG.STORAGE_KEYS.TOKEN, data.session.access_token);
+            localStorage.setItem(APP_CONFIG.STORAGE_KEYS.USER, JSON.stringify(data.session.user));
+            setUser(data.session.user);
+            setAuthState('authenticated');
+            setPrivateView('dashboard');
+            window.history.replaceState(null, '', window.location.pathname);
+            return;
+          } else {
+            console.warn('⚠️ [App] PKCE code exchange returned no session:', error);
+          }
+        } catch (e) {
+          console.warn('⚠️ [App] Error exchanging PKCE code:', e);
+        }
+        verifySession();
+      })();
+      return;
+    }
+
+    // Case 2b: Implicit OAuth callback (legacy) — hash contains access_token
     if (hash && hash.includes('access_token')) {
       console.log('🔑 [App] OAuth callback detected in URL hash. Waiting for Supabase to process...');
       (async () => {
