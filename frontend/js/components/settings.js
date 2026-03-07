@@ -13,6 +13,8 @@ const Settings = () => {
     const [deleteConfirmationText, setDeleteConfirmationText] = React.useState('');
     const [inviteCode, setInviteCode] = React.useState('');
     const [redeeming, setRedeeming] = React.useState(false);
+    const [isTrial, setIsTrial] = React.useState(false);
+    const [trialExpiresAt, setTrialExpiresAt] = React.useState(null);
 
     // Fetch subscription on mount + handle Stripe redirect params
     React.useEffect(() => {
@@ -35,6 +37,8 @@ const Settings = () => {
         try {
             const data = await api.get('/api/stripe/status');
             setCurrentTier(data.planTier || 'free');
+            setIsTrial(data.isTrial || false);
+            setTrialExpiresAt(data.trialExpiresAt || null);
             setUsage(data.usage || { sent: 0, limit: 200, cycle: 'week' });
         } catch (err) {
             console.error('Failed to fetch subscription:', err);
@@ -212,7 +216,7 @@ const Settings = () => {
                                     : 'bg-white/10 text-white/70 border border-white/10'
                                     }`
                             },
-                                currentTier === 'rebel_plan' ? '⚡ Rebel Plan' : 'Free Plan'
+                                currentTier === 'rebel_plan' ? (isTrial ? '⚡ Rebel Plan (Trial)' : '⚡ Rebel Plan') : 'Free Plan'
                             )
                         )
                     )
@@ -263,7 +267,9 @@ const Settings = () => {
                             h('div', null,
                                 h('h3', { className: 'text-lg font-medium text-white' }, 'Current Plan'),
                                 h('p', { className: 'text-cream-100 font-bold capitalize' },
-                                    currentTier === 'rebel_plan' ? 'Rebel Plan — $45/mo' : 'Free Plan — $0/mo'
+                                    currentTier === 'rebel_plan'
+                                        ? (isTrial ? 'Rebel Plan — Free Trial' : 'Rebel Plan — $45/mo')
+                                        : 'Free Plan — $0/mo'
                                 )
                             )
                         ),
@@ -289,7 +295,15 @@ const Settings = () => {
                     ),
                     // Action buttons (right side)
                     h('div', { className: 'flex flex-col gap-3 lg:min-w-[200px]' },
-                        currentTier !== 'free' && h('button', {
+                        // Trial users: show expiry info instead of Stripe buttons
+                        isTrial && trialExpiresAt && h('div', { className: 'px-5 py-3 bg-cream-100/10 border border-cream-100/20 rounded-xl text-sm' },
+                            h('p', { className: 'text-cream-100 font-medium' }, 'Free Trial'),
+                            h('p', { className: 'text-white/60 mt-1' },
+                                'Expires ' + new Date(trialExpiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                            )
+                        ),
+                        // Only show Stripe buttons for paying (non-trial) subscribers
+                        currentTier !== 'free' && !isTrial && h('button', {
                             onClick: handleCustomerPortal,
                             disabled: loading,
                             className: 'px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-all text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50'
@@ -297,7 +311,7 @@ const Settings = () => {
                             h(Icons.CreditCard, { size: 16 }),
                             'Update Payment Method'
                         ),
-                        currentTier !== 'free' && h('button', {
+                        currentTier !== 'free' && !isTrial && h('button', {
                             onClick: () => setShowCancelModal(true),
                             disabled: loading,
                             className: 'px-5 py-2.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-all text-sm font-medium flex items-center justify-center gap-2 border border-red-500/20 hover:border-red-500/40 disabled:opacity-50'
@@ -381,7 +395,8 @@ const Settings = () => {
                             )
                         ),
                         currentTier === 'rebel_plan'
-                            ? h('div', { className: 'w-full py-3 px-4 rounded-xl font-medium text-center bg-white/5 text-white/40' }, 'Active')
+                            ? h('div', { className: 'w-full py-3 px-4 rounded-xl font-medium text-center bg-white/5 text-white/40' },
+                                isTrial ? 'Active (Free Trial)' : 'Active')
                             : h('button', {
                                 onClick: handleUpgrade,
                                 disabled: loading,
@@ -394,8 +409,8 @@ const Settings = () => {
                 )
             ),
 
-            // --- Billing Info Section (for paid users) ---
-            currentTier !== 'free' && h('div', { className: 'glass-panel p-6 rounded-2xl' },
+            // --- Billing Info Section (for paid, non-trial users) ---
+            currentTier !== 'free' && !isTrial && h('div', { className: 'glass-panel p-6 rounded-2xl' },
                 h('div', { className: 'flex items-center justify-between' },
                     h('div', null,
                         h('h3', { className: 'text-lg font-medium text-white' }, 'Billing Information'),
