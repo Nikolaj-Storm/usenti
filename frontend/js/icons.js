@@ -435,6 +435,14 @@ const Icons = {
     ]
   }),
 
+  AlertTriangle: (p) => Icon({
+    ...p, path: [
+      h('path', { key: 1, d: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" }),
+      h('line', { key: 2, x1: "12", x2: "12", y1: "9", y2: "13" }),
+      h('line', { key: 3, x1: "12", x2: "12.01", y1: "17", y2: "17" })
+    ]
+  }),
+
   ExternalLink: (p) => Icon({
     ...p, path: [
       h('path', { key: 1, d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }),

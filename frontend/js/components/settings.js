@@ -1,7 +1,7 @@
 // frontend/js/components/settings.js
 
 const Settings = () => {
-    const [activeTab, setActiveTab] = React.useState('billing');
+    const [activeTab, setActiveTab] = React.useState('account');
     const [loading, setLoading] = React.useState(false);
     const [currentTier, setCurrentTier] = React.useState('loading');
     const [usage, setUsage] = React.useState(null);
