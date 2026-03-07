@@ -43,7 +43,7 @@ const LandingPage = ({ onNavigate }) => {
         h('div', { className: "flex items-center gap-3" },
           h('img', { src: 'visuals/logo_white.png', alt: 'Usenti Logo', style: { height: '28px', width: 'auto' } }),
           h('h1', { className: "font-serif text-2xl tracking-tight font-medium" },
-            'USENTI'
+            'Usenti'
           )
         ),
         h('div', { className: "flex items-center gap-6" },

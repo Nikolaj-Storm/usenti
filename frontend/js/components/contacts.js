@@ -273,6 +273,7 @@ const Contacts = () => {
                 h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Name'),
                 h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Email'),
                 h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Company'),
+                h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Custom 1'),
                 h('th', { className: "px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Status'),
                 h('th', { className: "px-6 py-3 text-right text-xs font-medium text-white/60 uppercase tracking-wider" }, 'Actions')
               )
@@ -296,6 +297,7 @@ const Contacts = () => {
                   ),
                   h('td', { className: "px-6 py-4 whitespace-nowrap text-sm text-white/70" }, contact.email),
                   h('td', { className: "px-6 py-4 whitespace-nowrap text-sm text-white/70" }, contact.company || '-'),
+                  h('td', { className: "px-6 py-4 whitespace-nowrap text-sm text-white/70" }, contact.custom_fields?.custom_1 || '-'),
                   h('td', { className: "px-6 py-4 whitespace-nowrap" },
                     h('span', {
                       className: `px-2 py-1 text-xs font-medium rounded-full ${contact.status === 'active'
@@ -492,12 +494,26 @@ const EditContactModal = ({ contact, onClose, onSave }) => {
     last_name: contact.last_name || '',
     email: contact.email || '',
     company: contact.company || '',
+    custom_1: contact.custom_fields?.custom_1 || '',
+    custom_2: contact.custom_fields?.custom_2 || '',
     status: contact.status || 'active'
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave(contact.id, formData);
+    const savePayload = {
+      first_name: formData.first_name,
+      last_name: formData.last_name,
+      email: formData.email,
+      company: formData.company,
+      status: formData.status,
+      custom_fields: {
+        ...(contact.custom_fields || {}),
+        custom_1: formData.custom_1,
+        custom_2: formData.custom_2
+      }
+    };
+    onSave(contact.id, savePayload);
   };
 
   return h('div', {
@@ -553,6 +569,28 @@ const EditContactModal = ({ contact, onClose, onSave }) => {
             placeholder: "Acme Corp"
           })
         ),
+        h('div', { className: "grid grid-cols-2 gap-4" },
+          h('div', null,
+            h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'Custom 1'),
+            h('input', {
+              type: "text",
+              value: formData.custom_1,
+              onChange: (e) => setFormData({ ...formData, custom_1: e.target.value }),
+              className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
+              placeholder: "Value..."
+            })
+          ),
+          h('div', null,
+            h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'Custom 2'),
+            h('input', {
+              type: "text",
+              value: formData.custom_2,
+              onChange: (e) => setFormData({ ...formData, custom_2: e.target.value }),
+              className: "w-full px-4 py-3 glass-input rounded-xl transition-all",
+              placeholder: "Value..."
+            })
+          )
+        ),
         h('div', null,
           h('label', { className: "block text-sm font-medium text-white/70 mb-2" }, 'Status'),
           h('select', {
@@ -592,8 +630,8 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
     last_name: '',
     email: '',
     company: '',
-    title: '',
-    phone: ''
+    custom_1: '',
+    custom_2: ''
   });
   const [dragActive, setDragActive] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
@@ -631,8 +669,8 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
     setFile(file);
     const fileExtension = file.name.split('.').pop().toLowerCase();
 
-    if (!['csv', 'xlsx', 'xls'].includes(fileExtension)) {
-      alert('Please upload a CSV or Excel file');
+    if (!['csv', 'xlsx', 'xls', 'numbers'].includes(fileExtension)) {
+      alert('Please upload a CSV, Excel, or Numbers file');
       return;
     }
 
@@ -675,6 +713,12 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
 
         const company = findHeader(['company', 'organization', 'business']);
         if (company) autoMapping.company = company;
+
+        const custom1 = findHeader(['custom 1', 'custom_1']);
+        if (custom1) autoMapping.custom_1 = custom1;
+
+        const custom2 = findHeader(['custom 2', 'custom_2']);
+        if (custom2) autoMapping.custom_2 = custom2;
 
         setMapping({ ...mapping, ...autoMapping });
         setStep('mapping');
@@ -755,11 +799,11 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
         },
           h(Icons.Upload, { size: 48, className: "text-white/30 mx-auto mb-4" }),
           h('h4', { className: "font-medium text-white mb-2" }, 'Drop your file here'),
-          h('p', { className: "text-sm text-white/60 mb-4" }, 'Supports CSV, XLS, and XLSX files'),
+          h('p', { className: "text-sm text-white/60 mb-4" }, 'Supports CSV, XLS, XLSX, and Numbers files'),
           h('input', {
             ref: fileInputRef,
             type: "file",
-            accept: ".csv,.xlsx,.xls",
+            accept: ".csv,.xlsx,.xls,.numbers",
             onChange: handleFileInput,
             className: "hidden"
           }),
@@ -776,7 +820,7 @@ const ImportModal = ({ listId, onClose, onComplete }) => {
           h('ul', { className: "text-sm text-white/70 space-y-1 ml-6 list-disc" },
             h('li', null, 'Must include an email column'),
             h('li', null, 'First row should contain column headers'),
-            h('li', null, 'Supported formats: CSV, Excel (.xlsx, .xls)')
+            h('li', null, 'Supported formats: CSV, Excel (.xlsx, .xls), Apple Numbers (.numbers)')
           )
         )
       ),

@@ -222,7 +222,7 @@ const Auth = ({ view, onAuthenticate, onNavigate, recoveryToken }) => {
       },
         h('img', { src: 'visuals/logo_white.png', alt: 'Usenti Logo', style: { height: '28px', width: 'auto' } }),
         h('h1', { className: "font-serif text-2xl tracking-tight font-medium text-white" },
-          'USENTI'
+          'Usenti'
         )
       ),
       h('div', { className: "relative z-10 max-w-lg" },

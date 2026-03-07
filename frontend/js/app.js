@@ -201,7 +201,7 @@ const App = () => {
       h('div', { className: "text-center space-y-4" },
         h('div', { className: "flex items-center justify-center gap-3 animate-pulse" },
           h('img', { src: 'visuals/logo_white.png', alt: 'Usenti Logo', style: { height: '32px', width: 'auto' } }),
-          h('h1', { className: "font-serif text-3xl tracking-tight text-white" }, 'USENTI')
+          h('h1', { className: "font-serif text-3xl tracking-tight text-white" }, 'Usenti')
         ),
         h('p', { className: "text-white/60 font-medium" }, 'Connecting to Usenti...')
       )
@@ -250,7 +250,7 @@ const App = () => {
         !isSidebarCollapsed && h('div', { className: "flex items-center gap-3 overflow-hidden ml-2" },
           h('img', { src: 'visuals/logo_white.png', alt: 'Usenti Logo', style: { height: '28px', width: 'auto', flexShrink: 0 } }),
           h('h1', { className: "font-serif text-2xl tracking-tight text-white whitespace-nowrap" },
-            'USENTI'
+            'Usenti'
           )
         ),
         isSidebarCollapsed && h('img', { src: 'visuals/logo_white.png', alt: 'Usenti Logo', style: { height: '24px', width: 'auto', flexShrink: 0 } }),

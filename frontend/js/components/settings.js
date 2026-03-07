@@ -9,6 +9,8 @@ const Settings = () => {
     const [successMsg, setSuccessMsg] = React.useState(null);
     const [showCancelModal, setShowCancelModal] = React.useState(false);
     const [showDowngradeModal, setShowDowngradeModal] = React.useState(false);
+    const [showDeleteModal, setShowDeleteModal] = React.useState(false);
+    const [deleteConfirmationText, setDeleteConfirmationText] = React.useState('');
     const [inviteCode, setInviteCode] = React.useState('');
     const [redeeming, setRedeeming] = React.useState(false);
 
@@ -123,6 +125,23 @@ const Settings = () => {
         }
     };
 
+    const handleDeleteAccount = async () => {
+        try {
+            setLoading(true);
+            setError(null);
+            await api.deleteAccount();
+
+            // Clear local storage and redirect to landing page
+            localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
+            localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
+            window.location.href = '/';
+        } catch (err) {
+            setError(err.message || 'Failed to delete account. Please try again or contact support.');
+            setShowDeleteModal(false);
+            setLoading(false);
+        }
+    };
+
     // --- Usage Progress Bar ---
     const usagePercent = usage ? Math.min(100, Math.round((usage.sent / usage.limit) * 100)) : 0;
     const usageColor = usagePercent > 90 ? 'bg-red-500' : usagePercent > 70 ? 'bg-amber-500' : 'bg-emerald-500';
@@ -197,6 +216,24 @@ const Settings = () => {
                             )
                         )
                     )
+                )
+            ),
+
+            // Delete Account Section
+            h('div', { className: 'glass-panel p-8 rounded-2xl max-w-2xl border border-red-500/20 space-y-4' },
+                h('div', null,
+                    h('h3', { className: 'text-lg font-medium text-red-400' }, 'Danger Zone'),
+                    h('p', { className: 'text-white/50 text-sm mt-1' }, 'Permanently delete your account and all associated data. This action cannot be undone.')
+                ),
+                h('button', {
+                    onClick: () => {
+                        setDeleteConfirmationText('');
+                        setShowDeleteModal(true);
+                    },
+                    className: 'px-5 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all text-sm font-medium border border-red-500/20 hover:border-red-500/50 flex items-center gap-2'
+                },
+                    h(Icons.Trash2, { size: 16 }),
+                    'Delete Account'
                 )
             )
         );
@@ -474,6 +511,59 @@ const Settings = () => {
             )
         );
 
+    const DeleteAccountModal = () => {
+        const requiredText = "i understand that all my data will be deleted forever";
+        const isValid = deleteConfirmationText.toLowerCase() === requiredText;
+
+        return h('div', { className: 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in text-left' },
+            h('div', { className: 'glass-panel p-8 rounded-2xl max-w-md w-full mx-4 space-y-6 shadow-2xl' },
+                h('div', { className: 'flex items-center gap-3' },
+                    h('div', { className: 'w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center shrink-0' },
+                        h(Icons.AlertTriangle, { size: 24, className: 'text-red-400' })
+                    ),
+                    h('div', null,
+                        h('h3', { className: 'text-xl font-serif text-white leading-tight' }, 'Delete Account'),
+                        h('p', { className: 'text-white/50 text-sm mt-1' }, 'This action is irreversible.')
+                    )
+                ),
+                h('div', { className: 'bg-red-500/10 border border-red-500/20 p-4 rounded-xl space-y-2' },
+                    h('p', { className: 'text-red-200 text-sm font-medium' }, 'Warning: By deleting your account:'),
+                    h('ul', { className: 'text-red-200/80 text-sm space-y-1 ml-4 list-disc' },
+                        h('li', null, 'All your contacts, campaigns, and email accounts will be permanently erased.'),
+                        h('li', null, 'Any active Stripe subscriptions will be cancelled immediately.'),
+                        h('li', null, 'You will not be able to recover this data.')
+                    )
+                ),
+                h('div', { className: 'space-y-2' },
+                    h('label', { className: 'text-sm font-medium text-white/70' }, 'Please type the following to confirm:'),
+                    h('p', { className: 'text-sm font-mono bg-black/30 p-2 rounded text-white/80 select-all' }, requiredText),
+                    h('input', {
+                        type: 'text',
+                        value: deleteConfirmationText,
+                        onChange: (e) => setDeleteConfirmationText(e.target.value),
+                        className: 'w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-red-500/50 transition-colors mt-2',
+                        placeholder: 'Type the phrase here'
+                    })
+                ),
+                h('div', { className: 'flex gap-3 pt-2' },
+                    h('button', {
+                        onClick: () => setShowDeleteModal(false),
+                        disabled: loading,
+                        className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-white/10 hover:bg-white/20 text-white transition-all disabled:opacity-50'
+                    }, 'Cancel'),
+                    h('button', {
+                        onClick: handleDeleteAccount,
+                        disabled: !isValid || loading,
+                        className: 'flex-1 py-3 px-4 rounded-xl font-medium bg-red-500 text-white hover:bg-red-600 transition-all shadow-[0_0_15px_rgba(239,68,68,0.3)] hover:shadow-[0_0_20px_rgba(239,68,68,0.5)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-red-500 disabled:shadow-none flex items-center justify-center gap-2'
+                    },
+                        loading ? h(Icons.Loader2, { size: 18, className: 'animate-spin' }) : null,
+                        loading ? 'Deleting...' : 'Delete Forever'
+                    )
+                )
+            )
+        );
+    };
+
     // ==============================
     // MAIN RENDER
     // ==============================
@@ -514,6 +604,7 @@ const Settings = () => {
 
         // Modals
         showCancelModal && h(CancelModal),
-        showDowngradeModal && h(DowngradeModal)
+        showDowngradeModal && h(DowngradeModal),
+        showDeleteModal && h(DeleteAccountModal)
     );
 };

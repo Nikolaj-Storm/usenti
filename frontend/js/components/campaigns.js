@@ -1512,8 +1512,9 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
   const personalizationVars = [
     { var: '{{first_name}}', label: 'First Name' },
     { var: '{{last_name}}', label: 'Last Name' },
-    { var: '{{email}}', label: 'Email' },
     { var: '{{company}}', label: 'Company' },
+    { var: '{{custom_1}}', label: 'Custom 1' },
+    { var: '{{custom_2}}', label: 'Custom 2' },
     { var: '{{unsubscribe_link}}', label: 'Unsubscribe' }
   ];
 
@@ -1573,7 +1574,7 @@ const StepEditor = ({ step, onUpdate, onDelete, saving }) => {
           h('div', { className: "flex justify-between items-center mb-1" },
             h('label', { className: "block text-sm font-medium text-white" }, "Body"),
             h('div', { className: "flex flex-wrap gap-1" },
-              personalizationVars.slice(0, 4).map(v => h('button', {
+              personalizationVars.slice(0, 5).map(v => h('button', {
                 key: v.var,
                 onClick: () => insertVar(v.var),
                 className: "text-xs bg-white/10 text-white/70 px-1.5 py-0.5 rounded-lg hover:bg-cream-100 hover:text-rust-900 transition-colors"

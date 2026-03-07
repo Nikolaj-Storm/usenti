@@ -233,6 +233,43 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 });
 
+// Delete Account - removes user from Supabase, cancels Stripe sub (if any), and cascades all data
+app.delete('/api/user/account', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    console.log(`🗑️ [API] Deleting account for user: ${userId}`);
+
+    // Check if the user has an active Stripe subscription to cancel
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('stripe_subscription_id')
+      .eq('user_id', userId)
+      .single();
+
+    if (subscription && subscription.stripe_subscription_id) {
+      console.log(`💳 [API] Cancelling Stripe subscription: ${subscription.stripe_subscription_id}`);
+      const stripe = require('./config/stripe');
+      try {
+        await stripe.subscriptions.cancel(subscription.stripe_subscription_id);
+      } catch (stripeErr) {
+        console.error('⚠️ [API] Failed to cancel Stripe subscription (may already be cancelled):', stripeErr.message);
+      }
+    }
+
+    // Delete user from Supabase Auth (this cascades to all other tables due to FKs)
+    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    res.json({ success: true, message: 'Account deleted successfully' });
+  } catch (error) {
+    console.error('❌ [API] Error deleting account:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete account' });
+  }
+});
+
 // ============================================================================
 // OAUTH ROUTES
 // ============================================================================
@@ -1461,15 +1498,21 @@ app.post('/api/contact-lists/:id/import', authenticateUser, async (req, res) => 
     }
     // ----------------------------
 
-    const contactsToInsert = newContacts.map(c => ({
-      list_id: req.params.id,
-      email: c.email.toLowerCase().trim(),
-      first_name: c.first_name,
-      last_name: c.last_name || null,
-      company: c.company || null,
-      custom_fields: c.custom_fields || {},
-      status: 'active'
-    }));
+    const contactsToInsert = newContacts.map(c => {
+      const custom_fields_to_add = c.custom_fields || {};
+      if (c.custom_1) custom_fields_to_add.custom_1 = c.custom_1;
+      if (c.custom_2) custom_fields_to_add.custom_2 = c.custom_2;
+
+      return {
+        list_id: req.params.id,
+        email: c.email.toLowerCase().trim(),
+        first_name: c.first_name,
+        last_name: c.last_name || null,
+        company: c.company || null,
+        custom_fields: custom_fields_to_add,
+        status: 'active'
+      };
+    });
 
     const { data, error } = await supabase
       .from('contacts')

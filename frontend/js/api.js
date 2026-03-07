@@ -209,6 +209,11 @@ const api = {
     }, { skipAuth: true });
   },
 
+  async deleteAccount() {
+    console.log('🗑️ [API] deleteAccount called');
+    return this.delete('/api/user/account');
+  },
+
   // Email Accounts
   async getEmailAccounts() {
     return this.get(APP_CONFIG.ENDPOINTS.EMAIL_ACCOUNTS);
