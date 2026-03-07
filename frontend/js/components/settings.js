@@ -599,12 +599,12 @@ const Settings = () => {
         ),
 
         // Tab Content
-        activeTab === 'account' && h(AccountTab),
-        activeTab === 'billing' && h(BillingTab),
+        activeTab === 'account' && AccountTab(),
+        activeTab === 'billing' && BillingTab(),
 
         // Modals
-        showCancelModal && h(CancelModal),
-        showDowngradeModal && h(DowngradeModal),
-        showDeleteModal && h(DeleteAccountModal)
+        showCancelModal && CancelModal(),
+        showDowngradeModal && DowngradeModal(),
+        showDeleteModal && DeleteAccountModal()
     );
 };
