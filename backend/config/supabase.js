@@ -8,6 +8,11 @@ if (!supabaseUrl || !supabaseServiceKey) {
   throw new Error('Missing Supabase credentials in environment variables');
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
 
 module.exports = supabase;
