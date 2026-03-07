@@ -9,6 +9,18 @@ const App = () => {
   const [unansweredCount, setUnansweredCount] = React.useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
 
+  // Handle session expiry (401 from any API call) — redirect to login without a page reload
+  React.useEffect(() => {
+    const handleSessionExpired = () => {
+      console.warn('⚠️ [App] Session expired. Redirecting to login page.');
+      setUser(null);
+      setAuthState('unauthenticated');
+      setPublicView('login');
+    };
+    window.addEventListener('usenti:session-expired', handleSessionExpired);
+    return () => window.removeEventListener('usenti:session-expired', handleSessionExpired);
+  }, []);
+
   // 1. Check for password recovery token in URL hash, then verify session
   React.useEffect(() => {
     const hash = window.location.hash;

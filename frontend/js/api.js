@@ -44,11 +44,11 @@ const api = {
           });
 
           if (response.status === 401) {
-            // Unauthorized - clear auth and reload
-            console.warn('⚠️ [API] 401 Unauthorized - clearing auth and reloading page!');
+            // Unauthorized - clear auth and notify app to redirect to login (no page reload)
+            console.warn('⚠️ [API] 401 Unauthorized - clearing auth and dispatching session-expired event.');
             localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.TOKEN);
             localStorage.removeItem(APP_CONFIG.STORAGE_KEYS.USER);
-            window.location.reload();
+            window.dispatchEvent(new CustomEvent('usenti:session-expired'));
           }
           throw new Error(data.error || data.message || 'Request failed');
         }
