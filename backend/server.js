@@ -240,7 +240,7 @@ app.delete('/api/user/account', authenticateUser, async (req, res) => {
     console.log(`🗑️ [API] Deleting account for user: ${userId}`);
 
     // Check if the user has an active Stripe subscription to cancel
-    const { data: subscription } = await supabase
+    const { data: subscription } = await supabaseAdmin
       .from('subscriptions')
       .select('stripe_subscription_id')
       .eq('user_id', userId)
